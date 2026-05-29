@@ -1,0 +1,45 @@
+{
+  "name": "mdv",
+  "version": "1.0.0",
+  "description": "Claude-style Markdown Editor",
+  "main": "src/main.js",
+  "scripts": {
+    "start": "electron .",
+    "build": "electron-builder"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "dependencies": {
+    "chokidar": "^5.0.0"
+  },
+  "devDependencies": {
+    "electron": "^42.3.0",
+    "electron-builder": "^26.8.1"
+  },
+  "build": {
+    "appId": "com.ian.mdv",
+    "productName": "MDV",
+    "mac": {
+      "target": "dmg",
+      "icon": "assets/icon.icns"
+    },
+    "fileAssociations": [
+      {
+        "ext": "md",
+        "name": "Markdown",
+        "role": "Editor"
+      },
+      {
+        "ext": "markdown",
+        "name": "Markdown",
+        "role": "Editor"
+      }
+    ],
+    "files": [
+      "src/**/*",
+      "assets/**/*",
+      "node_modules/**/*"
+    ]
+  }
+}
