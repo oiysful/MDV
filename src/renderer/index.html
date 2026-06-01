@@ -224,6 +224,12 @@ html, body {
   display: inline-flex; align-items: center; justify-content: center;
   transition: background .14s, color .14s, border-color .14s, box-shadow .14s;
 }
+.btn-primary-add .btn-add-label {
+  display: none;
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: -.1px;
+}
 .btn-primary-add:hover { background: rgba(0,0,0,0.04); color: var(--text); }
 .btn-primary-add.active,
 .btn-primary-add:focus-visible {
@@ -233,6 +239,24 @@ html, body {
   box-shadow: 0 8px 18px rgba(0,0,0,0.06);
 }
 [data-theme="dark"] .btn-primary-add:hover { background: rgba(255,255,255,0.06); }
+body.empty-entry-emphasis .btn-primary-add {
+  width: auto;
+  min-width: 68px;
+  padding: 0 12px;
+  gap: 6px;
+  background: color-mix(in srgb, var(--brand-light) 84%, var(--surface));
+  color: var(--brand);
+  border-color: color-mix(in srgb, var(--brand) 22%, transparent);
+  box-shadow: 0 10px 24px rgba(0,0,0,0.08);
+}
+body.empty-entry-emphasis .btn-primary-add .btn-add-label { display: inline; }
+body.empty-entry-emphasis .btn-primary-add svg { flex-shrink: 0; }
+[data-theme="dark"] body.empty-entry-emphasis .btn-primary-add {
+  background: rgba(255,255,255,0.12);
+  color: hsl(15 72% 72%);
+  border-color: rgba(255,255,255,0.12);
+  box-shadow: 0 14px 28px rgba(0,0,0,0.36);
+}
 /* context menu */
 .ctx-menu {
   position: absolute; top: calc(100% + 6px); right: 0;
@@ -255,6 +279,13 @@ html, body {
   right: auto;
   min-width: 156px;
   z-index: 500;
+}
+[data-theme="dark"] .ctx-menu {
+  background: color-mix(in srgb, var(--surface) 92%, transparent);
+}
+[data-theme="dark"] #open-entry-hint,
+[data-theme="dark"] #welcome-guide {
+  background: color-mix(in srgb, var(--surface) 94%, transparent);
 }
 [data-theme="dark"] #sidebar-tabs {
   border-color: rgba(255,255,255,0.12);
@@ -604,11 +635,151 @@ mark.search-hl.current {
 }
 .empty-title { font-size: 17px; font-weight: 600; color: var(--text); letter-spacing: -.3px; }
 .empty-sub { font-size: 13px; color: var(--text-muted); line-height: 1.65; max-width: 280px; }
+.empty-actions {
+  display: flex;
+  gap: 8px;
+  margin-top: 8px;
+  flex-wrap: wrap;
+  justify-content: center;
+}
+.empty-cta {
+  height: 34px;
+  padding: 0 14px;
+  border-radius: 10px;
+  border: 1px solid color-mix(in srgb, var(--brand) 18%, transparent);
+  background: color-mix(in srgb, var(--brand-light) 85%, var(--surface));
+  color: var(--brand);
+  font-family: var(--font);
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background .12s, transform .12s;
+}
+.empty-cta:hover {
+  background: color-mix(in srgb, var(--brand-light) 96%, var(--surface));
+  transform: translateY(-1px);
+}
+.empty-cta.secondary {
+  background: color-mix(in srgb, var(--surface) 92%, transparent);
+  border-color: var(--border);
+  color: var(--text);
+}
 #content.is-empty {
   min-height: calc(100vh - 48px - 46px);
   display: flex;
   align-items: center;
   justify-content: center;
+}
+#open-entry-hint {
+  position: absolute;
+  top: calc(100% + 10px);
+  right: -4px;
+  display: none;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 10px;
+  border-radius: 12px;
+  border: 1px solid color-mix(in srgb, var(--brand) 18%, transparent);
+  background: color-mix(in srgb, var(--surface) 96%, transparent);
+  box-shadow: var(--shadow-sm);
+  color: var(--text);
+  white-space: nowrap;
+  pointer-events: none;
+}
+#open-entry-hint::before {
+  content: '';
+  width: 7px;
+  height: 7px;
+  border-top: 1.5px solid var(--brand);
+  border-right: 1.5px solid var(--brand);
+  transform: rotate(-45deg);
+  margin-right: 2px;
+}
+#open-entry-hint strong {
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--text);
+}
+#open-entry-hint span {
+  font-size: 11px;
+  color: var(--text-muted);
+}
+body.empty-entry-emphasis #open-entry-hint {
+  display: inline-flex;
+}
+#welcome-guide {
+  position: fixed;
+  top: 72px;
+  right: 18px;
+  z-index: 510;
+  width: 320px;
+  padding: 14px 14px 12px;
+  border-radius: 16px;
+  border: 1px solid color-mix(in srgb, var(--brand) 18%, var(--border));
+  background: color-mix(in srgb, var(--surface) 98%, transparent);
+  box-shadow: 0 18px 42px rgba(0,0,0,0.12);
+  display: none;
+}
+#welcome-guide.show { display: block; }
+.guide-title {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 8px;
+}
+.guide-title strong {
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--text);
+}
+.guide-close {
+  width: 24px;
+  height: 24px;
+  border: none;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--text-dimmed);
+  cursor: pointer;
+}
+.guide-close:hover { background: var(--hover); color: var(--text); }
+.guide-body {
+  font-size: 12px;
+  line-height: 1.6;
+  color: var(--text-muted);
+}
+.guide-list {
+  margin: 10px 0 12px;
+  padding-left: 16px;
+}
+.guide-list li { margin-bottom: 6px; }
+.guide-callout {
+  margin: 10px 0 12px;
+  padding: 10px 11px;
+  border-radius: 12px;
+  background: color-mix(in srgb, var(--brand-light) 72%, transparent);
+  color: var(--text);
+}
+.guide-actions {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+.guide-btn {
+  height: 32px;
+  padding: 0 12px;
+  border-radius: 10px;
+  border: 1px solid color-mix(in srgb, var(--brand) 18%, transparent);
+  background: color-mix(in srgb, var(--brand-light) 85%, var(--surface));
+  color: var(--brand);
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+}
+.guide-btn.secondary {
+  background: color-mix(in srgb, var(--surface) 92%, transparent);
+  border-color: var(--border);
+  color: var(--text);
 }
 kbd {
   display: inline-block; background: var(--subtle); border: 1px solid var(--border);
@@ -949,11 +1120,16 @@ kbd {
   <!-- Open (+) with context menu -->
   <div style="position:relative">
     <button class="btn btn-primary-add" id="btn-add" onclick="toggleAddMenu(event)" title="열기">
+      <span class="btn-add-label">열기</span>
       <svg width="13" height="13" viewBox="0 0 13 13" fill="none">
         <line x1="6.5" y1="1.5" x2="6.5" y2="11.5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
         <line x1="1.5" y1="6.5" x2="11.5" y2="6.5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
       </svg>
     </button>
+    <div id="open-entry-hint">
+      <strong>파일/폴더 열기</strong>
+      <span>여기서 바로 시작</span>
+    </div>
     <div id="add-menu" class="ctx-menu" style="display:none">
       <button class="ctx-item" onclick="openFolder();hideAddMenu()">
         <svg width="13" height="13" viewBox="0 0 13 13" fill="none" style="flex-shrink:0">
@@ -974,6 +1150,28 @@ kbd {
 
 <div id="app-context-menu" class="ctx-menu ctx-menu-floating" style="display:none"></div>
 <div id="toast"></div>
+<div id="welcome-guide">
+  <div class="guide-title">
+    <strong>처음 시작하기</strong>
+    <button class="guide-close" onclick="dismissWelcomeGuide()">×</button>
+  </div>
+  <div class="guide-body">
+    우측 상단의 <strong>열기</strong> 버튼으로 파일이나 폴더를 바로 불러올 수 있어요.
+    <ul class="guide-list">
+      <li><strong>파일 열기</strong>: 단일 Markdown 문서 열기</li>
+      <li><strong>폴더 열기</strong>: 문서 묶음을 탐색기 탭에서 보기</li>
+      <li><strong>드래그 앤 드롭</strong>: `.md`, `.markdown` 파일을 바로 놓기</li>
+    </ul>
+    <div class="guide-callout">
+      기본 앱으로 쓰고 싶다면 Finder에서 Markdown 파일 선택 → <strong>정보 가져오기</strong> → <strong>Open with</strong> → <strong>MDV</strong> → <strong>Change All</strong> 순서로 지정하세요.
+    </div>
+  </div>
+  <div class="guide-actions">
+    <button class="guide-btn" onclick="openFromGuide('file')">파일 열기</button>
+    <button class="guide-btn secondary" onclick="openFromGuide('folder')">폴더 열기</button>
+    <button class="guide-btn secondary" onclick="dismissWelcomeGuide()">나중에</button>
+  </div>
+</div>
 
 <!-- Search bar (hidden by default) -->
 <div id="search-bar" style="display:none">
@@ -1060,9 +1258,13 @@ kbd {
           <div class="empty-icon">📄</div>
           <div class="empty-title">열린 파일 없음</div>
           <div class="empty-sub">
-            <strong>파일 열기</strong>를 클릭하거나<br>
-            이 창에 파일을 드래그 앤 드롭하세요<br><br>
+            우측 상단의 <strong>+ 열기</strong> 버튼을 누르거나<br>
+            아래 버튼 또는 드래그 앤 드롭으로 시작하세요<br><br>
             <kbd>.md</kbd>&nbsp; <kbd>.markdown</kbd>
+          </div>
+          <div class="empty-actions">
+            <button class="empty-cta" onclick="openFile()">파일 열기</button>
+            <button class="empty-cta secondary" onclick="openFolder()">폴더 열기</button>
           </div>
         </div>
       </div>
@@ -1108,6 +1310,7 @@ let tabIdCounter = 0;
 let currentExplorerRoot = null;
 let explorerShowFullPath = false;
 let toastTimer = null;
+const WELCOME_GUIDE_DISMISSED_KEY = 'mdv-welcome-guide-dismissed';
 let $;
 
 /* ── File watcher ── */
@@ -1124,9 +1327,13 @@ const EMPTY_HTML = `<div id="empty">
   <div class="empty-icon">📄</div>
   <div class="empty-title">열린 파일 없음</div>
   <div class="empty-sub">
-    <strong>파일 열기</strong>를 클릭하거나<br>
-    이 창에 파일을 드래그 앤 드롭하세요<br><br>
+    우측 상단의 <strong>+ 열기</strong> 버튼을 누르거나<br>
+    아래 버튼 또는 드래그 앤 드롭으로 시작하세요<br><br>
     <kbd>.md</kbd>&nbsp; <kbd>.markdown</kbd>
+  </div>
+  <div class="empty-actions">
+    <button class="empty-cta" onclick="openFile()">파일 열기</button>
+    <button class="empty-cta secondary" onclick="openFolder()">폴더 열기</button>
   </div>
 </div>`;
 
@@ -1331,6 +1538,33 @@ function showToast(message) {
   toastTimer = setTimeout(() => $.toast.classList.remove('show'), 1600);
 }
 
+function updateEntryAffordance() {
+  if (!$) return;
+  const isEmpty = tabs.length === 0;
+  document.body.classList.toggle('empty-entry-emphasis', isEmpty);
+  if (!isEmpty) {
+    $.welcomeGuide.classList.remove('show');
+  }
+}
+
+function dismissWelcomeGuide(persist = true) {
+  if (!$?.welcomeGuide) return;
+  $.welcomeGuide.classList.remove('show');
+  if (persist) localStorage.setItem(WELCOME_GUIDE_DISMISSED_KEY, '1');
+}
+
+function maybeShowWelcomeGuide() {
+  if (!$?.welcomeGuide) return;
+  const dismissed = localStorage.getItem(WELCOME_GUIDE_DISMISSED_KEY) === '1';
+  $.welcomeGuide.classList.toggle('show', tabs.length === 0 && !dismissed);
+}
+
+async function openFromGuide(kind) {
+  dismissWelcomeGuide();
+  if (kind === 'folder') await openFolder();
+  else await openFile();
+}
+
 function updateToolbarActions() {
   if (!$) return;
   const activeTab = tabs.find(t => t.id === activeTabId) || null;
@@ -1367,6 +1601,8 @@ function renderTabBar() {
     list.appendChild(el);
   });
   updateToolbarActions();
+  updateEntryAffordance();
+  maybeShowWelcomeGuide();
 }
 
 /* ── Tab drag ── */
@@ -1547,6 +1783,7 @@ document.addEventListener('DOMContentLoaded', () => {
     tabList:       document.getElementById('tab-list'),
     appContextMenu:document.getElementById('app-context-menu'),
     btnAdd:        document.getElementById('btn-add'),
+    openEntryHint: document.getElementById('open-entry-hint'),
     btnSave:       document.getElementById('btn-save'),
     btnPrint:      document.getElementById('btn-print'),
     goTop:         document.getElementById('go-top'),
@@ -1568,6 +1805,7 @@ document.addEventListener('DOMContentLoaded', () => {
     btnExplorerReveal: document.getElementById('btn-explorer-reveal'),
     btnExplorerClose:  document.getElementById('btn-explorer-close'),
     toast:         document.getElementById('toast'),
+    welcomeGuide:  document.getElementById('welcome-guide'),
   };
 
   applyTheme();
@@ -1576,6 +1814,8 @@ document.addEventListener('DOMContentLoaded', () => {
   $.stats.classList.add('empty');
   syncExplorerHeader();
   updateToolbarActions();
+  updateEntryAffordance();
+  maybeShowWelcomeGuide();
 
   // Electron: system theme changed
   window.api.onThemeChanged(dark => {
