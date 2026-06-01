@@ -1,0 +1,1 @@
+This non-markdown file should not appear in the explorer list.
