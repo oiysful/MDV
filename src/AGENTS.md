@@ -20,6 +20,7 @@ src/
 | Menu / shortcuts | `main.js#buildMenu` | Uses `executeJavaScript(...)` hooks into renderer globals |
 | Open/save flows | `main.js` dialog handlers + renderer save/open functions | IPC payloads are JSON strings |
 | Finder / external shell actions | `main.js` shell handlers + `preload.js` bridge | Keep renderer unprivileged |
+| First-launch experience | `renderer/index.html` onboarding helpers + toolbar open entry | Renderer-only visual guidance; no native default-app mutation |
 | Theme sync | `main.js` native theme events + renderer `applyTheme` | Auto mode reacts to system theme |
 
 ## CONVENTIONS
@@ -41,3 +42,4 @@ src/
 - `main.js` mixes lifecycle, IPC, and menu code in one file; keep edits targeted.
 - `renderer/` is the only place with substantial UI complexity; read its local AGENTS file before large frontend edits.
 - Current IPC surface includes external URL open and Finder reveal helpers in addition to markdown/file operations.
+- Default-app guidance is manual UX only; this codebase does not programmatically force markdown default-app assignment.

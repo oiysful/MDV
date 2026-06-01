@@ -6,7 +6,7 @@ Single-file renderer app: markup, design tokens, UI layout, and client-side beha
 ## WHERE TO LOOK
 | Task | Location | Notes |
 |------|----------|-------|
-| Toolbar / buttons | top HTML + toolbar CSS | Search for `#toolbar`, `.btn`, `#add-menu`, `#toast` |
+| Toolbar / buttons | top HTML + toolbar CSS | Search for `#toolbar`, `.btn`, `#add-menu`, `#toast`, `#welcome-guide` |
 | Sidebar / tabs / explorer | `#sidebar` section + `switchTab`, `renderTabBar`, `loadDir` | Left panel has TOC and explorer modes |
 | Markdown rendering | `marked.Renderer`, `render(...)` | Handles syntax highlight + image path rewriting |
 | Tab state | `tabs`, `activeTabId`, save/restore helpers | Dirty-state dots and drag-reorder live here |
@@ -21,6 +21,7 @@ Single-file renderer app: markup, design tokens, UI layout, and client-side beha
 - Markdown preview is rendered with `marked`; code blocks are highlighted with `highlight.js`.
 - Local images in markdown are rewritten to data URLs before render.
 - Global custom context menu UI is renderer-managed via `#app-context-menu` rather than native menus.
+- First-launch onboarding state is renderer-managed and persisted in localStorage.
 
 ## ANTI-PATTERNS
 - Do not add direct filesystem assumptions; use `window.api.readFile`, `listDirectory`, `saveFile`, etc.
@@ -36,6 +37,7 @@ Single-file renderer app: markup, design tokens, UI layout, and client-side beha
 - Search highlighting, TOC activation, and tab switching are all manual DOM updates, not framework state.
 - Explorer root header can switch between basename and full path, close the opened root, and reveal it in Finder.
 - Toolbar save state is tied to tab dirty tracking; transient save feedback uses the top-right toast.
+- Empty-state UX intentionally promotes the top-right open entry point and mirrors it with direct CTA buttons plus a welcome guide.
 
 ## NOTES
 - `index.html` is the biggest hotspot in the repo (~1600 lines).

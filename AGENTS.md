@@ -1,6 +1,6 @@
 # PROJECT KNOWLEDGE BASE
 
-**Generated:** 2026-05-29
+**Generated:** 2026-05-30
 
 ## OVERVIEW
 Small Electron desktop app for editing and previewing Markdown with a Claude-inspired UI.
@@ -32,7 +32,7 @@ Main stack: Electron main/preload + single-file renderer HTML/CSS/JS.
 | `sendFile` | `src/main.js` | Reads markdown file and emits `file-opened` |
 | `ipcMain.handle(...)` block | `src/main.js` | File IO, directory listing, save, watch, image loading |
 | `contextBridge.exposeInMainWorld('api', ...)` | `src/preload.js` | Only renderer bridge to privileged APIs |
-| `<script>` block | `src/renderer/index.html` | Tab system, markdown rendering, explorer, theme, search, context menus |
+| `<script>` block | `src/renderer/index.html` | Tab system, markdown rendering, explorer, theme, onboarding, search, context menus |
 
 ## CONVENTIONS
 - CommonJS everywhere; no TypeScript, bundler, or framework layer.
@@ -56,6 +56,7 @@ Main stack: Electron main/preload + single-file renderer HTML/CSS/JS.
 - Directory explorer hides dot-directories and only surfaces `.md` / `.markdown` files.
 - Explorer root has header actions for exact-path viewing, closing the opened root, and Finder reveal via context menu.
 - Toolbar now includes save/print actions with dirty-state save enablement and transient save toast feedback.
+- First launch emphasizes the top-right open entry point and shows a dismissible onboarding guide for opening files/folders and setting default app behavior manually.
 
 ## COMMANDS
 ```bash
