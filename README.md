@@ -25,6 +25,51 @@ Claude-style desktop Markdown editor built with Electron.
 
 Renderer libraries are loaded by CDN from `src/renderer/index.html` under the app CSP allowlist.
 
+## Renderer Structure
+
+The renderer is no longer a single inline `<script>` block.
+
+Current split:
+
+- `src/renderer/index.html` — shell markup + CSS + script tags
+- `src/renderer/app.js` — renderer bootstrap/orchestration and high-coupling workspace flows
+- `src/renderer/path-utils.js` — path/link helper logic
+- `src/renderer/theme.js` — theme state + stylesheet switching
+- `src/renderer/search.js` — in-document search controller
+- `src/renderer/onboarding.js` — first-launch / entry-affordance / explorer-header UI logic
+- `src/renderer/markdown.js` — markdown rendering, stats, TOC, image resolution helpers
+
+This is an intermediate refactor state: the renderer still uses global entry points for inline handlers and menu integration, but the largest low-risk logic slices have already been separated.
+
+## Testing
+
+The project now includes a lightweight test layer intended to protect renderer refactors before touching more coupled workspace state.
+
+### Unit tests
+
+```bash
+npm run test:unit
+```
+
+Covers pure helpers such as:
+- path resolution
+- external URL detection
+- markdown reading-stat calculation
+
+### Electron smoke tests
+
+```bash
+npm run test:electron
+```
+
+Covers real Electron behavior without a full end-to-end suite:
+- app boot / empty state
+- file open flow
+- folder open / explorer filtering
+- theme toggle behavior
+
+Fixture content lives under `tests/fixtures/`.
+
 ## First Launch UX
 
 - On an empty launch, MDV emphasizes the top-right **열기** entry point.
@@ -94,6 +139,7 @@ Current build outputs:
 
 ## Known Limitations
 
-- No automated test suite yet.
-- `src/renderer/index.html` is intentionally monolithic and carries existing Biome accessibility/style warnings.
+- The renderer still keeps some high-coupling workspace logic in `src/renderer/app.js`.
+- The app still uses inline handler/global function contracts for toolbar/menu/generated HTML actions.
+- `src/renderer/index.html` still carries existing Biome accessibility/style warnings.
 - Notarization is still pending for friendlier macOS distribution.
