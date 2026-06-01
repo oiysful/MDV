@@ -11,6 +11,9 @@ Claude-style desktop Markdown editor built with Electron.
 - Auto theme, light theme, dark theme
 - Save / Save As / Print / Copy controls
 - File change watching for opened files
+- First-launch empty-state guidance and stronger open-entry onboarding
+- Explorer root header actions for path toggle and close
+- Finder reveal support from explorer context menus
 - macOS distributable build via `electron-builder`
 
 ## Tech Stack
@@ -21,6 +24,18 @@ Claude-style desktop Markdown editor built with Electron.
 - highlight.js
 
 Renderer libraries are loaded by CDN from `src/renderer/index.html` under the app CSP allowlist.
+
+## First Launch UX
+
+- On an empty launch, MDV emphasizes the top-right **열기** entry point.
+- The empty state includes direct **파일 열기** / **폴더 열기** actions.
+- A first-launch guidance card explains how to:
+  - open a single markdown file
+  - open a folder into the explorer
+  - drag and drop `.md` / `.markdown`
+  - set MDV as the default app manually in Finder
+
+The guidance popup is dismissible and remembered locally.
 
 ## Project Structure
 
@@ -75,6 +90,7 @@ Current build outputs:
 - New privileged filesystem or shell actions must be added in both:
   - `src/main.js`
   - `src/preload.js`
+- Finder reveal is implemented through the preload/main bridge, not direct renderer access.
 
 ## Known Limitations
 
