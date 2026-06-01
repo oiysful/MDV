@@ -1,6 +1,6 @@
 # PROJECT KNOWLEDGE BASE
 
-**Generated:** 2026-05-30
+**Generated:** 2026-06-01
 
 ## OVERVIEW
 Small Electron desktop app for editing and previewing Markdown with a Claude-inspired UI.
@@ -20,7 +20,7 @@ Main stack: Electron main/preload + single-file renderer HTML/CSS/JS.
 |------|----------|-------|
 | App bootstrap / window lifecycle | `src/main.js` | Electron entry from `package.json#main` |
 | IPC contract | `src/main.js`, `src/preload.js` | Main handlers must stay mirrored in preload bridge |
-| Renderer UI / styling / state | `src/renderer/index.html` | One large monolithic file: HTML + CSS + client JS |
+| Renderer UI / styling / state | `src/renderer/index.html`, `src/renderer/*.js` | HTML/CSS shell plus split renderer modules |
 | Packaging | `package.json#build` | `electron-builder` config lives inline |
 | Distribution artifact | `dist/` | `MDV.app` + macOS `.dmg` output after build |
 | App icon | `assets/icon.icns` | macOS build asset |
@@ -32,7 +32,12 @@ Main stack: Electron main/preload + single-file renderer HTML/CSS/JS.
 | `sendFile` | `src/main.js` | Reads markdown file and emits `file-opened` |
 | `ipcMain.handle(...)` block | `src/main.js` | File IO, directory listing, save, watch, image loading |
 | `contextBridge.exposeInMainWorld('api', ...)` | `src/preload.js` | Only renderer bridge to privileged APIs |
-| `<script>` block | `src/renderer/index.html` | Tab system, markdown rendering, explorer, theme, onboarding, search, context menus |
+| `app.js` | `src/renderer/app.js` | Renderer bootstrap, shared state, workspace orchestration |
+| `theme.js` | `src/renderer/theme.js` | Theme controller and stylesheet switching |
+| `path-utils.js` | `src/renderer/path-utils.js` | Pure path/link helpers |
+| `markdown.js` | `src/renderer/markdown.js` | Markdown render pipeline, stats, TOC |
+| `search.js` | `src/renderer/search.js` | In-document search controller |
+| `onboarding.js` | `src/renderer/onboarding.js` | First-launch guidance and entry affordance logic |
 
 ## CONVENTIONS
 - CommonJS everywhere; no TypeScript, bundler, or framework layer.
@@ -50,13 +55,14 @@ Main stack: Electron main/preload + single-file renderer HTML/CSS/JS.
 - Do not scatter renderer logic into multiple assumptions without checking duplicated state paths (`EMPTY_HTML`, tab restore, watcher flow).
 
 ## UNIQUE STYLES
-- `src/renderer/index.html` is intentionally a single-file app shell with embedded styles and client logic.
+- `src/renderer/index.html` remains the shell, but renderer logic is now progressively split into plain browser scripts under `src/renderer/`.
 - Markdown rendering uses CDN-loaded `marked` and `highlight.js` under an explicit CSP allowlist.
 - File watching is per-path via `chokidar`; active tab changes rewire the watch target.
 - Directory explorer hides dot-directories and only surfaces `.md` / `.markdown` files.
 - Explorer root has header actions for exact-path viewing, closing the opened root, and Finder reveal via context menu.
 - Toolbar now includes save/print actions with dirty-state save enablement and transient save toast feedback.
 - First launch emphasizes the top-right open entry point and shows a dismissible onboarding guide for opening files/folders and setting default app behavior manually.
+- Test-first refactoring now uses Electron smoke tests plus small unit tests to guard renderer extractions.
 
 ## COMMANDS
 ```bash
@@ -65,8 +71,8 @@ npm run build
 ```
 
 ## NOTES
-- No repo-local test suite found.
+- `tests/electron/smoke.test.js` covers real Electron boot/open/theme flows; `tests/unit/*.test.js` cover extracted pure helpers.
 - No repo-local CI workflow found.
-- Current editor/LSP diagnostics flag existing Biome issues in `src/main.js` and `src/renderer/index.html`; they are still mostly accessibility/style warnings, not this app's core runtime flow.
+- Current editor/LSP diagnostics flag existing Biome issues in `src/main.js` and renderer markup/scripts; they are still mostly accessibility/style warnings, not this app's core runtime flow.
 - Repo is tiny by file count, but renderer complexity is concentrated in `src/renderer/index.html`.
 - Local macOS packaging currently works and emits `dist/MDV-1.0.0-arm64.dmg`, but notarization is still not configured.

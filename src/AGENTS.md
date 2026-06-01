@@ -9,7 +9,9 @@ src/
 ├── main.js            # Electron entry, window lifecycle, IPC handlers, menu
 ├── preload.js         # `window.api` bridge
 └── renderer/
-    └── index.html     # full renderer app
+    ├── index.html     # shell markup + CSS
+    ├── app.js         # bootstrap/orchestration
+    └── *.js           # split renderer controllers/helpers
 ```
 
 ## WHERE TO LOOK
@@ -21,6 +23,7 @@ src/
 | Open/save flows | `main.js` dialog handlers + renderer save/open functions | IPC payloads are JSON strings |
 | Finder / external shell actions | `main.js` shell handlers + `preload.js` bridge | Keep renderer unprivileged |
 | First-launch experience | `renderer/index.html` onboarding helpers + toolbar open entry | Renderer-only visual guidance; no native default-app mutation |
+| Renderer refactor entry | `renderer/app.js` + sibling helper/controller files | Prefer extracting low-risk logic here before touching HTML shell |
 | Theme sync | `main.js` native theme events + renderer `applyTheme` | Auto mode reacts to system theme |
 
 ## CONVENTIONS
@@ -30,6 +33,7 @@ src/
 - Renderer-facing events use `file-opened`, `file-changed`, and `theme-changed`.
 - BrowserWindow uses `preload.js` via `webPreferences.preload`; keep that path valid.
 - Shell integrations like browser-open or Finder-reveal belong in main via `shell`, never direct renderer access.
+- Renderer helper/controller files are plain browser scripts loaded by `index.html`; avoid Node-only assumptions there.
 
 ## ANTI-PATTERNS
 - Do not put business logic into `preload.js`; it is a bridge, not a second main process.
@@ -43,3 +47,4 @@ src/
 - `renderer/` is the only place with substantial UI complexity; read its local AGENTS file before large frontend edits.
 - Current IPC surface includes external URL open and Finder reveal helpers in addition to markdown/file operations.
 - Default-app guidance is manual UX only; this codebase does not programmatically force markdown default-app assignment.
+- Test harness now exists at `tests/electron/` and `tests/unit/`; keep it green before each additional renderer extraction.
