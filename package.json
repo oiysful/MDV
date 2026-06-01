@@ -5,7 +5,9 @@
   "main": "src/main.js",
   "scripts": {
     "start": "electron .",
-    "build": "electron-builder"
+    "build": "electron-builder",
+    "test:electron": "node --test tests/electron/smoke.test.js",
+    "test:unit": "node --test tests/unit/*.test.js"
   },
   "keywords": [],
   "author": "",
@@ -15,7 +17,8 @@
   },
   "devDependencies": {
     "electron": "^42.3.0",
-    "electron-builder": "^26.8.1"
+    "electron-builder": "^26.8.1",
+    "playwright": "^1.60.0"
   },
   "build": {
     "appId": "com.ian.mdv",
