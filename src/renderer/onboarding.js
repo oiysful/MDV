@@ -1,41 +1,6 @@
 (function (globalScope) {
-  const EXPLORER_EMPTY_HTML = '<div class="tree-hint">위의 <strong>+</strong> 버튼으로<br>폴더를 열어 탐색하세요.</div>'
-
-  function createOnboardingController({ getRefs, storage, dismissedKey, getTabCount, getExplorerRoot, getExplorerShowFullPath, setExplorerShowFullPath, revealInFinder }) {
+  function createOnboardingController({ getRefs, storage, dismissedKey, getTabCount }) {
     let toastTimer = null
-
-    function syncExplorerHeader() {
-      const refs = getRefs()
-      if (!refs) return
-      const root = getExplorerRoot()
-      const hasRoot = Boolean(root)
-      const label = hasRoot
-        ? (getExplorerShowFullPath() ? root : root.split('/').pop() || root)
-        : '폴더를 선택하세요'
-      refs.explorerPath.textContent = label
-      refs.explorerPath.title = hasRoot ? root : ''
-      refs.btnExplorerReveal.classList.toggle('hidden', !hasRoot)
-      refs.btnExplorerClose.classList.toggle('hidden', !hasRoot)
-    }
-
-    function clearExplorerRoot() {
-      const refs = getRefs()
-      setExplorerShowFullPath(false)
-      refs.explorerTree.innerHTML = EXPLORER_EMPTY_HTML
-      syncExplorerHeader()
-    }
-
-    function toggleExplorerPathInfo() {
-      if (!getExplorerRoot()) return
-      setExplorerShowFullPath(!getExplorerShowFullPath())
-      syncExplorerHeader()
-    }
-
-    async function revealCurrentExplorerRoot() {
-      const root = getExplorerRoot()
-      if (!root) return
-      await revealInFinder(root)
-    }
 
     function showToast(message) {
       const refs = getRefs()
@@ -68,10 +33,6 @@
     }
 
     return {
-      syncExplorerHeader,
-      clearExplorerRoot,
-      toggleExplorerPathInfo,
-      revealCurrentExplorerRoot,
       showToast,
       updateEntryAffordance,
       dismissWelcomeGuide,
