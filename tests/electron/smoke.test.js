@@ -101,6 +101,7 @@ test('openFile loads markdown, updates title, and renders code highlighting', as
 
   try {
     await page.waitForSelector('#empty')
+    await page.waitForFunction(() => typeof window.openFile === 'function')
     await stubOpenDialog(electronApp, [BASIC_MD])
     await page.evaluate(() => openFile())
 
