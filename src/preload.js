@@ -16,5 +16,6 @@ contextBridge.exposeInMainWorld('api', {
 
   onFileChanged: (cb) => ipcRenderer.on('file-changed', (_, data) => cb(data)),
   onFileOpened:  (cb) => ipcRenderer.on('file-opened',  (_, path) => cb(path)),
+  onRendererCommand:(cb) => ipcRenderer.on('renderer-command', (_, command) => cb(command)),
   onThemeChanged:(cb) => ipcRenderer.on('theme-changed', (_, dark) => cb(dark)),
 })

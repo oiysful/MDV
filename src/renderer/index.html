@@ -1035,8 +1035,8 @@ kbd {
   <div class="traffic-gap"></div>
 
   <!-- Sidebar toggle -->
-  <button class="btn btn-icon" id="btn-sidebar" onclick="toggleSidebar()" title="패널">
-    <svg width="15" height="15" viewBox="0 0 15 15" fill="none">
+  <button type="button" class="btn btn-icon" id="btn-sidebar" data-command="toggleSidebar" title="패널">
+    <svg aria-hidden="true" width="15" height="15" viewBox="0 0 15 15" fill="none">
       <line x1="2" y1="4" x2="13" y2="4" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/>
       <line x1="2" y1="7.5" x2="13" y2="7.5" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/>
       <line x1="2" y1="11" x2="13" y2="11" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/>
@@ -1052,8 +1052,8 @@ kbd {
   <div class="spacer"></div>
 
   <!-- Source / Preview toggle pill -->
-  <button id="btn-mode" class="btn btn-mode" onclick="toggleSource()" title="소스/미리보기 (⌘U)" style="display:none">
-    <svg width="13" height="13" viewBox="0 0 13 13" fill="none">
+  <button type="button" id="btn-mode" class="btn btn-mode" data-command="toggleSource" title="소스/미리보기 (⌘U)" style="display:none">
+    <svg aria-hidden="true" width="13" height="13" viewBox="0 0 13 13" fill="none">
       <circle cx="6.5" cy="6.5" r="2" stroke="currentColor" stroke-width="1.3"/>
       <path d="M1 6.5C2.5 3.5 4.3 2 6.5 2s4 1.5 5.5 4.5C10.5 9.5 8.7 11 6.5 11S2.5 9.5 1 6.5z" stroke="currentColor" stroke-width="1.3"/>
     </svg>
@@ -1061,31 +1061,31 @@ kbd {
   </button>
 
   <!-- Search -->
-  <button class="btn btn-icon" id="btn-search" onclick="toggleSearch()" title="검색 (⌘F)">
-    <svg width="15" height="15" viewBox="0 0 15 15" fill="none">
+  <button type="button" class="btn btn-icon" id="btn-search" data-command="toggleSearch" title="검색 (⌘F)">
+    <svg aria-hidden="true" width="15" height="15" viewBox="0 0 15 15" fill="none">
       <circle cx="6.5" cy="6.5" r="4" stroke="currentColor" stroke-width="1.3"/>
       <line x1="9.7" y1="9.7" x2="13" y2="13" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/>
     </svg>
   </button>
 
   <!-- Copy all -->
-<button class="btn btn-icon" id="btn-copy-all" onclick="copyAll()" title="전체 복사">
-    <svg width="15" height="15" viewBox="0 0 15 15" fill="none">
+  <button type="button" class="btn btn-icon" id="btn-copy-all" data-command="copyAll" title="전체 복사">
+    <svg aria-hidden="true" width="15" height="15" viewBox="0 0 15 15" fill="none">
       <rect x="4.5" y="4.5" width="8" height="9" rx="1" stroke="currentColor" stroke-width="1.3"/>
       <path d="M2.5 10.5V2.5h8" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"/>
     </svg>
   </button>
 
-  <button class="btn btn-icon" id="btn-save" onclick="saveFile()" title="저장 (⌘S)" disabled>
-    <svg width="15" height="15" viewBox="0 0 15 15" fill="none">
+  <button type="button" class="btn btn-icon" id="btn-save" data-command="saveFile" title="저장 (⌘S)" disabled>
+    <svg aria-hidden="true" width="15" height="15" viewBox="0 0 15 15" fill="none">
       <path d="M3 2.5h7l2 2V12a.5.5 0 0 1-.5.5h-8A.5.5 0 0 1 3 12V2.5Z" stroke="currentColor" stroke-width="1.3" stroke-linejoin="round"/>
       <path d="M5 2.5v3h4v-3" stroke="currentColor" stroke-width="1.3" stroke-linejoin="round"/>
       <rect x="5" y="8" width="5" height="2.5" rx=".4" stroke="currentColor" stroke-width="1.2"/>
     </svg>
   </button>
 
-  <button class="btn btn-icon" id="btn-print" onclick="printDoc()" title="인쇄 (⌘P)" disabled>
-    <svg width="15" height="15" viewBox="0 0 15 15" fill="none">
+  <button type="button" class="btn btn-icon" id="btn-print" data-command="printDoc" title="인쇄 (⌘P)" disabled>
+    <svg aria-hidden="true" width="15" height="15" viewBox="0 0 15 15" fill="none">
       <path d="M4 5V2.5h7V5" stroke="currentColor" stroke-width="1.3" stroke-linejoin="round"/>
       <rect x="2.5" y="5" width="10" height="4" rx="1" stroke="currentColor" stroke-width="1.3"/>
       <path d="M4 8.5h7V12.5H4z" stroke="currentColor" stroke-width="1.3" stroke-linejoin="round"/>
@@ -1094,17 +1094,17 @@ kbd {
   </button>
 
   <!-- Theme -->
-  <button id="btn-theme" class="btn btn-icon" onclick="toggleTheme()" title="시스템 테마">
-    <svg id="ic-auto" width="15" height="15" viewBox="0 0 15 15" fill="none">
+  <button type="button" id="btn-theme" class="btn btn-icon" data-command="toggleTheme" title="시스템 테마">
+    <svg aria-hidden="true" id="ic-auto" width="15" height="15" viewBox="0 0 15 15" fill="none">
       <rect x="1.5" y="2" width="12" height="8" rx="1" stroke="currentColor" stroke-width="1.3"/>
       <line x1="5.5" y1="10" x2="5" y2="13" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/>
       <line x1="9.5" y1="10" x2="10" y2="13" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/>
       <line x1="4.5" y1="13" x2="10.5" y2="13" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/>
     </svg>
-    <svg id="ic-moon" width="15" height="15" viewBox="0 0 20 20" fill="none" style="display:none">
+    <svg aria-hidden="true" id="ic-moon" width="15" height="15" viewBox="0 0 20 20" fill="none" style="display:none">
       <path fill-rule="evenodd" clip-rule="evenodd" d="M8.15626 2.21536C7.36039 2.40386 6.59453 2.71414 5.88675 3.13843C4.64461 3.88304 3.6279 4.95087 2.94507 6.22801C2.26223 7.50515 1.93889 8.9437 2.00952 10.3902C2.08016 11.8367 2.54213 13.2369 3.34615 14.4414C4.15017 15.646 5.26609 16.6096 6.57486 17.2297C7.88364 17.8497 9.33618 18.1029 10.7775 17.9621C12.2189 17.8214 13.595 17.292 14.7591 16.4305C15.3281 16.0094 15.836 15.5167 16.2714 14.9668C15.1444 15.07 13.9996 14.9479 12.9057 14.5979C11.0127 13.9922 9.39191 12.7424 8.3249 11.0656C7.25789 9.38883 6.81218 7.39118 7.06526 5.41989C7.21147 4.28096 7.5856 3.19245 8.15626 2.21536ZM10.1244 0.00799993H10.3908C10.802 0.00799993 11.1712 0.259652 11.3216 0.642325C11.4719 1.025 11.3727 1.4607 11.0715 1.74056C9.95815 2.77511 9.24251 4.1671 9.04898 5.67456C8.85545 7.18202 9.19628 8.70963 10.0122 9.99186C10.8282 11.2741 12.0676 12.2299 13.5152 12.693C14.9627 13.1562 16.5268 13.0975 17.9355 12.5271C18.3093 12.3758 18.7374 12.4637 19.0212 12.7501C19.305 13.0366 19.389 13.4654 19.2343 13.8378C18.5395 15.5094 17.404 16.9611 15.9489 18.0381C14.4938 19.115 12.7736 19.7767 10.9719 19.9527C9.17022 20.1286 7.35454 19.8122 5.71858 19.0371C4.08261 18.2621 2.68771 17.0574 1.68269 15.5518C0.677659 14.0461 0.100199 12.2959 0.011904 10.4877C-0.0763913 8.67962 0.32779 6.88144 1.18133 5.28502C2.03488 3.68859 3.30577 2.3538 4.85843 1.42304C6.4111 0.49227 8.18731 0.000436693 9.99759 2.91019e-08C10.0401 -1.02229e-05 10.0826 0.00268826 10.1244 0.00799993Z" fill="currentColor"/>
     </svg>
-    <svg id="ic-sun" width="15" height="15" viewBox="0 0 15 15" fill="none" style="display:none">
+    <svg aria-hidden="true" id="ic-sun" width="15" height="15" viewBox="0 0 15 15" fill="none" style="display:none">
       <circle cx="7.5" cy="7.5" r="2.5" stroke="currentColor" stroke-width="1.3"/>
       <line x1="7.5" y1="1" x2="7.5" y2="3" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/>
       <line x1="7.5" y1="12" x2="7.5" y2="14" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/>
@@ -1119,9 +1119,9 @@ kbd {
 
   <!-- Open (+) with context menu -->
   <div style="position:relative">
-    <button class="btn btn-primary-add" id="btn-add" onclick="toggleAddMenu(event)" title="열기">
+    <button type="button" class="btn btn-primary-add" id="btn-add" data-command="toggleAddMenu" data-command-uses-event="true" title="열기">
       <span class="btn-add-label">열기</span>
-      <svg width="13" height="13" viewBox="0 0 13 13" fill="none">
+      <svg aria-hidden="true" width="13" height="13" viewBox="0 0 13 13" fill="none">
         <line x1="6.5" y1="1.5" x2="6.5" y2="11.5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
         <line x1="1.5" y1="6.5" x2="11.5" y2="6.5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
       </svg>
@@ -1131,14 +1131,14 @@ kbd {
       <span>여기서 바로 시작</span>
     </div>
     <div id="add-menu" class="ctx-menu" style="display:none">
-      <button class="ctx-item" onclick="openFolder();hideAddMenu()">
-        <svg width="13" height="13" viewBox="0 0 13 13" fill="none" style="flex-shrink:0">
+      <button type="button" class="ctx-item" data-command="openFolder" data-hide-add-menu="true">
+        <svg aria-hidden="true" width="13" height="13" viewBox="0 0 13 13" fill="none" style="flex-shrink:0">
           <path d="M1.5 4.5v5a1 1 0 001 1h8a1 1 0 001-1v-4a1 1 0 00-1-1H6L4.5 3H2.5a1 1 0 00-1 1.5z" stroke="currentColor" stroke-width="1.3" stroke-linejoin="round"/>
         </svg>
         폴더 열기
       </button>
-      <button class="ctx-item" onclick="openFile();hideAddMenu()">
-        <svg width="13" height="13" viewBox="0 0 13 13" fill="none" style="flex-shrink:0">
+      <button type="button" class="ctx-item" data-command="openFile" data-hide-add-menu="true">
+        <svg aria-hidden="true" width="13" height="13" viewBox="0 0 13 13" fill="none" style="flex-shrink:0">
           <path d="M2.5 1.5h5l3 3V11a.5.5 0 01-.5.5H3a.5.5 0 01-.5-.5V2A.5.5 0 012.5 1.5z" stroke="currentColor" stroke-width="1.3" stroke-linejoin="round"/>
           <path d="M7.5 1.5V4.5h3" stroke="currentColor" stroke-width="1.3" stroke-linejoin="round"/>
         </svg>
@@ -1153,7 +1153,7 @@ kbd {
 <div id="welcome-guide">
   <div class="guide-title">
     <strong>처음 시작하기</strong>
-    <button class="guide-close" onclick="dismissWelcomeGuide()">×</button>
+    <button type="button" class="guide-close" data-command="dismissWelcomeGuide">×</button>
   </div>
   <div class="guide-body">
     우측 상단의 <strong>열기</strong> 버튼으로 파일이나 폴더를 바로 불러올 수 있어요.
@@ -1167,32 +1167,32 @@ kbd {
     </div>
   </div>
   <div class="guide-actions">
-    <button class="guide-btn" onclick="openFromGuide('file')">파일 열기</button>
-    <button class="guide-btn secondary" onclick="openFromGuide('folder')">폴더 열기</button>
-    <button class="guide-btn secondary" onclick="dismissWelcomeGuide()">나중에</button>
+    <button type="button" class="guide-btn" data-command="openFromGuide" data-command-arg="file">파일 열기</button>
+    <button type="button" class="guide-btn secondary" data-command="openFromGuide" data-command-arg="folder">폴더 열기</button>
+    <button type="button" class="guide-btn secondary" data-command="dismissWelcomeGuide">나중에</button>
   </div>
 </div>
 
 <!-- Search bar (hidden by default) -->
 <div id="search-bar" style="display:none">
-  <svg width="13" height="13" viewBox="0 0 15 15" fill="none" style="flex-shrink:0;color:var(--text-muted)">
+  <svg aria-hidden="true" width="13" height="13" viewBox="0 0 15 15" fill="none" style="flex-shrink:0;color:var(--text-muted)">
     <circle cx="6.5" cy="6.5" r="4" stroke="currentColor" stroke-width="1.3"/>
     <line x1="9.7" y1="9.7" x2="13" y2="13" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/>
   </svg>
   <input id="search-input" type="text" placeholder="검색…" autocomplete="off">
   <span id="search-count"></span>
-  <button class="btn btn-icon" onclick="searchPrev()" title="이전 (Shift+Enter)" style="width:22px;height:22px">
-    <svg width="11" height="11" viewBox="0 0 11 11" fill="none">
+  <button type="button" class="btn btn-icon" data-command="searchPrev" title="이전 (Shift+Enter)" style="width:22px;height:22px">
+    <svg aria-hidden="true" width="11" height="11" viewBox="0 0 11 11" fill="none">
       <path d="M2 7l3.5-4L9 7" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/>
     </svg>
   </button>
-  <button class="btn btn-icon" onclick="searchNext()" title="다음 (Enter)" style="width:22px;height:22px">
-    <svg width="11" height="11" viewBox="0 0 11 11" fill="none">
+  <button type="button" class="btn btn-icon" data-command="searchNext" title="다음 (Enter)" style="width:22px;height:22px">
+    <svg aria-hidden="true" width="11" height="11" viewBox="0 0 11 11" fill="none">
       <path d="M2 4l3.5 4L9 4" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/>
     </svg>
   </button>
-  <button class="btn btn-icon" onclick="closeSearch()" title="닫기 (Esc)" style="width:22px;height:22px">
-    <svg width="11" height="11" viewBox="0 0 11 11" fill="none">
+  <button type="button" class="btn btn-icon" data-command="closeSearch" title="닫기 (Esc)" style="width:22px;height:22px">
+    <svg aria-hidden="true" width="11" height="11" viewBox="0 0 11 11" fill="none">
       <line x1="2" y1="2" x2="9" y2="9" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/>
       <line x1="9" y1="2" x2="2" y2="9" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/>
     </svg>
@@ -1212,8 +1212,8 @@ kbd {
     <div id="sidebar-panel">
       <div id="sidebar-tabs" data-active="toc">
         <div id="sidebar-tab-indicator"></div>
-        <button class="stab active" data-tab="toc" onclick="switchTab('toc')">목차</button>
-        <button class="stab" data-tab="explorer" onclick="switchTab('explorer')">탐색기</button>
+        <button type="button" class="stab active" data-command="switchTab" data-command-arg="toc">목차</button>
+        <button type="button" class="stab" data-command="switchTab" data-command-arg="explorer">탐색기</button>
       </div>
       <div id="panel-toc">
         <div class="toc-label">목차</div>
@@ -1223,14 +1223,14 @@ kbd {
         <div id="explorer-root-label">
           <span id="explorer-root-path">폴더를 선택하세요</span>
           <span class="explorer-root-actions">
-            <button id="btn-explorer-reveal" class="explorer-root-btn hidden" onclick="toggleExplorerPathInfo()" title="경로 보기">
-              <svg width="12" height="12" viewBox="0 0 12 12" fill="none">
+            <button type="button" id="btn-explorer-reveal" class="explorer-root-btn hidden" data-command="toggleExplorerPathInfo" title="경로 보기">
+              <svg aria-hidden="true" width="12" height="12" viewBox="0 0 12 12" fill="none">
                 <circle cx="5.25" cy="5.25" r="3.25" stroke="currentColor" stroke-width="1.2"/>
                 <line x1="7.8" y1="7.8" x2="10.4" y2="10.4" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"/>
               </svg>
             </button>
-            <button id="btn-explorer-close" class="explorer-root-btn hidden" onclick="clearExplorerRoot()" title="폴더 닫기">
-              <svg width="12" height="12" viewBox="0 0 12 12" fill="none">
+            <button type="button" id="btn-explorer-close" class="explorer-root-btn hidden" data-command="clearExplorerRoot" title="폴더 닫기">
+              <svg aria-hidden="true" width="12" height="12" viewBox="0 0 12 12" fill="none">
                 <line x1="2.2" y1="2.2" x2="9.8" y2="9.8" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"/>
                 <line x1="9.8" y1="2.2" x2="2.2" y2="9.8" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"/>
               </svg>
@@ -1249,10 +1249,7 @@ kbd {
       <div id="tab-list"></div>
     </div>
 
-    <div id="scroll-area"
-         ondragover="onDragOver(event)"
-         ondragleave="onDragLeave()"
-         ondrop="onDrop(event)">
+    <div id="scroll-area">
       <div id="content" class="is-empty">
         <div id="empty">
           <div class="empty-icon">📄</div>
@@ -1263,8 +1260,8 @@ kbd {
             <kbd>.md</kbd>&nbsp; <kbd>.markdown</kbd>
           </div>
           <div class="empty-actions">
-            <button class="empty-cta" onclick="openFile()">파일 열기</button>
-            <button class="empty-cta secondary" onclick="openFolder()">폴더 열기</button>
+            <button type="button" class="empty-cta" data-command="openFile">파일 열기</button>
+            <button type="button" class="empty-cta secondary" data-command="openFolder">폴더 열기</button>
           </div>
         </div>
       </div>
@@ -1277,16 +1274,21 @@ kbd {
   </div>
 </div>
 
-<button id="go-top" onclick="goTop()" title="맨 위로">↑</button>
+<button type="button" id="go-top" data-command="goTop" title="맨 위로">↑</button>
 
 <script src="./path-utils.js"></script>
 <script src="./markdown.js"></script>
 <script src="./theme.js"></script>
 <script src="./onboarding.js"></script>
 <script src="./search.js"></script>
+<script src="./document-flow.js"></script>
 <script src="./editor.js"></script>
 <script src="./explorer.js"></script>
 <script src="./workspace.js"></script>
+<script src="./context-menu.js"></script>
+<script src="./app-shell.js"></script>
+<script src="./shell-actions.js"></script>
+<script src="./app-runtime.js"></script>
 <script src="./app.js"></script>
 </body>
 </html>

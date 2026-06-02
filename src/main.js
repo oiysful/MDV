@@ -66,9 +66,9 @@ app.whenReady().then(() => {
   pendingFilePath = null
 
   nativeTheme.on('updated', () => {
-    BrowserWindow.getAllWindows().forEach(w =>
+    BrowserWindow.getAllWindows().forEach(w => {
       w.webContents.send('theme-changed', nativeTheme.shouldUseDarkColors)
-    )
+    })
   })
 })
 
@@ -212,6 +212,12 @@ ipcMain.handle('unwatch-file', async (_, filePath) => {
 })
 
 // ── Menu ─────────────────────────────────────────────────────────
+function sendRendererCommand(command, targetWindow = BrowserWindow.getFocusedWindow()) {
+  const win = targetWindow || BrowserWindow.getFocusedWindow()
+  if (!win || win.webContents.isDestroyed()) return
+  win.webContents.send('renderer-command', command)
+}
+
 function buildMenu() {
   const template = [
     {
@@ -234,22 +240,22 @@ function buildMenu() {
         {
           label: '파일 열기…',
           accelerator: 'CmdOrCtrl+O',
-          click: () => BrowserWindow.getFocusedWindow()?.webContents.executeJavaScript('openFile()'),
+          click: (_, win) => sendRendererCommand('openFile', win),
         },
         {
           label: '폴더 열기…',
-          click: () => BrowserWindow.getFocusedWindow()?.webContents.executeJavaScript('openFolder()'),
+          click: (_, win) => sendRendererCommand('openFolder', win),
         },
         { type: 'separator' },
         {
           label: '저장',
           accelerator: 'CmdOrCtrl+S',
-          click: () => BrowserWindow.getFocusedWindow()?.webContents.executeJavaScript('saveFile()'),
+          click: (_, win) => sendRendererCommand('saveFile', win),
         },
         {
           label: '다른 이름으로 저장…',
           accelerator: 'CmdOrCtrl+Shift+S',
-          click: () => BrowserWindow.getFocusedWindow()?.webContents.executeJavaScript('saveFileAs()'),
+          click: (_, win) => sendRendererCommand('saveFileAs', win),
         },
         { type: 'separator' },
         {

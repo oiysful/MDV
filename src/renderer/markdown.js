@@ -19,7 +19,7 @@
       const hl = (langId && hljsLib.getLanguage(langId))
         ? hljsLib.highlight(code, { language: langId }).value
         : hljsLib.highlightAuto(code).value
-      return `<div class="code-wrapper"><div class="code-meta"><span class="code-lang">${langId || ''}</span><button class="copy-btn" onclick="copyCode(this)">복사</button></div><pre><code class="hljs">${hl}</code></pre></div>`
+      return `<div class="code-wrapper"><div class="code-meta"><span class="code-lang">${langId || ''}</span><button class="copy-btn" type="button" data-command="copyCode" data-command-element="true">복사</button></div><pre><code class="hljs">${hl}</code></pre></div>`
     }
     markedLib.setOptions({ renderer, breaks: true, gfm: true })
 
