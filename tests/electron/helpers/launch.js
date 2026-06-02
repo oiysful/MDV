@@ -14,6 +14,9 @@ async function launchApp() {
 
   const page = await electronApp.firstWindow()
   page.setDefaultTimeout(15000)
+  await page.waitForFunction(() => {
+    return Boolean(window.api && document.documentElement.dataset.rendererReady === 'true')
+  })
 
   return { electronApp, page }
 }
