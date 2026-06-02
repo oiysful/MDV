@@ -32,14 +32,20 @@ The renderer is no longer a single inline `<script>` block.
 Current split:
 
 - `src/renderer/index.html` — shell markup + CSS + script tags
-- `src/renderer/app.js` — renderer bootstrap/orchestration and high-coupling workspace flows
+- `src/renderer/app.js` — thin renderer bootstrap that wires controller modules and creates the renderer command registry
+- `src/renderer/app-runtime.js` — shared renderer command/runtime orchestration for empty state, shortcuts, and toolbar actions
+- `src/renderer/app-shell.js` — DOM ref collection, startup wiring, `data-command` binding, and shared shell event handling
+- `src/renderer/document-flow.js` — file open/save/save-as/watch lifecycle
+- `src/renderer/explorer.js` — explorer tree plus root/header state ownership
+- `src/renderer/context-menu.js` — floating context menu controller
+- `src/renderer/shell-actions.js` — add-menu, welcome-guide entry actions, and drag/drop handling
 - `src/renderer/path-utils.js` — path/link helper logic
 - `src/renderer/theme.js` — theme state + stylesheet switching
 - `src/renderer/search.js` — in-document search controller
-- `src/renderer/onboarding.js` — first-launch / entry-affordance / explorer-header UI logic
+- `src/renderer/onboarding.js` — first-launch / entry-affordance / toast UI logic
 - `src/renderer/markdown.js` — markdown rendering, stats, TOC, image resolution helpers
 
-This is an intermediate refactor state: the renderer still uses global entry points for inline handlers and menu integration, but the largest low-risk logic slices have already been separated.
+Renderer command entry points now route through a grouped `rendererCommands` registry, delegated `data-command` listeners, generated-copy delegation, and explicit `renderer-command` IPC from the main menu. The next structural cleanup queue is documented in `.sisyphus/plans/structural-improvement-roadmap.md`.
 
 ## Testing
 
@@ -65,7 +71,13 @@ npm run test:electron
 Covers real Electron behavior without a full end-to-end suite:
 - app boot / empty state
 - file open flow
+- main-process `file-opened` flow
+- save / save-as behavior
+- file watcher rewiring and external change refresh
 - folder open / explorer filtering
+- shared context menu behavior
+- add-menu and drag/drop shell actions
+- renderer command dispatch without window command globals or inline handlers
 - theme toggle behavior
 
 Fixture content lives under `tests/fixtures/`.
@@ -139,7 +151,6 @@ Current build outputs:
 
 ## Known Limitations
 
-- The renderer still keeps some high-coupling workspace logic in `src/renderer/app.js`.
-- The app still uses inline handler/global function contracts for toolbar/menu/generated HTML actions.
-- `src/renderer/index.html` still carries existing Biome accessibility/style warnings.
+- IPC handlers still return JSON-encoded strings, so renderer consumers use parsing helpers/patterns instead of raw objects.
+- `src/renderer/app.js` and `src/renderer/app-runtime.js` remain the next structural ownership hotspots, tracked in `.sisyphus/plans/structural-improvement-roadmap.md`.
 - Notarization is still pending for friendlier macOS distribution.

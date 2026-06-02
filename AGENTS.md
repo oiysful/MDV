@@ -1,10 +1,10 @@
 # PROJECT KNOWLEDGE BASE
 
-**Generated:** 2026-06-01
+**Generated:** 2026-06-02
 
 ## OVERVIEW
 Small Electron desktop app for editing and previewing Markdown with a Claude-inspired UI.
-Main stack: Electron main/preload + single-file renderer HTML/CSS/JS.
+Main stack: Electron main/preload + split renderer HTML/CSS/JS modules.
 
 ## STRUCTURE
 ```text
@@ -32,7 +32,12 @@ Main stack: Electron main/preload + single-file renderer HTML/CSS/JS.
 | `sendFile` | `src/main.js` | Reads markdown file and emits `file-opened` |
 | `ipcMain.handle(...)` block | `src/main.js` | File IO, directory listing, save, watch, image loading |
 | `contextBridge.exposeInMainWorld('api', ...)` | `src/preload.js` | Only renderer bridge to privileged APIs |
-| `app.js` | `src/renderer/app.js` | Renderer bootstrap, shared state, workspace orchestration |
+| `app.js` | `src/renderer/app.js` | Renderer bootstrap, controller wiring, and command registry creation |
+| `app-shell.js` | `src/renderer/app-shell.js` | DOM ref collection, startup wiring, `data-command` binding, IPC event registration |
+| `app-runtime.js` | `src/renderer/app-runtime.js` | Runtime command behavior, empty state, shortcuts, toolbar helpers |
+| `document-flow.js` | `src/renderer/document-flow.js` | Open/save/save-as/watch document lifecycle |
+| `context-menu.js` | `src/renderer/context-menu.js` | Renderer-managed floating context menu |
+| `shell-actions.js` | `src/renderer/shell-actions.js` | Add-menu, welcome-guide entry actions, drag/drop handling |
 | `theme.js` | `src/renderer/theme.js` | Theme controller and stylesheet switching |
 | `path-utils.js` | `src/renderer/path-utils.js` | Pure path/link helpers |
 | `markdown.js` | `src/renderer/markdown.js` | Markdown render pipeline, stats, TOC |
@@ -56,6 +61,8 @@ Main stack: Electron main/preload + single-file renderer HTML/CSS/JS.
 
 ## UNIQUE STYLES
 - `src/renderer/index.html` remains the shell, but renderer logic is now progressively split into plain browser scripts under `src/renderer/`.
+- Renderer command controls use `data-command` attributes bound by `app-shell.js`; do not reintroduce inline handlers or `window.openFile`-style command globals.
+- Main menu actions dispatch explicit `renderer-command` IPC events rather than evaluating renderer-global function names.
 - Markdown rendering uses CDN-loaded `marked` and `highlight.js` under an explicit CSP allowlist.
 - File watching is per-path via `chokidar`; active tab changes rewire the watch target.
 - Directory explorer hides dot-directories and only surfaces `.md` / `.markdown` files.
@@ -71,8 +78,10 @@ npm run build
 ```
 
 ## NOTES
-- `tests/electron/smoke.test.js` covers real Electron boot/open/theme flows; `tests/unit/*.test.js` cover extracted pure helpers.
+- `tests/electron/smoke.test.js` covers real Electron boot/open/save/watch/explorer/shell/theme flows and asserts removed renderer command globals/inline handlers.
+- `tests/unit/*.test.js` cover extracted pure helpers and generated command markup.
 - No repo-local CI workflow found.
-- Current editor/LSP diagnostics flag existing Biome issues in `src/main.js` and renderer markup/scripts; they are still mostly accessibility/style warnings, not this app's core runtime flow.
+- Current error-level diagnostics are clean for the recent renderer command refactor; remaining warnings are mostly style-oriented.
 - Repo is tiny by file count, but renderer complexity is concentrated in `src/renderer/index.html`.
 - Local macOS packaging currently works and emits `dist/MDV-1.0.0-arm64.dmg`, but notarization is still not configured.
+- Completed plans live under `.sisyphus/plans/`; the current forward-looking architecture queue is `.sisyphus/plans/structural-improvement-roadmap.md`.
