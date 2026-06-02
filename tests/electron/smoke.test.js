@@ -1,11 +1,14 @@
 const test = require('node:test')
 const assert = require('node:assert/strict')
+const fs = require('node:fs/promises')
+const os = require('node:os')
 const path = require('node:path')
 
 const { ROOT, launchApp } = require('./helpers/launch')
 
 const BASIC_MD = path.join(ROOT, 'tests/fixtures/basic.md')
 const EXPLORER_DIR = path.join(ROOT, 'tests/fixtures/explorer')
+const ROOT_MD = path.join(ROOT, 'tests/fixtures/explorer/root.md')
 
 const REQUIRED_GLOBALS = [
   'openFile',
@@ -41,6 +44,23 @@ async function stubOpenDialog(electronApp, filePaths) {
   }, { filePaths })
 }
 
+async function createTempMarkdown(sourcePath, name) {
+  const tempDir = await fs.mkdtemp(path.join(os.tmpdir(), 'mdv-smoke-'))
+  const targetPath = path.join(tempDir, name)
+  await fs.copyFile(sourcePath, targetPath)
+  return {
+    path: targetPath,
+    cleanup: () => fs.rm(tempDir, { recursive: true, force: true }),
+  }
+}
+
+async function emitFileChanged(electronApp, payload) {
+  await electronApp.evaluate(async ({ BrowserWindow }, nextPayload) => {
+    const win = BrowserWindow.getAllWindows()[0]
+    win.webContents.send('file-changed', nextPayload)
+  }, payload)
+}
+
 test('app boots into empty state with expected globals', async () => {
   const { electronApp, page } = await launchApp()
   const pageErrors = []
@@ -55,11 +75,7 @@ test('app boots into empty state with expected globals', async () => {
 
     const globals = await page.evaluate(names => {
       return Object.fromEntries(names.map(name => {
-        try {
-          return [name, typeof eval(name) === 'function']
-        } catch {
-          return [name, false]
-        }
+        return [name, typeof window[name] === 'function']
       }))
     }, REQUIRED_GLOBALS)
 
@@ -104,7 +120,132 @@ test('openFile loads markdown, updates title, and renders code highlighting', as
   }
 })
 
-test('openFolder shows markdown files and hides unsupported or dot-directories', async () => {
+test('opening the same file twice reuses the existing tab', async () => {
+  const { electronApp, page } = await launchApp()
+
+  try {
+    await page.waitForSelector('#empty')
+    await stubOpenDialog(electronApp, [BASIC_MD])
+
+    await page.evaluate(() => openFile())
+    await page.waitForFunction(() => document.querySelectorAll('#tab-list .file-tab').length === 1)
+
+    await page.evaluate(() => openFile())
+    await page.waitForFunction(() => {
+      const tabs = document.querySelectorAll('#tab-list .file-tab')
+      const active = document.querySelector('#tab-list .file-tab.active .file-tab-name')
+      return tabs.length === 1 && active && active.textContent.includes('basic.md')
+    })
+
+    assert.equal(await page.locator('#tab-list .file-tab').count(), 1)
+    assert.match(await page.textContent('#tab-list .file-tab.active .file-tab-name'), /basic\.md/)
+  } finally {
+    await electronApp.close()
+  }
+})
+
+test('closing tabs selects the next tab and restores empty state when the last tab closes', async () => {
+  const { electronApp, page } = await launchApp()
+
+  try {
+    await page.waitForSelector('#empty')
+    await stubOpenDialog(electronApp, [BASIC_MD, ROOT_MD])
+    await page.evaluate(() => openFile())
+
+    await page.waitForFunction(() => document.querySelectorAll('#tab-list .file-tab').length === 2)
+
+    await page.locator('#tab-list .file-tab').first().click()
+    await page.waitForFunction(() => document.title === 'basic')
+
+    await page.locator('#tab-list .file-tab.active .file-tab-close').click()
+    await page.waitForFunction(() => {
+      const tabs = document.querySelectorAll('#tab-list .file-tab')
+      const active = document.querySelector('#tab-list .file-tab.active .file-tab-name')
+      return document.title === 'root' && tabs.length === 1 && active && active.textContent.includes('root.md')
+    })
+
+    await page.locator('#tab-list .file-tab.active .file-tab-close').click()
+    await page.waitForSelector('#empty')
+
+    assert.equal(await page.locator('#tab-list .file-tab').count(), 0)
+    assert.equal(await page.title(), 'MDV')
+  } finally {
+    await electronApp.close()
+  }
+})
+
+test('editing in source mode marks the tab dirty and save clears it', async () => {
+  const { path: tempMarkdown, cleanup } = await createTempMarkdown(BASIC_MD, 'dirty-save.md')
+  const { electronApp, page } = await launchApp()
+
+  try {
+    await page.waitForSelector('#empty')
+    await stubOpenDialog(electronApp, [tempMarkdown])
+    await page.evaluate(() => openFile())
+    await page.waitForFunction(() => document.title === 'dirty-save')
+
+    await page.evaluate(() => toggleSource())
+    await page.waitForFunction(() => document.getElementById('source-view').style.display === 'block')
+
+    const editor = page.locator('#source-editor')
+    await editor.fill('# Smoke Fixture\n\nThis file verifies markdown rendering and tab creation.\n\n```js\nconsole.log(\'smoke\')\n```\n\nExtra line for save coverage.\n')
+
+    await page.waitForFunction(() => {
+      const active = document.querySelector('#tab-list .file-tab.active .file-tab-name')
+      const saveButton = document.getElementById('btn-save')
+      return active && active.textContent.trim().startsWith('●') && saveButton && !saveButton.disabled
+    })
+
+    await page.evaluate(() => saveFile())
+    await page.waitForFunction(() => {
+      const active = document.querySelector('#tab-list .file-tab.active .file-tab-name')
+      const saveButton = document.getElementById('btn-save')
+      return active && !active.textContent.includes('●') && saveButton && saveButton.disabled
+    })
+
+    const savedContent = await fs.readFile(tempMarkdown, 'utf8')
+    assert.match(savedContent, /Extra line for save coverage\./)
+  } finally {
+    await electronApp.close()
+    await cleanup()
+  }
+})
+
+test('toggleSource switches between preview and editor and re-renders preview on return', async () => {
+  const { electronApp, page } = await launchApp()
+
+  try {
+    await page.waitForSelector('#empty')
+    await stubOpenDialog(electronApp, [BASIC_MD])
+    await page.evaluate(() => openFile())
+    await page.waitForFunction(() => document.title === 'basic')
+
+    await page.evaluate(() => toggleSource())
+    await page.waitForFunction(() => {
+      const content = document.getElementById('content')
+      const sourceView = document.getElementById('source-view')
+      const scrollArea = document.getElementById('scroll-area')
+      return content.style.display === 'none' && sourceView.style.display === 'block' && scrollArea.classList.contains('source-mode')
+    })
+
+    await page.locator('#source-editor').fill('# Updated From Source\n\nChanged in editor mode.\n')
+
+    await page.evaluate(() => toggleSource())
+    await page.waitForFunction(() => {
+      const content = document.getElementById('content')
+      const sourceView = document.getElementById('source-view')
+      const heading = document.querySelector('#content h1')
+      return content.style.display === '' && sourceView.style.display === 'none' && heading && heading.textContent.includes('Updated From Source')
+    })
+
+    const previewText = await page.textContent('#content')
+    assert.match(previewText, /Changed in editor mode\./)
+  } finally {
+    await electronApp.close()
+  }
+})
+
+test('openFolder loads explorer entries, expands nested folders, opens files, and clears root state', async () => {
   const { electronApp, page } = await launchApp()
 
   try {
@@ -122,6 +263,22 @@ test('openFolder shows markdown files and hides unsupported or dot-directories',
     assert.match(treeText, /root\.md/)
     assert.doesNotMatch(treeText, /ignore\.txt/)
     assert.doesNotMatch(treeText, /secret\.md/)
+
+    await page.locator('#explorer-tree .tree-row').filter({ hasText: 'nested' }).click()
+    await page.waitForFunction(() => document.getElementById('explorer-tree').textContent.includes('child.md'))
+
+    await page.locator('#explorer-tree .tree-row').filter({ hasText: 'child.md' }).click()
+    await page.waitForFunction(() => {
+      const active = document.querySelector('#tab-list .file-tab.active .file-tab-name')
+      return document.title === 'child' && active && active.textContent.includes('child.md')
+    })
+
+    await page.evaluate(() => clearExplorerRoot())
+    await page.waitForFunction(() => {
+      const tree = document.getElementById('explorer-tree')
+      const label = document.getElementById('explorer-root-path')
+      return tree.textContent.includes('폴더를 열어 탐색하세요') && label.textContent.includes('폴더를 선택하세요')
+    })
   } finally {
     await electronApp.close()
   }
