@@ -96,7 +96,13 @@
         el.className = 'file-tab' + (tab.id === activeTabId ? ' active' : '')
         el.dataset.tabId = tab.id
         el.draggable = true
-        el.innerHTML = `<span class="file-tab-name">${tab.dirty ? '● ' : ''}${tab.filename}</span><button class="file-tab-close">&times;</button>`
+        const name = document.createElement('span')
+        name.className = 'file-tab-name'
+        name.textContent = `${tab.dirty ? '● ' : ''}${tab.filename}`
+        const closeButton = document.createElement('button')
+        closeButton.className = 'file-tab-close'
+        closeButton.innerHTML = '&times;'
+        el.append(name, closeButton)
         el.addEventListener('click', () => switchToTab(tab.id))
         el.addEventListener('auxclick', event => {
           if (event.button === 1) {
@@ -112,7 +118,7 @@
             { label: '모든 탭 닫기', action: () => closeAllTabs() },
           ])
         })
-        el.querySelector('.file-tab-close').addEventListener('click', event => {
+        closeButton.addEventListener('click', event => {
           event.stopPropagation()
           closeTab(tab.id)
         })
@@ -294,9 +300,15 @@
       tab.dirty = false
       if (tab.id === activeTabId) {
         setMarkdown(content)
+        if (getSourceMode()) {
+          refs.sourceEditor.value = content
+        }
         await render(content, tab.filename, tab.path)
         tab.renderedHTML = refs.content.innerHTML
         tab.tocHTML = refs.tocList.innerHTML
+        if (getSourceMode()) {
+          applySourceMode()
+        }
       }
       renderTabBar()
     }

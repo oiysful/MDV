@@ -245,6 +245,70 @@ test('toggleSource switches between preview and editor and re-renders preview on
   }
 })
 
+test('external file changes update the active source editor and clear dirty state', async () => {
+  const { path: tempMarkdown, cleanup } = await createTempMarkdown(BASIC_MD, 'watched-source.md')
+  const { electronApp, page } = await launchApp()
+
+  try {
+    await page.waitForSelector('#empty')
+    await stubOpenDialog(electronApp, [tempMarkdown])
+    await page.evaluate(() => openFile())
+    await page.waitForFunction(() => document.title === 'watched-source')
+
+    await page.evaluate(() => toggleSource())
+    await page.waitForFunction(() => document.getElementById('source-view').style.display === 'block')
+
+    await page.locator('#source-editor').fill('# Local edit\n')
+    await page.waitForFunction(() => {
+      const active = document.querySelector('#tab-list .file-tab.active .file-tab-name')
+      return Boolean(active && active.textContent.includes('●'))
+    })
+
+    const changedContent = '# External update\n\nWatcher payload replaced the source.\n'
+    await fs.writeFile(tempMarkdown, changedContent, 'utf8')
+    await emitFileChanged(electronApp, { path: tempMarkdown, content: changedContent })
+
+    await page.waitForFunction(expected => {
+      const editor = document.getElementById('source-editor')
+      const active = document.querySelector('#tab-list .file-tab.active .file-tab-name')
+      const saveButton = document.getElementById('btn-save')
+      return editor.value === expected && active && !active.textContent.includes('●') && saveButton.disabled
+    }, changedContent)
+
+    assert.equal(await page.locator('#source-editor').inputValue(), changedContent)
+  } finally {
+    await electronApp.close()
+    await cleanup()
+  }
+})
+
+test('tab labels render filenames as text instead of HTML', async () => {
+  const maliciousName = '<img src=x onerror="window.__mdvInjected=true">.md'
+  const { path: tempMarkdown, cleanup } = await createTempMarkdown(BASIC_MD, maliciousName)
+  const { electronApp, page } = await launchApp()
+
+  try {
+    await page.waitForSelector('#empty')
+    await stubOpenDialog(electronApp, [tempMarkdown])
+    await page.evaluate(() => openFile())
+
+    await page.waitForFunction(() => document.querySelectorAll('#tab-list .file-tab').length === 1)
+
+    const tabState = await page.evaluate(() => ({
+      labelText: document.querySelector('#tab-list .file-tab.active .file-tab-name')?.textContent,
+      injectedImageCount: document.querySelectorAll('#tab-list .file-tab img').length,
+      injectedFlag: Boolean(window.__mdvInjected),
+    }))
+
+    assert.match(tabState.labelText, /<img src=x onerror="window.__mdvInjected=true">\.md/)
+    assert.equal(tabState.injectedImageCount, 0)
+    assert.equal(tabState.injectedFlag, false)
+  } finally {
+    await electronApp.close()
+    await cleanup()
+  }
+})
+
 test('openFolder loads explorer entries, expands nested folders, opens files, and clears root state', async () => {
   const { electronApp, page } = await launchApp()
 
