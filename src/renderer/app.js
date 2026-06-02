@@ -1,3 +1,6 @@
+let editorController;
+let explorerController;
+
 /* ── marked renderer — One Dark code blocks ── */
 const markdownController = window.MDVMarkdown.createMarkdownController({
   getRefs: () => $,
@@ -8,7 +11,7 @@ const markdownController = window.MDVMarkdown.createMarkdownController({
   onShowModeButton: () => {
     if ($.btnMode) {
       $.btnMode.style.display = '';
-      updateModeBtn();
+      if (editorController) editorController.updateModeButton();
     }
   },
 });
@@ -18,15 +21,12 @@ let md = '';
 let sidebarOpen = true;
 let activeTab = 'toc';
 const sysDark = window.matchMedia('(prefers-color-scheme: dark)');
-let sourceMode = false;
-let tabs = [];
-let activeTabId = null;
-let tabIdCounter = 0;
 let currentExplorerRoot = null;
 let explorerShowFullPath = false;
 let toastTimer = null;
 const WELCOME_GUIDE_DISMISSED_KEY = 'mdv-welcome-guide-dismissed';
 let $;
+let workspaceController;
 
 /* ── File watcher ── */
 let watchedPath = null;
@@ -41,7 +41,7 @@ const onboardingController = window.MDVOnboarding.createOnboardingController({
   getRefs: () => $,
   storage: localStorage,
   dismissedKey: WELCOME_GUIDE_DISMISSED_KEY,
-  getTabCount: () => tabs.length,
+  getTabCount: () => workspaceController ? workspaceController.getTabCount() : 0,
   getExplorerRoot: () => currentExplorerRoot,
   getExplorerShowFullPath: () => explorerShowFullPath,
   setExplorerShowFullPath: value => { explorerShowFullPath = value },
@@ -72,14 +72,12 @@ const EMPTY_HTML = `<div id="empty">
   </div>
 </div>`;
 
-const EXPLORER_EMPTY_HTML = '<div class="tree-hint">위의 <strong>+</strong> 버튼으로<br>폴더를 열어 탐색하세요.</div>';
-
 /* ── API calls (Electron IPC) ── */
 async function openFile() {
   try {
     const data = JSON.parse(await window.api.openFileDialog());
     if (data.cancelled) return;
-    if (data.files) data.files.forEach(f => load(f));
+    if (data.files) data.files.forEach(f => { load(f); });
     else if (data.content !== undefined) load(data);
   } catch(e) { console.error(e); }
 }
@@ -87,7 +85,7 @@ async function openFile() {
 async function load(data) {
   if (data.error)     { alert('파일 오류: ' + data.error); return; }
   if (data.cancelled) return;
-  await createTab(data);
+  await workspaceController.createTab(data);
 }
 
 /* ── Render ── */
@@ -110,32 +108,6 @@ function stats(text) {
   $.sTime.textContent  = `약 ${minutes}분`
 }
 
-/* ── Tab management ── */
-function findTabByPath(path) {
-  if (!path) return null;
-  return tabs.find(t => t.path === path) || null;
-}
-
-function saveCurrentTabState() {
-  const tab = tabs.find(t => t.id === activeTabId);
-  if (!tab) return;
-  tab.scrollTop    = $.scrollArea.scrollTop;
-  tab.renderedHTML = $.content.innerHTML;
-  tab.tocHTML      = $.tocList.innerHTML;
-  tab.sourceMode   = sourceMode;
-  if (sourceMode) { tab.content = $.sourceEditor.value; md = tab.content; }
-}
-
-function restoreTabState(tab) {
-  $.content.classList.remove('is-empty');
-  markdownController.hydrateFromDom(tab.renderedHTML || '', tab.tocHTML || '', tab.content);
-  document.title = (tab.filename || 'untitled.md').replace(/\.md$/i, '');
-  if ($.btnMode) $.btnMode.style.display = '';
-  sourceMode = tab.sourceMode || false;
-  applySourceMode();
-  requestAnimationFrame(() => { $.scrollArea.scrollTop = tab.scrollTop || 0; });
-}
-
 function showEmptyState() {
   $.content.innerHTML = EMPTY_HTML;
   $.content.classList.add('is-empty');
@@ -144,7 +116,8 @@ function showEmptyState() {
   document.title = 'MDV';
   if ($.btnMode) { $.btnMode.style.display = 'none'; $.btnMode.classList.remove('source-active'); }
   markdownController.resetEmptyStats();
-  sourceMode = false; md = '';
+  if (editorController) editorController.setSourceMode(false);
+  md = '';
 }
 
 function syncExplorerHeader() {
@@ -190,164 +163,9 @@ async function openFromGuide(kind) {
 
 function updateToolbarActions() {
   if (!$) return;
-  const activeTab = tabs.find(t => t.id === activeTabId) || null;
+  const activeTab = workspaceController ? workspaceController.getActiveTab() : null;
   if ($.btnSave) $.btnSave.disabled = !activeTab || !activeTab.dirty;
   if ($.btnPrint) $.btnPrint.disabled = !activeTab;
-}
-
-function renderTabBar() {
-  const list = $.tabList;
-  $.tabStrip.classList.toggle('hidden', tabs.length === 0);
-  list.innerHTML = '';
-  tabs.forEach(tab => {
-    const el = document.createElement('div');
-    el.className = 'file-tab' + (tab.id === activeTabId ? ' active' : '');
-    el.dataset.tabId = tab.id;
-    el.draggable = true;
-    el.innerHTML = `<span class="file-tab-name">${tab.dirty ? '● ' : ''}${tab.filename}</span><button class="file-tab-close">&times;</button>`;
-    el.addEventListener('click', () => switchToTab(tab.id));
-    el.addEventListener('auxclick', e => { if (e.button === 1) { e.preventDefault(); closeTab(tab.id); } });
-    el.addEventListener('contextmenu', e => {
-      e.preventDefault();
-      showAppContextMenu(e.clientX, e.clientY, [
-        { label: '새 창으로 열기', action: () => openTabInNewWindow(tab.id) },
-        { label: '다른 탭 닫기', action: () => closeOtherTabs(tab.id) },
-        { label: '모든 탭 닫기', action: () => closeAllTabs() },
-      ]);
-    });
-    el.querySelector('.file-tab-close').addEventListener('click', e => { e.stopPropagation(); closeTab(tab.id); });
-    el.addEventListener('dragstart', onTabDragStart);
-    el.addEventListener('dragover',  onTabDragOver);
-    el.addEventListener('dragleave', onTabDragLeave);
-    el.addEventListener('drop',      onTabDrop);
-    el.addEventListener('dragend',   onTabDragEnd);
-    list.appendChild(el);
-  });
-  updateToolbarActions();
-  updateEntryAffordance();
-  maybeShowWelcomeGuide();
-}
-
-/* ── Tab drag ── */
-let draggedTabId = null;
-function onTabDragStart(e) { draggedTabId = Number(e.currentTarget.dataset.tabId); e.dataTransfer.effectAllowed = 'move'; }
-function onTabDragOver(e) {
-  if (draggedTabId === null) return;
-  e.preventDefault(); e.dataTransfer.dropEffect = 'move';
-  const el = e.currentTarget;
-  const rect = el.getBoundingClientRect();
-  const after = e.clientX > rect.left + rect.width / 2;
-  $.tabList.querySelectorAll('.file-tab').forEach(t => { if (t !== el) t.classList.remove('drag-before','drag-after'); });
-  el.classList.toggle('drag-before', !after);
-  el.classList.toggle('drag-after',  after);
-}
-function onTabDragLeave(e) { e.currentTarget.classList.remove('drag-before','drag-after'); }
-function onTabDrop(e) {
-  if (draggedTabId === null) return;
-  e.preventDefault();
-  const el = e.currentTarget;
-  const targetId = Number(el.dataset.tabId);
-  const src = tabs.findIndex(t => t.id === draggedTabId);
-  const tgt = tabs.findIndex(t => t.id === targetId);
-  if (src === -1 || tgt === -1 || src === tgt) { onTabDragEnd(); return; }
-  const rect = el.getBoundingClientRect();
-  const after = e.clientX > rect.left + rect.width / 2;
-  let insert = after ? tgt + 1 : tgt;
-  const [moved] = tabs.splice(src, 1);
-  if (src < insert) insert -= 1;
-  tabs.splice(insert, 0, moved);
-  onTabDragEnd(); renderTabBar();
-}
-function onTabDragEnd() {
-  $.tabList.querySelectorAll('.file-tab').forEach(t => t.classList.remove('drag-before','drag-after'));
-  draggedTabId = null;
-}
-
-async function createTab(data) {
-  if (data.path) {
-    const existing = findTabByPath(data.path);
-    if (existing) { switchToTab(existing.id); return; }
-  }
-  const tab = {
-    id: ++tabIdCounter,
-    filename: data.filename || 'untitled.md',
-    path: data.path || null,
-    content: data.content,
-    savedContent: data.content,
-    dirty: false,
-    scrollTop: 0,
-    renderedHTML: null,
-    tocHTML: null,
-  };
-  tabs.push(tab);
-  if (activeTabId !== null) saveCurrentTabState();
-  activeTabId = tab.id;
-  md = tab.content;
-  sourceMode = false;
-  applySourceMode();
-  await render(tab.content, tab.filename, tab.path);
-  tab.renderedHTML = $.content.innerHTML;
-  tab.tocHTML = $.tocList.innerHTML;
-  renderTabBar();
-  // Start watching the file
-  if (tab.path) watchFile(tab.path);
-}
-
-function switchToTab(tabId) {
-  if (tabId === activeTabId) return;
-  const target = tabs.find(t => t.id === tabId);
-  if (!target) return;
-  saveCurrentTabState();
-  activeTabId = tabId;
-  md = target.content;
-  restoreTabState(target);
-  renderTabBar();
-  if (target.path) watchFile(target.path);
-}
-
-function closeTab(tabId) {
-  const idx = tabs.findIndex(t => t.id === tabId);
-  if (idx === -1) return;
-  if (tabs[idx].dirty && !confirm('저장하지 않은 변경 사항이 있습니다. 닫으시겠습니까?')) return;
-  tabs.splice(idx, 1);
-  if (tabs.length === 0) { activeTabId = null; showEmptyState(); renderTabBar(); watchFile(null); return; }
-  if (activeTabId === tabId) {
-    const newIdx = Math.min(idx, tabs.length - 1);
-    activeTabId = tabs[newIdx].id;
-    md = tabs[newIdx].content;
-    restoreTabState(tabs[newIdx]);
-    if (tabs[newIdx].path) watchFile(tabs[newIdx].path);
-  }
-  renderTabBar();
-}
-
-function closeOtherTabs(tabId) {
-  const target = tabs.find(t => t.id === tabId);
-  if (!target) return;
-  const dirtyOthers = tabs.some(t => t.id !== tabId && t.dirty);
-  if (dirtyOthers && !confirm('저장하지 않은 변경 사항이 있는 다른 탭이 있습니다. 닫으시겠습니까?')) return;
-  tabs = tabs.filter(t => t.id === tabId);
-  activeTabId = tabId;
-  md = target.content;
-  restoreTabState(target);
-  renderTabBar();
-  if (target.path) watchFile(target.path);
-}
-
-function closeAllTabs() {
-  const hasDirty = tabs.some(t => t.dirty);
-  if (hasDirty && !confirm('저장하지 않은 변경 사항이 있는 탭이 있습니다. 모두 닫으시겠습니까?')) return;
-  tabs = [];
-  activeTabId = null;
-  showEmptyState();
-  renderTabBar();
-  watchFile(null);
-}
-
-async function openTabInNewWindow(tabId) {
-  const tab = tabs.find(t => t.id === tabId);
-  if (!tab) return;
-  await window.api.newWindow(tab.path || null);
 }
 
 function hideAppContextMenu() {
@@ -381,15 +199,9 @@ function showAppContextMenu(x, y, items) {
   menu.style.top = `${Math.max(8, top)}px`;
 }
 
-function closeCurrentTab() { if (activeTabId !== null) closeTab(activeTabId); }
-function switchToNextTab() {
-  const idx = tabs.findIndex(t => t.id === activeTabId);
-  if (idx < tabs.length - 1) switchToTab(tabs[idx + 1].id);
-}
-function switchToPrevTab() {
-  const idx = tabs.findIndex(t => t.id === activeTabId);
-  if (idx > 0) switchToTab(tabs[idx - 1].id);
-}
+function closeCurrentTab() { workspaceController.closeCurrentTab(); }
+function switchToNextTab() { workspaceController.switchToNextTab(); }
+function switchToPrevTab() { workspaceController.switchToPrevTab(); }
 
 /* ── DOMContentLoaded ── */
 document.addEventListener('DOMContentLoaded', () => {
@@ -431,6 +243,50 @@ document.addEventListener('DOMContentLoaded', () => {
     welcomeGuide:  document.getElementById('welcome-guide'),
   };
 
+  editorController = window.MDVEditor.createEditorController({
+    getRefs: () => $,
+    getMarkdown: () => md,
+    setMarkdown: value => { md = value; },
+    getActiveTab: () => workspaceController ? workspaceController.getActiveTab() : null,
+    rerenderTabBar: () => { if (workspaceController) workspaceController.renderTabBar(); },
+    onSourceInput: value => { if (workspaceController) workspaceController.updateActiveTabDirtyFromEditor(value); },
+    render,
+    closeSearch,
+  });
+
+  workspaceController = window.MDVWorkspace.createWorkspaceController({
+    getRefs: () => $,
+    markdownController,
+    render,
+    applySourceMode: () => editorController.applySourceMode(),
+    showEmptyState,
+    watchFile,
+    updateToolbarActions,
+    updateEntryAffordance,
+    maybeShowWelcomeGuide,
+    showAppContextMenu,
+    getSourceMode: () => editorController.getSourceMode(),
+    setSourceMode: value => { editorController.setSourceMode(value); },
+    setMarkdown: value => { md = value; },
+    confirmClose: message => confirm(message),
+    openNewWindow: path => window.api.newWindow(path),
+  });
+
+  explorerController = window.MDVExplorer.createExplorerController({
+    getRefs: () => $,
+    api: window.api,
+    load,
+    switchToExplorerTab: () => switchTab('explorer'),
+    showAppContextMenu,
+    clearExplorerRoot,
+    syncExplorerHeader,
+    getCurrentExplorerRoot: () => currentExplorerRoot,
+    setCurrentExplorerRoot: value => { currentExplorerRoot = value; },
+    setExplorerShowFullPath: value => { explorerShowFullPath = value; },
+  });
+
+  editorController.bindEditorEvents();
+
   applyTheme();
   $.sidebar.classList.toggle('closed', !sidebarOpen);
   $.sidebarTabs.dataset.active = activeTab;
@@ -455,19 +311,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
   // Electron: file changed on disk
   window.api.onFileChanged(async ({ path: changedPath, content }) => {
-    const tab = findTabByPath(changedPath);
-    if (!tab) return;
-    tab.content = content;
-    tab.savedContent = content;
-    tab.dirty = false;
-    // If it's the active tab, re-render
-    if (tab.id === activeTabId) {
-      md = content;
-      await render(content, tab.filename, tab.path);
-      tab.renderedHTML = $.content.innerHTML;
-      tab.tocHTML = $.tocList.innerHTML;
-    }
-    renderTabBar();
+    await workspaceController.handleExternalFileChange({ path: changedPath, content });
   });
 
   $.content.addEventListener('click', async e => {
@@ -513,29 +357,6 @@ document.addEventListener('DOMContentLoaded', () => {
   });
   window.addEventListener('resize', () => { markdownController.refreshHeadingOffsets(); });
 
-  const editor = $.sourceEditor;
-  editor.addEventListener('input', () => {
-    updateLineNumbers(); autoResizeEditor(); updateLineHighlight();
-    const tab = tabs.find(t => t.id === activeTabId);
-    if (tab) { tab.dirty = (editor.value !== tab.savedContent); renderTabBar(); }
-  });
-  editor.addEventListener('keydown', e => {
-    if (e.key === 'Tab') {
-      e.preventDefault();
-      const s = editor.selectionStart, end = editor.selectionEnd;
-      editor.value = editor.value.substring(0, s) + '\t' + editor.value.substring(end);
-      editor.selectionStart = editor.selectionEnd = s + 1;
-      updateLineNumbers();
-    }
-  });
-  editor.addEventListener('focus',   updateLineHighlight);
-  editor.addEventListener('click',   updateLineHighlight);
-  editor.addEventListener('keyup',   updateLineHighlight);
-  editor.addEventListener('mouseup', updateLineHighlight);
-  editor.addEventListener('blur', () => {
-    document.getElementById('line-highlight').style.display = 'none';
-  });
-
   const searchInput = document.getElementById('search-input');
   searchInput.addEventListener('input', () => runSearch(searchInput.value));
   searchInput.addEventListener('keydown', e => {
@@ -551,48 +372,8 @@ function toggleSidebar() { sidebarOpen = !sidebarOpen; $.sidebar.classList.toggl
 function goTop()         { $.scrollArea.scrollTo({ top: 0, behavior: 'smooth' }); }
 function printDoc()      { window.print(); }
 
-function applySourceMode() {
-  $.content.style.display    = sourceMode ? 'none' : '';
-  $.sourceView.style.display = sourceMode ? 'block' : 'none';
-  $.scrollArea.classList.toggle('source-mode', sourceMode);
-  if (sourceMode) { $.sourceEditor.value = md; updateLineNumbers(); autoResizeEditor(); }
-  updateModeBtn();
-}
-
-function updateLineNumbers() {
-  const count = $.sourceEditor.value.split('\n').length;
-  $.sourceLines.textContent = Array.from({ length: count }, (_, i) => i + 1).join('\n');
-}
-function autoResizeEditor() {
-  $.sourceEditor.style.height = 'auto';
-  $.sourceEditor.style.height = $.sourceEditor.scrollHeight + 'px';
-}
-function updateLineHighlight() {
-  const editor = $.sourceEditor;
-  const hl = document.getElementById('line-highlight');
-  if (!hl) return;
-  const lineIndex = editor.value.substring(0, editor.selectionStart).split('\n').length - 1;
-  const lineH = parseFloat(getComputedStyle(editor).lineHeight);
-  const padTop = parseFloat(getComputedStyle(editor).paddingTop);
-  hl.style.top = (padTop + lineIndex * lineH) + 'px';
-  hl.style.height = lineH + 'px';
-  hl.style.display = 'block';
-}
-
 async function toggleSource() {
-  if (activeTabId === null) return;
-  closeSearch();
-  if (sourceMode) {
-    const edited = $.sourceEditor.value;
-    if (edited !== md) {
-      md = edited;
-      const tab = tabs.find(t => t.id === activeTabId);
-      if (tab) { tab.content = edited; tab.dirty = (edited !== tab.savedContent); renderTabBar(); }
-      await render(edited, tab ? tab.filename : '', tab ? tab.path : null);
-    }
-  }
-  sourceMode = !sourceMode;
-  applySourceMode();
+  await editorController.toggleSource();
 }
 
 /* ── Sidebar tabs ── */
@@ -601,7 +382,7 @@ function switchTab(tab) {
   $.panelToc.style.display      = tab === 'toc'      ? '' : 'none';
   $.panelExplorer.style.display = tab === 'explorer' ? 'flex' : 'none';
   $.sidebarTabs.dataset.active = tab;
-  document.querySelectorAll('.stab').forEach(b => b.classList.toggle('active', b.dataset.tab === tab));
+  document.querySelectorAll('.stab').forEach(b => { b.classList.toggle('active', b.dataset.tab === tab); });
   if (!sidebarOpen) { sidebarOpen = true; $.sidebar.classList.remove('closed'); }
 }
 
@@ -611,30 +392,28 @@ let untitledCounter = 0;
 async function newFile() {
   untitledCounter++;
   const name = untitledCounter === 1 ? 'untitled.md' : `untitled-${untitledCounter}.md`;
-  await createTab({ content: '', filename: name, path: null });
-  sourceMode = true; applySourceMode(); $.sourceEditor.focus();
+  await workspaceController.createTab({ content: '', filename: name, path: null });
+  editorController.openInSourceMode();
 }
 
 /* ── Save ── */
 async function saveFile() {
-  if (activeTabId === null) return;
-  const tab = tabs.find(t => t.id === activeTabId);
+  const tab = workspaceController.getActiveTab();
   if (!tab) return;
-  if (sourceMode) { tab.content = $.sourceEditor.value; md = tab.content; }
+  if (editorController.getSourceMode()) { tab.content = editorController.getEditorValue(); md = tab.content; }
   if (tab.path) {
     const res = JSON.parse(await window.api.saveFile(tab.path, tab.content));
     if (res.error) { alert('저장 실패: ' + res.error); return; }
-    tab.savedContent = tab.content; tab.dirty = false; renderTabBar(); showToast('저장됨');
+    tab.savedContent = tab.content; tab.dirty = false; workspaceController.renderTabBar(); showToast('저장됨');
   } else {
     await saveFileAs();
   }
 }
 
 async function saveFileAs() {
-  if (activeTabId === null) return;
-  const tab = tabs.find(t => t.id === activeTabId);
+  const tab = workspaceController.getActiveTab();
   if (!tab) return;
-  if (sourceMode) { tab.content = $.sourceEditor.value; md = tab.content; }
+  if (editorController.getSourceMode()) { tab.content = editorController.getEditorValue(); md = tab.content; }
   const dlg = JSON.parse(await window.api.saveFileDialog(tab.filename));
   if (dlg.cancelled || dlg.error) return;
   const res = JSON.parse(await window.api.saveFile(dlg.path, tab.content));
@@ -644,89 +423,14 @@ async function saveFileAs() {
   tab.savedContent = tab.content;
   tab.dirty = false;
   document.title = tab.filename.replace(/\.md$/i, '');
-  renderTabBar();
+  workspaceController.renderTabBar();
   watchFile(tab.path);
   showToast('저장됨');
 }
 
 /* ── Directory explorer ── */
 async function openFolder() {
-  const res = JSON.parse(await window.api.openFolderDialog());
-  if (res.cancelled || res.error) return;
-  currentExplorerRoot = res.path;
-  explorerShowFullPath = false;
-  syncExplorerHeader();
-  switchTab('explorer');
-  await loadDir(res.path, $.explorerTree, 0);
-}
-
-async function loadDir(path, container, depth) {
-  container.innerHTML = '<div class="tree-hint">로드 중…</div>';
-  const res = JSON.parse(await window.api.listDirectory(path));
-  container.innerHTML = '';
-  if (res.error) { container.innerHTML = `<div class="tree-hint">${res.error}</div>`; return; }
-  if (!res.entries.length) { container.innerHTML = '<div class="tree-hint">.md 파일 없음</div>'; return; }
-  res.entries.forEach(entry => renderTreeEntry(entry, container, depth));
-}
-
-function renderTreeEntry(entry, container, depth) {
-  const item = document.createElement('div');
-  item.className = 'tree-item tree-' + entry.type;
-  const row = document.createElement('div');
-  row.className = 'tree-row';
-  row.style.paddingLeft = `${12 + depth * 14}px`;
-
-  const folderClosedSvg = `<svg width="14" height="14" viewBox="0 0 16 16" fill="none" aria-hidden="true"><path d="M1.75 4.75A1.75 1.75 0 0 1 3.5 3h2.35c.34 0 .67.12.93.34l1.12.91c.13.11.3.16.47.16h4.13a1.75 1.75 0 0 1 1.75 1.75v5.34a1.75 1.75 0 0 1-1.75 1.75H3.5a1.75 1.75 0 0 1-1.75-1.75V4.75Z" stroke="currentColor" stroke-width="1.25" stroke-linejoin="round"/></svg>`;
-  const folderOpenSvg = `<svg width="14" height="14" viewBox="0 0 16 16" fill="none" aria-hidden="true"><path d="M1.75 5.25A1.75 1.75 0 0 1 3.5 3.5h2.14c.34 0 .67.11.94.33l1.15.92c.13.1.29.15.46.15h4.31c.97 0 1.75.78 1.75 1.75 0 .14-.02.29-.05.43l-.86 4.02a1.75 1.75 0 0 1-1.71 1.4H3.48a1.75 1.75 0 0 1-1.72-1.42L1.2 7.07a1.75 1.75 0 0 1 .55-1.82Z" stroke="currentColor" stroke-width="1.25" stroke-linejoin="round"/></svg>`;
-  const fileSvg = `<svg width="14" height="14" viewBox="0 0 16 16" fill="none" aria-hidden="true"><path d="M4 2.75h4.88c.33 0 .65.13.88.36l2.88 2.88c.23.23.36.55.36.88V13A1.25 1.25 0 0 1 11.75 14.25h-7.5A1.25 1.25 0 0 1 3 13V4A1.25 1.25 0 0 1 4.25 2.75H4Z" stroke="currentColor" stroke-width="1.25" stroke-linejoin="round"/><path d="M8.75 2.75V6.5h3.75" stroke="currentColor" stroke-width="1.25" stroke-linejoin="round"/></svg>`;
-
-  if (entry.type === 'dir') {
-    const arrow = document.createElement('span');
-    arrow.className = 'tree-arrow'; arrow.textContent = '▶';
-    const icon  = document.createElement('span');
-    icon.className = 'tree-icon'; icon.innerHTML = folderClosedSvg;
-    const name  = document.createElement('span');
-    name.className = 'tree-name'; name.textContent = entry.name;
-    row.append(arrow, icon, name);
-    const children = document.createElement('div');
-    children.className = 'tree-children';
-    let loaded = false;
-    row.addEventListener('click', async () => {
-      const open = children.classList.toggle('open');
-      arrow.textContent = open ? '▼' : '▶';
-      icon.innerHTML = open ? folderOpenSvg : folderClosedSvg;
-      if (open && !loaded) { loaded = true; await loadDir(entry.path, children, depth + 1); }
-    });
-    row.addEventListener('contextmenu', e => {
-      if (!currentExplorerRoot) return;
-      e.preventDefault();
-      showAppContextMenu(e.clientX, e.clientY, [
-        {
-          label: '폴더 닫기',
-          action: () => clearExplorerRoot(),
-        },
-      ]);
-    });
-    item.append(row, children);
-  } else {
-    const icon = document.createElement('span');
-    icon.className = 'tree-icon'; icon.innerHTML = fileSvg;
-    const name = document.createElement('span');
-    name.className = 'tree-name'; name.textContent = entry.name;
-    row.append(icon, name);
-    row.addEventListener('click', async e => {
-      if (e.metaKey) {
-        await window.api.newWindow(entry.path);
-      } else {
-        const data = JSON.parse(await window.api.readFile(entry.path));
-        await load(data);
-        container.closest('#layout').querySelectorAll('.tree-item.active').forEach(el => el.classList.remove('active'));
-        item.classList.add('active');
-      }
-    });
-    item.appendChild(row);
-  }
-  container.appendChild(item);
+  await explorerController.openFolder();
 }
 
 /* ── Add menu ── */
@@ -739,20 +443,6 @@ function toggleAddMenu(e) {
 function hideAddMenu() {
   document.getElementById('add-menu').style.display = 'none';
   if ($?.btnAdd) $.btnAdd.classList.remove('active');
-}
-
-/* ── Mode button ── */
-function updateModeBtn() {
-  if (!$ || !$.btnMode || $.btnMode.style.display === 'none') return;
-  if (sourceMode) {
-    $.btnMode.title = '미리보기 (⌘U)';
-    $.btnMode.classList.add('source-active');
-    $.btnMode.querySelector('svg').innerHTML = `<circle cx="6.5" cy="6.5" r="2" stroke="currentColor" stroke-width="1.3"/><path d="M1 6.5C2.5 3.5 4.3 2 6.5 2s4 1.5 5.5 4.5C10.5 9.5 8.7 11 6.5 11S2.5 9.5 1 6.5z" stroke="currentColor" stroke-width="1.3"/>`;
-  } else {
-    $.btnMode.title = '편집 (⌘U)';
-    $.btnMode.classList.remove('source-active');
-    $.btnMode.querySelector('svg').innerHTML = `<path d="M3 3.25 1 6.5 3 9.75" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"/><path d="M10 3.25 12 6.5 10 9.75" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"/><path d="M7.75 2.5 6.25 10.5" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/>`;
-  }
 }
 
 /* ── Copy all ── */
@@ -865,7 +555,7 @@ document.addEventListener('keydown', e => {
   if (m && e.key === 'n') { e.preventDefault(); newWindow(); }
   if (m && e.key === 'w') { e.preventDefault(); closeCurrentTab(); }
   if (m && e.key === 'u') { e.preventDefault(); toggleSource(); }
-  if (m && e.key === 'f') { e.preventDefault(); if (!sourceMode) toggleSearch(); }
+  if (m && e.key === 'f') { e.preventDefault(); if (!editorController.getSourceMode()) toggleSearch(); }
   if (m && e.key === 's' &&  e.shiftKey) { e.preventDefault(); saveFileAs(); }
   if (m && e.key === 's' && !e.shiftKey) { e.preventDefault(); saveFile(); }
   if (m && e.shiftKey && (e.key === '}' || e.code === 'BracketRight')) { e.preventDefault(); switchToNextTab(); }
