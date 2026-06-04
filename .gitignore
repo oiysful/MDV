@@ -5,6 +5,7 @@ dist/
 src/.DS_Store
 
 .claude/
+.sisyphus/
 
 npm-debug.log*
 yarn-debug.log*
