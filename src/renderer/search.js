@@ -6,9 +6,9 @@
     function clearSearchHighlights() {
       const refs = getRefs()
       if (!refs) return
-      refs.content.querySelectorAll('mark.search-hl').forEach(mark =>
+      refs.content.querySelectorAll('mark.search-hl').forEach(mark => {
         mark.replaceWith(document.createTextNode(mark.textContent))
-      )
+      })
       refs.content.normalize()
     }
 
@@ -20,7 +20,9 @@
     }
 
     function highlightCurrent() {
-      searchMatches.forEach((match, index) => match.classList.toggle('current', index === searchIndex))
+      searchMatches.forEach((match, index) => {
+        match.classList.toggle('current', index === searchIndex)
+      })
       searchMatches[searchIndex]?.scrollIntoView({ behavior: 'smooth', block: 'center' })
       document.getElementById('search-count').textContent = `${searchIndex + 1}/${searchMatches.length}`
     }
@@ -47,7 +49,8 @@
         let match
         let last = 0
         const fragments = []
-        while ((match = re.exec(text)) !== null) {
+        match = re.exec(text)
+        while (match !== null) {
           if (match.index > last) fragments.push(document.createTextNode(text.slice(last, match.index)))
           const mark = document.createElement('mark')
           mark.className = 'search-hl'
@@ -55,6 +58,7 @@
           fragments.push(mark)
           searchMatches.push(mark)
           last = match.index + match[0].length
+          match = re.exec(text)
         }
         if (fragments.length) {
           if (last < text.length) fragments.push(document.createTextNode(text.slice(last)))
