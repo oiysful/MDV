@@ -45,7 +45,7 @@ Current split:
 - `src/renderer/onboarding.js` — first-launch / entry-affordance / toast UI logic
 - `src/renderer/markdown.js` — markdown rendering, stats, TOC, image resolution helpers
 
-Renderer command entry points now route through a grouped `rendererCommands` registry, delegated `data-command` listeners, generated-copy delegation, and explicit `renderer-command` IPC from the main menu. The next structural cleanup queue is documented in `.sisyphus/plans/structural-improvement-roadmap.md`.
+Renderer command entry points now route through a grouped `rendererCommands` registry, delegated `data-command` listeners, generated-copy delegation, and explicit `renderer-command` IPC from the main menu.
 
 ## Testing
 
@@ -152,5 +152,5 @@ Current build outputs:
 ## Known Limitations
 
 - IPC handlers still return JSON-encoded strings, so renderer consumers use parsing helpers/patterns instead of raw objects.
-- `src/renderer/app.js` and `src/renderer/app-runtime.js` remain the next structural ownership hotspots, tracked in `.sisyphus/plans/structural-improvement-roadmap.md`.
+- `src/renderer/app.js` and `src/renderer/app-runtime.js` remain the next structural ownership hotspots.
 - Notarization is still pending for friendlier macOS distribution.

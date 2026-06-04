@@ -46,7 +46,7 @@ Renderer now uses an HTML/CSS shell plus multiple plain browser scripts; `app.js
 
 ## NOTES
 - `index.html` remains the biggest renderer shell hotspot.
-- The renderer global/window surface reduction is complete; future structural work is documented in `.sisyphus/plans/structural-improvement-roadmap.md`.
+- The renderer global/window surface reduction is complete; future structural work should continue around `index.html`, `app.js`, and `app-runtime.js` ownership boundaries.
 - Recent command-surface changes have clean error-level diagnostics; remaining diagnostics are mostly style/accessibility warnings.
 - If work grows beyond a focused patch, consider splitting renderer logic before adding major new UI features.
 - Print mode has custom CSS overrides; pagination fixes live in the `@media print` block.

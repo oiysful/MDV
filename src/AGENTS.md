@@ -48,4 +48,4 @@ src/
 - Current IPC surface includes external URL open and Finder reveal helpers in addition to markdown/file operations.
 - Default-app guidance is manual UX only; this codebase does not programmatically force markdown default-app assignment.
 - Test harness now exists at `tests/electron/` and `tests/unit/`; keep it green before each additional renderer extraction.
-- Structural follow-up work is planned in `.sisyphus/plans/structural-improvement-roadmap.md`.
+- Structural follow-up work should start from the renderer hotspots documented in the project README and local renderer notes.

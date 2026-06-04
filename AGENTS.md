@@ -84,4 +84,4 @@ npm run build
 - Current error-level diagnostics are clean for the recent renderer command refactor; remaining warnings are mostly style-oriented.
 - Repo is tiny by file count, but renderer complexity is concentrated in `src/renderer/index.html`.
 - Local macOS packaging currently works and emits `dist/MDV-1.0.0-arm64.dmg`, but notarization is still not configured.
-- Completed plans live under `.sisyphus/plans/`; the current forward-looking architecture queue is `.sisyphus/plans/structural-improvement-roadmap.md`.
+- Local Sisyphus planning files are intentionally ignored and should not be treated as tracked project documentation.
