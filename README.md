@@ -2,6 +2,53 @@
 
 Claude-style desktop Markdown editor built with Electron.
 
+> [!IMPORTANT]
+> MDV is distributed as an **unsigned macOS app**. There is no Apple Developer ID signing or notarization for this project.
+> The install/update scripts below build or install MDV locally, copy `MDV.app` into `/Applications`, and clear the macOS quarantine attribute with `xattr -dr com.apple.quarantine` to reduce Gatekeeper friction.
+
+## Install / Update
+
+MDV supports two distribution paths: direct local builds from this repository, and GitHub Release installs.
+
+### Direct build from source
+
+Use this when you want to clone the repository and build the app yourself.
+
+```bash
+git clone https://github.com/oiysful/MDV.git
+cd MDV
+npm run install:local
+```
+
+For later updates from the same clone:
+
+```bash
+cd MDV
+npm run update:local
+```
+
+`update:local` runs `git pull --ff-only origin main`, reinstalls dependencies, rebuilds unsigned, and replaces `/Applications/MDV.app`.
+
+### Install from GitHub Releases
+
+Use this when a release artifact is available and you do not want to build locally.
+
+```bash
+npm run install:release
+```
+
+For later release-based updates:
+
+```bash
+npm run update:release
+```
+
+By default, release scripts install the latest GitHub Release. To install a specific tag:
+
+```bash
+MDV_RELEASE_TAG=v1.0.0 npm run install:release
+```
+
 ## Features
 
 - Markdown preview + source editing modes
@@ -137,9 +184,10 @@ Current build outputs:
 
 ## Distribution Notes
 
-- The app is currently code signed during local build if a usable macOS identity is available.
-- Notarization is not configured yet, so sharing the DMG may still trigger macOS security friction on another machine.
-- For polished external distribution, add Apple notarization credentials to the electron-builder config/workflow.
+- MDV is intentionally distributed without Apple Developer ID signing or notarization.
+- Local install/update scripts build with `CSC_IDENTITY_AUTO_DISCOVERY=false` and `--publish=never`.
+- All install/update scripts replace `/Applications/MDV.app` and run `xattr -dr com.apple.quarantine` on the installed app bundle.
+- If `/Applications` is not writable for your user, rerun the install/update command with appropriate macOS permissions.
 
 ## Security / Architecture Notes
 
