@@ -1,9 +1,12 @@
 const { app, BrowserWindow, ipcMain, dialog, nativeTheme, Menu, shell } = require('electron')
 const path = require('path')
 const fs   = require('fs')
+const os = require('os')
+const { pathToFileURL } = require('url')
 const chokidar = require('chokidar')
 
 const watchers = new Map() // path → chokidar.FSWatcher
+const MARKDOWN_EXTENSIONS = ['.md', '.markdown']
 
 // ── Window factory ──────────────────────────────────────────────
 function createWindow(filePath = null) {
@@ -39,6 +42,35 @@ function sendFile(win, filePath) {
     win.webContents.send('file-opened', JSON.stringify({ content, filename, path: filePath }))
   } catch (e) {
     win.webContents.send('file-opened', JSON.stringify({ error: e.message }))
+  }
+}
+
+function getComparableAppPath(appPath) {
+  if (process.platform !== 'darwin') return appPath
+  const bundleMatch = String(appPath || '').match(/^(.+?\.app)(?:\/|$)/)
+  return bundleMatch ? bundleMatch[1] : appPath
+}
+
+async function getDefaultMarkdownHandlers() {
+  const tempDir = await fs.promises.mkdtemp(path.join(os.tmpdir(), 'mdv-default-app-'))
+  try {
+    const handlers = []
+    const currentAppPath = getComparableAppPath(app.getPath('exe'))
+    for (const extension of MARKDOWN_EXTENSIONS) {
+      const samplePath = path.join(tempDir, `sample${extension}`)
+      await fs.promises.writeFile(samplePath, '# MDV default app check\n', 'utf8')
+      const info = await app.getApplicationInfoForProtocol(pathToFileURL(samplePath).href)
+      const handlerPath = getComparableAppPath(info.path)
+      handlers.push({
+        extension,
+        name: info.name || '',
+        path: info.path || '',
+        matchesCurrentApp: handlerPath === currentAppPath,
+      })
+    }
+    return { handlers, registered: handlers.every(handler => handler.matchesCurrentApp) }
+  } finally {
+    await fs.promises.rm(tempDir, { recursive: true, force: true })
   }
 }
 
@@ -153,6 +185,29 @@ ipcMain.handle('save-file-dialog', async (event, suggestedName) => {
   return JSON.stringify({ path: result.filePath })
 })
 
+ipcMain.handle('export-pdf', async (event, suggestedName) => {
+  const win = BrowserWindow.fromWebContents(event.sender)
+  if (!win) return JSON.stringify({ ok: false, error: '활성 창을 찾을 수 없습니다.' })
+
+  try {
+    const result = await dialog.showSaveDialog(win, {
+      defaultPath: suggestedName || 'untitled.pdf',
+      filters: [{ name: 'PDF', extensions: ['pdf'] }],
+    })
+    if (result.canceled || !result.filePath) return JSON.stringify({ cancelled: true })
+
+    const data = await win.webContents.printToPDF({
+      printBackground: true,
+      preferCSSPageSize: true,
+      generateTaggedPDF: true,
+    })
+    await fs.promises.writeFile(result.filePath, data)
+    return JSON.stringify({ ok: true, path: result.filePath, filename: path.basename(result.filePath) })
+  } catch (e) {
+    return JSON.stringify({ ok: false, error: e.message })
+  }
+})
+
 ipcMain.handle('new-window', async (_, filePath) => {
   createWindow(filePath || null)
 })
@@ -178,6 +233,45 @@ ipcMain.handle('reveal-in-finder', async (_, targetPath) => {
     return JSON.stringify({ ok: true })
   } catch (e) {
     return JSON.stringify({ ok: false, error: e.message })
+  }
+})
+
+ipcMain.handle('get-markdown-default-app-status', async () => {
+  const appPath = getComparableAppPath(app.getPath('exe'))
+  try {
+    const { handlers, registered } = await getDefaultMarkdownHandlers()
+    return JSON.stringify({
+      ok: true,
+      registered,
+      needsAction: !registered,
+      canVerify: true,
+      canRegisterAutomatically: false,
+      platform: process.platform,
+      isPackaged: app.isPackaged,
+      appName: app.name,
+      appPath,
+      extensions: MARKDOWN_EXTENSIONS,
+      defaultHandlers: handlers,
+      associationConfigured: true,
+      reason: registered ? 'current-app-is-default-handler' : 'default-handler-is-different-app',
+    })
+  } catch (e) {
+    return JSON.stringify({
+      ok: false,
+      registered: false,
+      needsAction: true,
+      canVerify: false,
+      canRegisterAutomatically: false,
+      platform: process.platform,
+      isPackaged: app.isPackaged,
+      appName: app.name,
+      appPath,
+      extensions: MARKDOWN_EXTENSIONS,
+      defaultHandlers: [],
+      associationConfigured: true,
+      reason: 'file-extension-default-apps-require-os-settings',
+      error: e.message,
+    })
   }
 })
 
