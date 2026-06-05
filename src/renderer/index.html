@@ -214,6 +214,7 @@ html, body {
 }
 .btn-mode:hover { background: var(--hover); }
 .btn-mode.source-active { background: var(--brand-light); color: var(--brand); border-color: transparent; box-shadow: none; }
+.btn-mode.split-active { background: var(--brand-light); color: var(--brand); border-color: transparent; box-shadow: none; }
 #mode-label { display: none; }
 /* primary add button */
 .btn-primary-add {
@@ -264,6 +265,7 @@ body.empty-entry-emphasis .btn-primary-add svg { flex-shrink: 0; }
   border-radius: var(--radius-sm); box-shadow: var(--shadow-sm);
   z-index: 300; min-width: 130px; padding: 4px 0; overflow: hidden;
 }
+.toolbar-add-menu { left: 0; right: auto; min-width: 156px; }
 .ctx-item {
   display: flex; align-items: center; gap: 8px;
   width: 100%; padding: 7px 14px;
@@ -583,6 +585,14 @@ mark.search-hl.current {
   scroll-behavior: smooth;
 }
 #scroll-area.source-mode { padding: 0; }
+#scroll-area.split-mode {
+  display: grid;
+  grid-template-columns: minmax(300px, 1fr) minmax(320px, 1fr);
+  gap: 1px;
+  padding: 0;
+  background: var(--border);
+  overflow: hidden;
+}
 #scroll-area::-webkit-scrollbar { width: 8px; background: transparent; }
 #scroll-area::-webkit-scrollbar-thumb {
   background: rgba(0,0,0,0.15); border-radius: 4px;
@@ -593,9 +603,25 @@ mark.search-hl.current {
 [data-theme="dark"] #scroll-area::-webkit-scrollbar-thumb:hover { background: rgba(255,255,255,0.28); background-clip: padding-box; }
 
 #content { max-width: 720px; margin: 0 auto; user-select: text; -webkit-user-select: text; }
+#scroll-area.split-mode #content {
+  order: 2;
+  max-width: none;
+  width: 100%;
+  height: 100%;
+  margin: 0;
+  padding: 22px 36px 80px;
+  overflow-y: auto;
+  background: var(--bg);
+}
 
 /* Source editor */
 #source-view { display: none; position: relative; }
+#scroll-area.split-mode #source-view {
+  order: 1;
+  height: 100%;
+  overflow-y: auto;
+  background: var(--bg);
+}
 #source-editor {
   display: block; width: 100%; border: none; outline: none; resize: none;
   background: transparent; font-family: var(--font-mono); font-size: 13px;
@@ -621,6 +647,7 @@ mark.search-hl.current {
   user-select: none; pointer-events: none;
   border-right: 1px solid var(--border); background: var(--subtle);
 }
+#scroll-area.split-mode #source-editor { min-height: 100%; }
 
 /* Empty state */
 #empty {
@@ -673,7 +700,7 @@ mark.search-hl.current {
 #open-entry-hint {
   position: absolute;
   top: calc(100% + 10px);
-  right: -4px;
+  left: -4px;
   display: none;
   align-items: center;
   gap: 6px;
@@ -721,6 +748,54 @@ body.empty-entry-emphasis #open-entry-hint {
   display: none;
 }
 #welcome-guide.show { display: block; }
+#default-app-guide {
+  position: fixed;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  z-index: 540;
+  width: min(440px, calc(100vw - 40px));
+  padding: 20px;
+  border-radius: 20px;
+  border: 1px solid color-mix(in srgb, var(--brand) 24%, var(--border));
+  background: color-mix(in srgb, var(--surface) 99%, transparent);
+  box-shadow: 0 28px 70px rgba(0,0,0,0.24);
+  display: none;
+}
+#default-app-guide.show { display: block; }
+#default-app-guide .guide-title { margin-bottom: 12px; justify-content: center; }
+#default-app-guide .guide-title strong { font-size: 15px; }
+#default-app-guide .guide-body { font-size: 13px; color: var(--text); }
+#default-app-guide .guide-body p { margin: 0 0 12px; }
+#default-app-guide .guide-body ol {
+  margin: 0 0 14px 18px;
+  padding: 0;
+  color: var(--text-muted);
+}
+#default-app-guide .guide-body li { margin: 6px 0; }
+.guide-check {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+  margin: 2px 0 14px auto;
+  color: var(--text-muted);
+  font-size: 12px;
+  cursor: pointer;
+}
+.guide-check input { accent-color: var(--brand); }
+#default-app-guide .guide-actions { justify-content: center; }
+.guide-btn.primary {
+  width: 100%;
+  height: 36px;
+  background: var(--brand);
+  border-color: var(--brand);
+  color: #fff;
+  box-shadow: 0 10px 22px color-mix(in srgb, var(--brand) 28%, transparent);
+}
+.guide-btn.primary:hover {
+  background: color-mix(in srgb, var(--brand) 88%, #000);
+}
 .guide-title {
   display: flex;
   align-items: center;
@@ -993,6 +1068,7 @@ kbd {
   #layout { padding-top: 0; display: block; }
   #main-pane { display: block; }
   #scroll-area { padding: 0; }
+  #scroll-area.split-mode { display: block; background: transparent; overflow: visible; }
   #content { max-width: 100%; }
   /* 배경색/테두리 등 색상을 그대로 인쇄 */
   * { -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; }
@@ -1022,6 +1098,7 @@ kbd {
 @media (max-width: 700px) {
   #layout { padding-top: 48px; }
   #scroll-area { padding: var(--sp-lg) var(--sp-md) 60px; }
+  #scroll-area.split-mode { display: block; padding: 0; overflow-y: auto; }
   #sidebar { position: absolute; left: 0; top: 48px; bottom: 0; height: auto; }
   #sidebar.closed { width: 0; min-width: 0; }
   #tab-strip { padding-inline: 12px; }
@@ -1034,8 +1111,46 @@ kbd {
 <header id="toolbar">
   <div class="traffic-gap"></div>
 
+  <!-- Open (+) with context menu -->
+  <div style="position:relative">
+    <button type="button" class="btn btn-primary-add" id="btn-add" data-command="toggleAddMenu" data-command-uses-event="true" title="열기" aria-label="열기">
+      <span class="btn-add-label">열기</span>
+      <svg aria-hidden="true" width="13" height="13" viewBox="0 0 13 13" fill="none">
+        <line x1="6.5" y1="1.5" x2="6.5" y2="11.5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
+        <line x1="1.5" y1="6.5" x2="11.5" y2="6.5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
+      </svg>
+    </button>
+    <div id="open-entry-hint">
+      <strong>파일/폴더 열기</strong>
+      <span>여기서 바로 시작</span>
+    </div>
+    <div id="add-menu" class="ctx-menu toolbar-add-menu" style="display:none">
+      <button type="button" class="ctx-item" data-command="newFile" data-hide-add-menu="true" title="새 파일 (⌘T)" aria-label="새 파일 (⌘T)">
+        <svg aria-hidden="true" width="13" height="13" viewBox="0 0 13 13" fill="none" style="flex-shrink:0">
+          <path d="M2.5 1.5h5l3 3V11a.5.5 0 01-.5.5H3a.5.5 0 01-.5-.5V2A.5.5 0 012.5 1.5z" stroke="currentColor" stroke-width="1.3" stroke-linejoin="round"/>
+          <path d="M7.5 1.5V4.5h3" stroke="currentColor" stroke-width="1.3" stroke-linejoin="round"/>
+          <path d="M6.5 6.1v3.2M4.9 7.7h3.2" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"/>
+        </svg>
+        새 파일 (⌘T)
+      </button>
+      <button type="button" class="ctx-item" data-command="openFolder" data-hide-add-menu="true" title="폴더 열기" aria-label="폴더 열기">
+        <svg aria-hidden="true" width="13" height="13" viewBox="0 0 13 13" fill="none" style="flex-shrink:0">
+          <path d="M1.5 4.5v5a1 1 0 001 1h8a1 1 0 001-1v-4a1 1 0 00-1-1H6L4.5 3H2.5a1 1 0 00-1 1.5z" stroke="currentColor" stroke-width="1.3" stroke-linejoin="round"/>
+        </svg>
+        폴더 열기
+      </button>
+      <button type="button" class="ctx-item" data-command="openFile" data-hide-add-menu="true" title="파일 열기" aria-label="파일 열기">
+        <svg aria-hidden="true" width="13" height="13" viewBox="0 0 13 13" fill="none" style="flex-shrink:0">
+          <path d="M2.5 1.5h5l3 3V11a.5.5 0 01-.5.5H3a.5.5 0 01-.5-.5V2A.5.5 0 012.5 1.5z" stroke="currentColor" stroke-width="1.3" stroke-linejoin="round"/>
+          <path d="M7.5 1.5V4.5h3" stroke="currentColor" stroke-width="1.3" stroke-linejoin="round"/>
+        </svg>
+        파일 열기
+      </button>
+    </div>
+  </div>
+
   <!-- Sidebar toggle -->
-  <button type="button" class="btn btn-icon" id="btn-sidebar" data-command="toggleSidebar" title="패널">
+  <button type="button" class="btn btn-icon" id="btn-sidebar" data-command="toggleSidebar" title="패널" aria-label="패널">
     <svg aria-hidden="true" width="15" height="15" viewBox="0 0 15 15" fill="none">
       <line x1="2" y1="4" x2="13" y2="4" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/>
       <line x1="2" y1="7.5" x2="13" y2="7.5" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/>
@@ -1052,7 +1167,7 @@ kbd {
   <div class="spacer"></div>
 
   <!-- Source / Preview toggle pill -->
-  <button type="button" id="btn-mode" class="btn btn-mode" data-command="toggleSource" title="소스/미리보기 (⌘U)" style="display:none">
+  <button type="button" id="btn-mode" class="btn btn-mode" data-command="toggleSource" title="소스/미리보기 (⌘U)" aria-label="소스/미리보기 (⌘U)" style="display:none">
     <svg aria-hidden="true" width="13" height="13" viewBox="0 0 13 13" fill="none">
       <circle cx="6.5" cy="6.5" r="2" stroke="currentColor" stroke-width="1.3"/>
       <path d="M1 6.5C2.5 3.5 4.3 2 6.5 2s4 1.5 5.5 4.5C10.5 9.5 8.7 11 6.5 11S2.5 9.5 1 6.5z" stroke="currentColor" stroke-width="1.3"/>
@@ -1060,8 +1175,15 @@ kbd {
     <span id="mode-label">미리보기</span>
   </button>
 
+  <button type="button" id="btn-split" class="btn btn-icon" data-command="toggleSplitView" title="분할뷰" aria-label="분할뷰" style="display:none" disabled>
+    <svg aria-hidden="true" width="13" height="13" viewBox="0 0 13 13" fill="none">
+      <rect x="1.5" y="2" width="10" height="9" rx="1" stroke="currentColor" stroke-width="1.3"/>
+      <line x1="6.5" y1="2" x2="6.5" y2="11" stroke="currentColor" stroke-width="1.3"/>
+    </svg>
+  </button>
+
   <!-- Search -->
-  <button type="button" class="btn btn-icon" id="btn-search" data-command="toggleSearch" title="검색 (⌘F)">
+  <button type="button" class="btn btn-icon" id="btn-search" data-command="toggleSearch" title="검색 (⌘F)" aria-label="검색 (⌘F)">
     <svg aria-hidden="true" width="15" height="15" viewBox="0 0 15 15" fill="none">
       <circle cx="6.5" cy="6.5" r="4" stroke="currentColor" stroke-width="1.3"/>
       <line x1="9.7" y1="9.7" x2="13" y2="13" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/>
@@ -1069,14 +1191,14 @@ kbd {
   </button>
 
   <!-- Copy all -->
-  <button type="button" class="btn btn-icon" id="btn-copy-all" data-command="copyAll" title="전체 복사">
+  <button type="button" class="btn btn-icon" id="btn-copy-all" data-command="copyAll" title="전체 복사" aria-label="전체 복사">
     <svg aria-hidden="true" width="15" height="15" viewBox="0 0 15 15" fill="none">
       <rect x="4.5" y="4.5" width="8" height="9" rx="1" stroke="currentColor" stroke-width="1.3"/>
       <path d="M2.5 10.5V2.5h8" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"/>
     </svg>
   </button>
 
-  <button type="button" class="btn btn-icon" id="btn-save" data-command="saveFile" title="저장 (⌘S)" disabled>
+  <button type="button" class="btn btn-icon" id="btn-save" data-command="saveFile" title="저장 (⌘S)" aria-label="저장 (⌘S)" disabled>
     <svg aria-hidden="true" width="15" height="15" viewBox="0 0 15 15" fill="none">
       <path d="M3 2.5h7l2 2V12a.5.5 0 0 1-.5.5h-8A.5.5 0 0 1 3 12V2.5Z" stroke="currentColor" stroke-width="1.3" stroke-linejoin="round"/>
       <path d="M5 2.5v3h4v-3" stroke="currentColor" stroke-width="1.3" stroke-linejoin="round"/>
@@ -1084,7 +1206,7 @@ kbd {
     </svg>
   </button>
 
-  <button type="button" class="btn btn-icon" id="btn-print" data-command="printDoc" title="인쇄 (⌘P)" disabled>
+  <button type="button" class="btn btn-icon" id="btn-print" data-command="printDoc" title="인쇄 (⌘P)" aria-label="인쇄 (⌘P)" disabled>
     <svg aria-hidden="true" width="15" height="15" viewBox="0 0 15 15" fill="none">
       <path d="M4 5V2.5h7V5" stroke="currentColor" stroke-width="1.3" stroke-linejoin="round"/>
       <rect x="2.5" y="5" width="10" height="4" rx="1" stroke="currentColor" stroke-width="1.3"/>
@@ -1093,8 +1215,17 @@ kbd {
     </svg>
   </button>
 
+  <button type="button" class="btn btn-icon" id="btn-export-pdf" data-command="exportPdf" title="PDF 내보내기" aria-label="PDF 내보내기" disabled>
+    <svg aria-hidden="true" width="15" height="15" viewBox="0 0 15 15" fill="none">
+      <path d="M4 2.5h5.2L12 5.3V12a.5.5 0 0 1-.5.5h-7A.5.5 0 0 1 4 12V2.5Z" stroke="currentColor" stroke-width="1.3" stroke-linejoin="round"/>
+      <path d="M9 2.8V5.5h2.7" stroke="currentColor" stroke-width="1.3" stroke-linejoin="round"/>
+      <path d="M5.2 8.2h1.2c.6 0 1 .3 1 .8s-.4.8-1 .8h-.5v1.1" stroke="currentColor" stroke-width="1" stroke-linecap="round" stroke-linejoin="round"/>
+      <path d="M8.4 8.2h.7c.9 0 1.4.5 1.4 1.35s-.5 1.35-1.4 1.35h-.7V8.2Z" stroke="currentColor" stroke-width="1" stroke-linecap="round" stroke-linejoin="round"/>
+    </svg>
+  </button>
+
   <!-- Theme -->
-  <button type="button" id="btn-theme" class="btn btn-icon" data-command="toggleTheme" title="시스템 테마">
+  <button type="button" id="btn-theme" class="btn btn-icon" data-command="toggleTheme" title="시스템 테마" aria-label="시스템 테마">
     <svg aria-hidden="true" id="ic-auto" width="15" height="15" viewBox="0 0 15 15" fill="none">
       <rect x="1.5" y="2" width="12" height="8" rx="1" stroke="currentColor" stroke-width="1.3"/>
       <line x1="5.5" y1="10" x2="5" y2="13" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/>
@@ -1116,36 +1247,6 @@ kbd {
       <line x1="4.46" y1="10.54" x2="3.05" y2="11.95" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/>
     </svg>
   </button>
-
-  <!-- Open (+) with context menu -->
-  <div style="position:relative">
-    <button type="button" class="btn btn-primary-add" id="btn-add" data-command="toggleAddMenu" data-command-uses-event="true" title="열기">
-      <span class="btn-add-label">열기</span>
-      <svg aria-hidden="true" width="13" height="13" viewBox="0 0 13 13" fill="none">
-        <line x1="6.5" y1="1.5" x2="6.5" y2="11.5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
-        <line x1="1.5" y1="6.5" x2="11.5" y2="6.5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
-      </svg>
-    </button>
-    <div id="open-entry-hint">
-      <strong>파일/폴더 열기</strong>
-      <span>여기서 바로 시작</span>
-    </div>
-    <div id="add-menu" class="ctx-menu" style="display:none">
-      <button type="button" class="ctx-item" data-command="openFolder" data-hide-add-menu="true">
-        <svg aria-hidden="true" width="13" height="13" viewBox="0 0 13 13" fill="none" style="flex-shrink:0">
-          <path d="M1.5 4.5v5a1 1 0 001 1h8a1 1 0 001-1v-4a1 1 0 00-1-1H6L4.5 3H2.5a1 1 0 00-1 1.5z" stroke="currentColor" stroke-width="1.3" stroke-linejoin="round"/>
-        </svg>
-        폴더 열기
-      </button>
-      <button type="button" class="ctx-item" data-command="openFile" data-hide-add-menu="true">
-        <svg aria-hidden="true" width="13" height="13" viewBox="0 0 13 13" fill="none" style="flex-shrink:0">
-          <path d="M2.5 1.5h5l3 3V11a.5.5 0 01-.5.5H3a.5.5 0 01-.5-.5V2A.5.5 0 012.5 1.5z" stroke="currentColor" stroke-width="1.3" stroke-linejoin="round"/>
-          <path d="M7.5 1.5V4.5h3" stroke="currentColor" stroke-width="1.3" stroke-linejoin="round"/>
-        </svg>
-        파일 열기
-      </button>
-    </div>
-  </div>
 </header>
 
 <div id="app-context-menu" class="ctx-menu ctx-menu-floating" style="display:none"></div>
@@ -1153,10 +1254,10 @@ kbd {
 <div id="welcome-guide">
   <div class="guide-title">
     <strong>처음 시작하기</strong>
-    <button type="button" class="guide-close" data-command="dismissWelcomeGuide">×</button>
+    <button type="button" class="guide-close" data-command="dismissWelcomeGuide" title="안내 닫기" aria-label="안내 닫기">×</button>
   </div>
   <div class="guide-body">
-    우측 상단의 <strong>열기</strong> 버튼으로 파일이나 폴더를 바로 불러올 수 있어요.
+    좌측 상단의 <strong>열기</strong> 버튼으로 파일이나 폴더를 바로 불러올 수 있어요.
     <ul class="guide-list">
       <li><strong>파일 열기</strong>: 단일 Markdown 문서 열기</li>
       <li><strong>폴더 열기</strong>: 문서 묶음을 탐색기 탭에서 보기</li>
@@ -1167,9 +1268,31 @@ kbd {
     </div>
   </div>
   <div class="guide-actions">
-    <button type="button" class="guide-btn" data-command="openFromGuide" data-command-arg="file">파일 열기</button>
-    <button type="button" class="guide-btn secondary" data-command="openFromGuide" data-command-arg="folder">폴더 열기</button>
-    <button type="button" class="guide-btn secondary" data-command="dismissWelcomeGuide">나중에</button>
+    <button type="button" class="guide-btn" data-command="openFromGuide" data-command-arg="file" title="파일 열기" aria-label="파일 열기">파일 열기</button>
+    <button type="button" class="guide-btn secondary" data-command="openFromGuide" data-command-arg="folder" title="폴더 열기" aria-label="폴더 열기">폴더 열기</button>
+    <button type="button" class="guide-btn secondary" data-command="dismissWelcomeGuide" title="나중에" aria-label="나중에">나중에</button>
+  </div>
+</div>
+
+<div id="default-app-guide">
+  <div class="guide-title">
+    <strong>Markdown 기본 앱 등록</strong>
+  </div>
+  <div class="guide-body">
+    <p>마크다운 문서(<code>.md</code>, <code>.markdown</code> 확장자)를 편리하게 보기 위해서 아래의 단계를 진행해주세요.</p>
+    <ol>
+      <li>Finder에서 마크다운 문서(<code>.md</code>, <code>.markdown</code>) 우클릭</li>
+      <li>정보 가져오기</li>
+      <li>다음으로 열기 드롭다운 &gt; MDV 선택</li>
+      <li><code>모두 변경...</code> 버튼 클릭</li>
+    </ol>
+    <label class="guide-check">
+      <input type="checkbox" id="default-app-do-not-show">
+      <span>다시 보지 않기</span>
+    </label>
+  </div>
+  <div class="guide-actions">
+    <button type="button" class="guide-btn primary" data-command="dismissDefaultAppGuide" title="확인했습니다." aria-label="확인했습니다.">확인했습니다.</button>
   </div>
 </div>
 
@@ -1181,17 +1304,17 @@ kbd {
   </svg>
   <input id="search-input" type="text" placeholder="검색…" autocomplete="off">
   <span id="search-count"></span>
-  <button type="button" class="btn btn-icon" data-command="searchPrev" title="이전 (Shift+Enter)" style="width:22px;height:22px">
+  <button type="button" class="btn btn-icon" data-command="searchPrev" title="이전 (Shift+Enter)" aria-label="이전 (Shift+Enter)" style="width:22px;height:22px">
     <svg aria-hidden="true" width="11" height="11" viewBox="0 0 11 11" fill="none">
       <path d="M2 7l3.5-4L9 7" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/>
     </svg>
   </button>
-  <button type="button" class="btn btn-icon" data-command="searchNext" title="다음 (Enter)" style="width:22px;height:22px">
+  <button type="button" class="btn btn-icon" data-command="searchNext" title="다음 (Enter)" aria-label="다음 (Enter)" style="width:22px;height:22px">
     <svg aria-hidden="true" width="11" height="11" viewBox="0 0 11 11" fill="none">
       <path d="M2 4l3.5 4L9 4" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/>
     </svg>
   </button>
-  <button type="button" class="btn btn-icon" data-command="closeSearch" title="닫기 (Esc)" style="width:22px;height:22px">
+  <button type="button" class="btn btn-icon" data-command="closeSearch" title="닫기 (Esc)" aria-label="닫기 (Esc)" style="width:22px;height:22px">
     <svg aria-hidden="true" width="11" height="11" viewBox="0 0 11 11" fill="none">
       <line x1="2" y1="2" x2="9" y2="9" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/>
       <line x1="9" y1="2" x2="2" y2="9" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/>
@@ -1212,8 +1335,8 @@ kbd {
     <div id="sidebar-panel">
       <div id="sidebar-tabs" data-active="toc">
         <div id="sidebar-tab-indicator"></div>
-        <button type="button" class="stab active" data-command="switchTab" data-command-arg="toc">목차</button>
-        <button type="button" class="stab" data-command="switchTab" data-command-arg="explorer">탐색기</button>
+        <button type="button" class="stab active" data-command="switchTab" data-command-arg="toc" title="목차" aria-label="목차">목차</button>
+        <button type="button" class="stab" data-command="switchTab" data-command-arg="explorer" title="탐색기" aria-label="탐색기">탐색기</button>
       </div>
       <div id="panel-toc">
         <div class="toc-label">목차</div>
@@ -1223,13 +1346,13 @@ kbd {
         <div id="explorer-root-label">
           <span id="explorer-root-path">폴더를 선택하세요</span>
           <span class="explorer-root-actions">
-            <button type="button" id="btn-explorer-reveal" class="explorer-root-btn hidden" data-command="toggleExplorerPathInfo" title="경로 보기">
+            <button type="button" id="btn-explorer-reveal" class="explorer-root-btn hidden" data-command="toggleExplorerPathInfo" title="경로 보기" aria-label="경로 보기">
               <svg aria-hidden="true" width="12" height="12" viewBox="0 0 12 12" fill="none">
                 <circle cx="5.25" cy="5.25" r="3.25" stroke="currentColor" stroke-width="1.2"/>
                 <line x1="7.8" y1="7.8" x2="10.4" y2="10.4" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"/>
               </svg>
             </button>
-            <button type="button" id="btn-explorer-close" class="explorer-root-btn hidden" data-command="clearExplorerRoot" title="폴더 닫기">
+            <button type="button" id="btn-explorer-close" class="explorer-root-btn hidden" data-command="clearExplorerRoot" title="폴더 닫기" aria-label="폴더 닫기">
               <svg aria-hidden="true" width="12" height="12" viewBox="0 0 12 12" fill="none">
                 <line x1="2.2" y1="2.2" x2="9.8" y2="9.8" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"/>
                 <line x1="9.8" y1="2.2" x2="2.2" y2="9.8" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"/>
@@ -1238,7 +1361,7 @@ kbd {
           </span>
         </div>
         <div id="explorer-tree">
-          <div class="tree-hint">위의 <strong>+</strong> 버튼으로<br>폴더를 열어 탐색하세요.</div>
+          <div class="tree-hint">좌측 상단 <strong>+</strong> 버튼으로<br>폴더를 열어 탐색하세요.</div>
         </div>
       </div>
     </div>
@@ -1255,13 +1378,13 @@ kbd {
           <div class="empty-icon">📄</div>
           <div class="empty-title">열린 파일 없음</div>
           <div class="empty-sub">
-            우측 상단의 <strong>+ 열기</strong> 버튼을 누르거나<br>
+            좌측 상단의 <strong>열기</strong> 버튼을 누르거나<br>
             아래 버튼 또는 드래그 앤 드롭으로 시작하세요<br><br>
             <kbd>.md</kbd>&nbsp; <kbd>.markdown</kbd>
           </div>
           <div class="empty-actions">
-            <button type="button" class="empty-cta" data-command="openFile">파일 열기</button>
-            <button type="button" class="empty-cta secondary" data-command="openFolder">폴더 열기</button>
+            <button type="button" class="empty-cta" data-command="openFile" title="파일 열기" aria-label="파일 열기">파일 열기</button>
+            <button type="button" class="empty-cta secondary" data-command="openFolder" title="폴더 열기" aria-label="폴더 열기">폴더 열기</button>
           </div>
         </div>
       </div>
@@ -1274,7 +1397,7 @@ kbd {
   </div>
 </div>
 
-<button type="button" id="go-top" data-command="goTop" title="맨 위로">↑</button>
+<button type="button" id="go-top" data-command="goTop" title="맨 위로" aria-label="맨 위로">↑</button>
 
 <script src="./path-utils.js"></script>
 <script src="./markdown.js"></script>

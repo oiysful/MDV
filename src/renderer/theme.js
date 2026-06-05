@@ -18,6 +18,7 @@
         refs.icSun.style.display = theme === 'light' ? '' : 'none'
         const labels = { auto: '시스템 테마', light: '밝게', dark: '어둡게' }
         refs.btnTheme.title = labels[theme]
+        refs.btnTheme.setAttribute('aria-label', labels[theme])
       }
 
       return { theme, isDark }
