@@ -20,12 +20,13 @@
     }
   }
 
-  function applySourceModeToRefs({ refs, sourceMode, markdownText, updateModeButton, updateLineNumbers, autoResizeEditor }) {
+  function applySourceModeToRefs({ refs, sourceMode, splitMode = false, markdownText, updateModeButton, updateLineNumbers, autoResizeEditor }) {
     refs.content.style.display = sourceMode ? 'none' : ''
-    refs.sourceView.style.display = sourceMode ? 'block' : 'none'
+    refs.sourceView.style.display = sourceMode || splitMode ? 'block' : 'none'
     refs.scrollArea.classList.toggle('source-mode', sourceMode)
+    refs.scrollArea.classList.toggle('split-mode', splitMode)
 
-    if (sourceMode) {
+    if (sourceMode || splitMode) {
       refs.sourceEditor.value = markdownText
       updateLineNumbers()
       autoResizeEditor()
@@ -36,6 +37,8 @@
 
   function createEditorController({ getRefs, getMarkdown, setMarkdown, getActiveTab, rerenderTabBar, onSourceInput, render, closeSearch }) {
     let sourceMode = false
+    let splitMode = false
+    let syncingSplitScroll = false
 
     function getSourceMode() {
       return sourceMode
@@ -43,6 +46,14 @@
 
     function setSourceMode(nextValue) {
       sourceMode = Boolean(nextValue)
+    }
+
+    function getSplitMode() {
+      return splitMode
+    }
+
+    function setSplitMode(nextValue) {
+      splitMode = Boolean(nextValue)
     }
 
     function getEditorValue() {
@@ -55,8 +66,15 @@
 
       const state = getModeButtonState(sourceMode)
       refs.btnMode.title = state.title
+      refs.btnMode.setAttribute('aria-label', state.title)
       refs.btnMode.classList.toggle('source-active', state.isSourceActive)
       refs.btnMode.querySelector('svg').innerHTML = state.svgMarkup
+
+      if (refs.btnSplit) {
+        refs.btnSplit.classList.toggle('split-active', splitMode)
+        refs.btnSplit.title = splitMode ? '분할뷰 닫기' : '분할뷰'
+        refs.btnSplit.setAttribute('aria-label', refs.btnSplit.title)
+      }
     }
 
     function updateLineNumbers() {
@@ -83,11 +101,30 @@
       hl.style.display = 'block'
     }
 
+    function getScrollRatio(element) {
+      const maxScroll = element.scrollHeight - element.clientHeight
+      if (maxScroll <= 0) return 0
+      return element.scrollTop / maxScroll
+    }
+
+    function setScrollRatio(element, ratio) {
+      const maxScroll = element.scrollHeight - element.clientHeight
+      element.scrollTop = maxScroll > 0 ? maxScroll * ratio : 0
+    }
+
+    function syncSplitScroll(sourceElement, targetElement) {
+      if (!splitMode || syncingSplitScroll) return
+      syncingSplitScroll = true
+      setScrollRatio(targetElement, getScrollRatio(sourceElement))
+      requestAnimationFrame(() => { syncingSplitScroll = false })
+    }
+
     function applySourceMode() {
       const refs = getRefs()
       applySourceModeToRefs({
         refs,
         sourceMode,
+        splitMode,
         markdownText: getMarkdown(),
         updateModeButton,
         updateLineNumbers,
@@ -100,6 +137,18 @@
       if (!tab) return
 
       closeSearch()
+
+      if (splitMode) {
+        const edited = getEditorValue()
+        splitMode = false
+        sourceMode = true
+        setMarkdown(edited)
+        tab.content = edited
+        tab.dirty = edited !== tab.savedContent
+        rerenderTabBar()
+        applySourceMode()
+        return
+      }
 
       if (sourceMode) {
         const edited = getEditorValue()
@@ -116,12 +165,46 @@
       applySourceMode()
     }
 
+    async function toggleSplitView() {
+      const tab = getActiveTab()
+      if (!tab) return
+
+      closeSearch()
+
+      if (splitMode) {
+        const edited = getEditorValue()
+        setMarkdown(edited)
+        tab.content = edited
+        tab.dirty = edited !== tab.savedContent
+        rerenderTabBar()
+        await render(edited, tab.filename || '', tab.path || null)
+        splitMode = false
+        sourceMode = false
+        applySourceMode()
+        return
+      }
+
+      if (sourceMode) {
+        const edited = getEditorValue()
+        setMarkdown(edited)
+        tab.content = edited
+        tab.dirty = edited !== tab.savedContent
+        rerenderTabBar()
+        await render(edited, tab.filename || '', tab.path || null)
+      }
+
+      splitMode = true
+      sourceMode = false
+      applySourceMode()
+    }
+
     function focusEditor() {
       getRefs().sourceEditor.focus()
     }
 
     function openInSourceMode() {
       sourceMode = true
+      splitMode = false
       applySourceMode()
       focusEditor()
     }
@@ -167,11 +250,16 @@
       editor.addEventListener('blur', () => {
         document.getElementById('line-highlight').style.display = 'none'
       })
+
+      refs.content.addEventListener('scroll', () => syncSplitScroll(refs.content, refs.sourceView))
+      refs.sourceView.addEventListener('scroll', () => syncSplitScroll(refs.sourceView, refs.content))
     }
 
     return {
       getSourceMode,
       setSourceMode,
+      getSplitMode,
+      setSplitMode,
       getEditorValue,
       updateModeButton,
       updateLineNumbers,
@@ -179,6 +267,7 @@
       updateLineHighlight,
       applySourceMode,
       toggleSource,
+      toggleSplitView,
       focusEditor,
       openInSourceMode,
       refreshSourceEditor,

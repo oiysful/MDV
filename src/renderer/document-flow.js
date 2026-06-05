@@ -6,8 +6,8 @@
     return []
   }
 
-  function syncTabContentForSave({ tab, getSourceMode, getEditorValue, setMarkdown }) {
-    if (!tab || !getSourceMode()) return tab
+  function syncTabContentForSave({ tab, getSourceMode, getSplitMode = () => false, getEditorValue, setMarkdown }) {
+    if (!tab || (!getSourceMode() && !getSplitMode())) return tab
     tab.content = getEditorValue()
     setMarkdown(tab.content)
     return tab
@@ -64,6 +64,7 @@
       syncTabContentForSave({
         tab,
         getSourceMode: () => editorController.getSourceMode(),
+        getSplitMode: () => editorController.getSplitMode(),
         getEditorValue: () => editorController.getEditorValue(),
         setMarkdown,
       })
@@ -90,6 +91,7 @@
       syncTabContentForSave({
         tab,
         getSourceMode: () => editorController.getSourceMode(),
+        getSplitMode: () => editorController.getSplitMode(),
         getEditorValue: () => editorController.getEditorValue(),
         setMarkdown,
       })

@@ -38,6 +38,8 @@
     showAppContextMenu,
     getSourceMode,
     setSourceMode,
+    getSplitMode,
+    setSplitMode,
     setMarkdown,
     confirmClose,
     openNewWindow,
@@ -46,6 +48,7 @@
     let activeTabId = null
     let tabIdCounter = 0
     let draggedTabId = null
+    let restoreRenderVersion = 0
 
     function findTabByPath(targetPath) {
       return findTabByPathInTabs(tabs, targetPath)
@@ -63,13 +66,25 @@
       const refs = getRefs()
       const tab = getActiveTab()
       if (!tab || !refs) return
-      tab.scrollTop = refs.scrollArea.scrollTop
-      tab.renderedHTML = refs.content.innerHTML
-      tab.tocHTML = refs.tocList.innerHTML
-      tab.sourceMode = getSourceMode()
-      if (getSourceMode()) {
+      const sourceMode = getSourceMode()
+      const splitMode = getSplitMode()
+      tab.sourceMode = sourceMode
+      tab.splitMode = splitMode
+      tab.scrollTop = splitMode ? 0 : refs.scrollArea.scrollTop
+      tab.previewScrollTop = splitMode ? refs.content.scrollTop || 0 : 0
+      tab.sourceScrollTop = refs.sourceView.scrollTop || 0
+      if (sourceMode || splitMode) {
+        const nextContent = refs.sourceEditor.value
+        if (splitMode && nextContent !== tab.content) tab.previewDirty = true
         tab.content = refs.sourceEditor.value
         setMarkdown(tab.content)
+      }
+      if (splitMode && tab.previewDirty) {
+        tab.renderedHTML = ''
+        tab.tocHTML = ''
+      } else {
+        tab.renderedHTML = refs.content.innerHTML
+        tab.tocHTML = refs.tocList.innerHTML
       }
     }
 
@@ -80,10 +95,34 @@
       document.title = (tab.filename || 'untitled.md').replace(/\.md$/i, '')
       if (refs.btnMode) refs.btnMode.style.display = ''
       setSourceMode(tab.sourceMode || false)
+      setSplitMode(tab.splitMode || false)
       applySourceMode()
+      if (tab.splitMode && tab.previewDirty) {
+        const renderVersion = ++restoreRenderVersion
+        void render(tab.content, tab.filename || '', tab.path || null).then(() => {
+          if (getActiveTab() !== tab || renderVersion !== restoreRenderVersion) {
+            restoreActiveTabState()
+            return
+          }
+          tab.renderedHTML = refs.content.innerHTML
+          tab.tocHTML = refs.tocList.innerHTML
+          tab.previewDirty = false
+          refs.content.scrollTop = tab.previewScrollTop || 0
+        })
+      }
       requestAnimationFrame(() => {
-        refs.scrollArea.scrollTop = tab.scrollTop || 0
+        if (tab.splitMode) refs.content.scrollTop = tab.previewScrollTop || 0
+        else refs.scrollArea.scrollTop = tab.scrollTop || 0
+        refs.sourceView.scrollTop = tab.sourceScrollTop || 0
       })
+    }
+
+    function restoreActiveTabState() {
+      const tab = getActiveTab()
+      if (!tab) return
+      setMarkdown(tab.content)
+      restoreTabState(tab)
+      renderTabBar()
     }
 
     function renderTabBar() {
@@ -102,6 +141,9 @@
         const closeButton = document.createElement('button')
         closeButton.className = 'file-tab-close'
         closeButton.innerHTML = '&times;'
+        closeButton.title = '탭 닫기'
+        closeButton.setAttribute('aria-label', '탭 닫기')
+        el.title = tab.filename
         el.append(name, closeButton)
         el.addEventListener('click', () => switchToTab(tab.id))
         el.addEventListener('auxclick', event => {
@@ -198,12 +240,18 @@
         scrollTop: 0,
         renderedHTML: null,
         tocHTML: null,
+        sourceMode: false,
+        splitMode: false,
+        previewDirty: false,
+        previewScrollTop: 0,
+        sourceScrollTop: 0,
       }
       tabs.push(tab)
       if (activeTabId !== null) saveCurrentTabState()
       activeTabId = tab.id
       setMarkdown(tab.content)
       setSourceMode(false)
+      setSplitMode(false)
       applySourceMode()
       await render(tab.content, tab.filename, tab.path)
       tab.renderedHTML = refs.content.innerHTML
@@ -306,7 +354,11 @@
         await render(content, tab.filename, tab.path)
         tab.renderedHTML = refs.content.innerHTML
         tab.tocHTML = refs.tocList.innerHTML
+        tab.previewDirty = false
         if (getSourceMode()) {
+          applySourceMode()
+        } else if (getSplitMode()) {
+          refs.sourceEditor.value = content
           applySourceMode()
         }
       }
@@ -332,6 +384,7 @@
       findTabByPath,
       getActiveTab,
       getTabCount,
+      restoreActiveTabState,
       handleExternalFileChange,
       updateActiveTabDirtyFromEditor,
       renderTabBar,

@@ -13,7 +13,7 @@ test('getLoadTargetsFromOpenResult returns file targets from dialog payloads', (
   assert.deepEqual(getLoadTargetsFromOpenResult({}), [])
 })
 
-test('syncTabContentForSave copies source editor content into the active tab only in source mode', () => {
+test('syncTabContentForSave copies editor content into the active tab in source or split mode', () => {
   const tab = { content: '# Before' }
   let markdownValue = null
 
@@ -30,10 +30,22 @@ test('syncTabContentForSave copies source editor content into the active tab onl
   syncTabContentForSave({
     tab,
     getSourceMode: () => false,
+    getSplitMode: () => true,
+    getEditorValue: () => '# Split After',
+    setMarkdown: value => { markdownValue = value },
+  })
+
+  assert.equal(tab.content, '# Split After')
+  assert.equal(markdownValue, '# Split After')
+
+  syncTabContentForSave({
+    tab,
+    getSourceMode: () => false,
+    getSplitMode: () => false,
     getEditorValue: () => '# Ignored',
     setMarkdown: value => { markdownValue = value },
   })
 
-  assert.equal(tab.content, '# After')
-  assert.equal(markdownValue, '# After')
+  assert.equal(tab.content, '# Split After')
+  assert.equal(markdownValue, '# Split After')
 })
