@@ -16,6 +16,8 @@
       openEntryHint: documentRef.getElementById('open-entry-hint'),
       btnSave: documentRef.getElementById('btn-save'),
       btnPrint: documentRef.getElementById('btn-print'),
+      btnExportPdf: documentRef.getElementById('btn-export-pdf'),
+      btnSplit: documentRef.getElementById('btn-split'),
       goTop: documentRef.getElementById('go-top'),
       btnMode: documentRef.getElementById('btn-mode'),
       modeLabel: documentRef.getElementById('mode-label'),
@@ -36,6 +38,8 @@
       btnExplorerClose: documentRef.getElementById('btn-explorer-close'),
       toast: documentRef.getElementById('toast'),
       welcomeGuide: documentRef.getElementById('welcome-guide'),
+      defaultAppGuide: documentRef.getElementById('default-app-guide'),
+      defaultAppDoNotShow: documentRef.getElementById('default-app-do-not-show'),
     }
   }
 

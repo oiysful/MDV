@@ -8,13 +8,13 @@
   <div class="empty-icon">📄</div>
   <div class="empty-title">열린 파일 없음</div>
   <div class="empty-sub">
-    우측 상단의 <strong>+ 열기</strong> 버튼을 누르거나<br>
+    좌측 상단의 <strong>열기</strong> 버튼을 누르거나<br>
     아래 버튼 또는 드래그 앤 드롭으로 시작하세요<br><br>
     <kbd>.md</kbd>&nbsp; <kbd>.markdown</kbd>
   </div>
   <div class="empty-actions">
-    <button class="empty-cta" type="button" data-command="openFile">파일 열기</button>
-    <button class="empty-cta secondary" type="button" data-command="openFolder">폴더 열기</button>
+    <button class="empty-cta" type="button" data-command="openFile" title="파일 열기" aria-label="파일 열기">파일 열기</button>
+    <button class="empty-cta secondary" type="button" data-command="openFolder" title="폴더 열기" aria-label="폴더 열기">폴더 열기</button>
   </div>
 </div>`
   }
@@ -57,13 +57,20 @@
       refs.content.classList.add('is-empty')
       refs.content.style.display = ''
       refs.sourceView.style.display = 'none'
+      refs.scrollArea.classList.remove('source-mode', 'split-mode')
       documentRef.title = 'MDV'
       if (refs.btnMode) {
         refs.btnMode.style.display = 'none'
         refs.btnMode.classList.remove('source-active')
       }
+      if (refs.btnSplit) {
+        refs.btnSplit.disabled = true
+        refs.btnSplit.style.display = 'none'
+        refs.btnSplit.classList.remove('split-active')
+      }
       markdownController.resetEmptyStats()
       getEditorController()?.setSourceMode(false)
+      getEditorController()?.setSplitMode(false)
       setMarkdown('')
     }
 
@@ -83,6 +90,16 @@
       if (!targetPath) return
       const res = JSON.parse(await api.revealInFinder(targetPath))
       if (res.error) alert(`Finder 표시 실패: ${res.error}`)
+    }
+
+    async function checkMarkdownDefaultAppStatus() {
+      if (!api.getMarkdownDefaultAppStatus) return
+      const status = JSON.parse(await api.getMarkdownDefaultAppStatus())
+      onboardingController.updateDefaultAppGuide(status)
+    }
+
+    function dismissDefaultAppGuide() {
+      onboardingController.dismissDefaultAppGuide()
     }
 
     function showToast(message) {
@@ -108,9 +125,14 @@
     function updateToolbarActions() {
       const refs = getRefs()
       if (!refs) return
-      const activeTab = getWorkspaceController() ? getWorkspaceController().getActiveTab() : null
-      if (refs.btnSave) refs.btnSave.disabled = !activeTab || !activeTab.dirty
+      const activeTab = getWorkspaceController()?.getActiveTab() || null
+      if (refs.btnSave) refs.btnSave.disabled = !activeTab?.dirty
       if (refs.btnPrint) refs.btnPrint.disabled = !activeTab
+      if (refs.btnExportPdf) refs.btnExportPdf.disabled = !activeTab
+      if (refs.btnSplit) {
+        refs.btnSplit.disabled = !activeTab
+        refs.btnSplit.style.display = activeTab ? '' : 'none'
+      }
     }
 
     function hideAppContextMenu() {
@@ -147,8 +169,24 @@
       windowRef.print()
     }
 
+    async function exportPdf() {
+      const tab = getWorkspaceController().getActiveTab()
+      if (!tab) return
+      const suggestedName = `${(tab.filename || 'untitled.md').replace(/\.(md|markdown)$/i, '')}.pdf`
+      const res = JSON.parse(await api.exportPdf(suggestedName))
+      if (res.error) {
+        alertError(`PDF 내보내기 실패: ${res.error}`)
+        return
+      }
+      if (!res.cancelled) showToast('PDF 저장됨')
+    }
+
     async function toggleSource() {
       await getEditorController().toggleSource()
+    }
+
+    async function toggleSplitView() {
+      await getEditorController().toggleSplitView()
     }
 
     function switchTab(tab) {
@@ -203,6 +241,7 @@
       await navigator.clipboard.writeText(markdown)
       const button = documentRef.getElementById('btn-copy-all')
       button.classList.add('copied')
+      showToast('복사됨')
       setTimeout(() => button.classList.remove('copied'), 1500)
     }
 
@@ -234,11 +273,12 @@
       return searchController.searchPrev()
     }
 
-    function copyCode(button) {
+    async function copyCode(button) {
       const code = button.closest('.code-wrapper').querySelector('code')
-      navigator.clipboard.writeText(code?.innerText || '')
+      await navigator.clipboard.writeText(code?.innerText || '')
       button.textContent = '✓ 복사됨'
       button.classList.add('copied')
+      showToast('코드 복사됨')
       setTimeout(() => {
         button.textContent = '복사'
         button.classList.remove('copied')
@@ -289,7 +329,8 @@
         if (modifier && event.key === 'n') { event.preventDefault(); void newWindow() }
         if (modifier && event.key === 'w') { event.preventDefault(); closeCurrentTab() }
         if (modifier && event.key === 'u') { event.preventDefault(); void toggleSource() }
-        if (modifier && event.key === 'f') { event.preventDefault(); if (!getEditorController().getSourceMode()) toggleSearch() }
+        if (modifier && event.key === '\\') { event.preventDefault(); void toggleSplitView() }
+        if (modifier && event.key === 'f') { event.preventDefault(); if (!getEditorController().getSourceMode() && !getEditorController().getSplitMode()) toggleSearch() }
         if (modifier && event.key === 's' && event.shiftKey) { event.preventDefault(); void saveFileAs() }
         if (modifier && event.key === 's' && !event.shiftKey) { event.preventDefault(); void saveFile() }
         if (modifier && event.shiftKey && (event.key === '}' || event.code === 'BracketRight')) { event.preventDefault(); switchToNextTab() }
@@ -312,6 +353,8 @@
       clearExplorerRoot,
       toggleExplorerPathInfo,
       revealInFinder,
+      checkMarkdownDefaultAppStatus,
+      dismissDefaultAppGuide,
       showToast,
       updateEntryAffordance,
       dismissWelcomeGuide,
@@ -326,7 +369,9 @@
       toggleSidebar,
       goTop,
       printDoc,
+      exportPdf,
       toggleSource,
+      toggleSplitView,
       switchTab,
       newWindow,
       newFile,
