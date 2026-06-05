@@ -6,6 +6,10 @@
   "scripts": {
     "start": "electron .",
     "build": "electron-builder",
+    "install:local": "bash scripts/install-local.sh",
+    "update:local": "bash scripts/update-local.sh",
+    "install:release": "bash scripts/install-release.sh",
+    "update:release": "bash scripts/update-release.sh",
     "test:electron": "node --test tests/electron/smoke.test.js",
     "test:unit": "node --test tests/unit/*.test.js"
   },
