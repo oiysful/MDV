@@ -163,6 +163,7 @@
 
       sourceMode = !sourceMode
       applySourceMode()
+      if (sourceMode) requestAnimationFrame(focusEditor)
     }
 
     async function toggleSplitView() {

@@ -623,10 +623,11 @@ mark.search-hl.current {
   background: var(--bg);
 }
 #source-editor {
-  display: block; width: 100%; border: none; outline: none; resize: none;
+  display: block; width: calc(100% - 40px); margin-left: 40px; border: none; outline: none; resize: none;
+  box-sizing: border-box;
   background: transparent; font-family: var(--font-mono); font-size: 13px;
   line-height: 1.6; color: var(--text); tab-size: 4;
-  padding: var(--sp-sm) var(--sp-md) var(--sp-sm) 52px;
+  padding: var(--sp-sm) var(--sp-md);
   white-space: pre; overflow-x: auto; overflow-y: hidden;
   position: relative; z-index: 1;
 }
@@ -641,7 +642,8 @@ mark.search-hl.current {
   border-left-color: rgba(255,255,255,0.15);
 }
 #source-lines {
-  position: absolute; top: 0; left: 0; width: 40px; padding: var(--sp-sm) 4px;
+  position: absolute; top: 0; bottom: 0; left: 0; width: 40px; min-height: 100%; padding: var(--sp-sm) 4px;
+  box-sizing: border-box; z-index: 2;
   text-align: right; font-family: var(--font-mono); font-size: 13px;
   line-height: 1.6; color: var(--text-dimmed); white-space: pre;
   user-select: none; pointer-events: none;
