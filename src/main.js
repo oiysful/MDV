@@ -21,10 +21,24 @@ function createWindow(filePath = null) {
       preload: path.join(__dirname, 'preload.js'),
       contextIsolation: true,
       nodeIntegration: false,
+      sandbox: true,
     },
   })
 
   win.loadFile(path.join(__dirname, 'renderer', 'index.html'))
+
+  // The renderer holds `window.api`, so it must never navigate away from the local
+  // shell: any remote page loaded into this frame would inherit that bridge. The
+  // in-app link handler already routes clicks to the OS browser; these are the
+  // backstops for anything that slips past it.
+  win.webContents.setWindowOpenHandler(({ url }) => {
+    shell.openExternal(url).catch(() => {})
+    return { action: 'deny' }
+  })
+
+  win.webContents.on('will-navigate', (event, url) => {
+    if (url !== win.webContents.getURL()) event.preventDefault()
+  })
 
   win.webContents.on('did-finish-load', () => {
     win.webContents.send('theme-changed', nativeTheme.shouldUseDarkColors)
