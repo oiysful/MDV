@@ -836,7 +836,7 @@ test('split view keeps active tab when dirty restore render finishes after tab s
   }
 })
 
-test('external file changes update the active source editor and clear dirty state', async () => {
+test('external file changes reload clean tabs and prompt before clobbering dirty edits', async () => {
   const { path: tempMarkdown, cleanup } = await createTempMarkdown(BASIC_MD, 'watched-source.md')
   const { electronApp, page } = await launchApp()
 
@@ -849,15 +849,10 @@ test('external file changes update the active source editor and clear dirty stat
     await emitRendererCommand(electronApp, 'toggleSource')
     await page.waitForFunction(() => document.getElementById('source-view').style.display === 'block')
 
-    await page.locator('#source-editor').fill('# Local edit\n')
-    await page.waitForFunction(() => {
-      const active = document.querySelector('#tab-list .file-tab.active .file-tab-name')
-      return Boolean(active && active.textContent.includes('●'))
-    })
-
+    // Clean tab: external change reloads the editor silently.
     const changedContent = '# External update\n\nWatcher payload replaced the source.\n'
     await fs.writeFile(tempMarkdown, changedContent, 'utf8')
-    await emitFileChanged(electronApp, { path: tempMarkdown, content: changedContent })
+    await emitFileChanged(electronApp, { path: tempMarkdown, content: changedContent, event: 'change' })
 
     await page.waitForFunction(expected => {
       const editor = document.getElementById('source-editor')
@@ -866,7 +861,26 @@ test('external file changes update the active source editor and clear dirty stat
       return editor.value === expected && active && !active.textContent.includes('●') && saveButton.disabled
     }, changedContent)
 
-    assert.equal(await page.locator('#source-editor').inputValue(), changedContent)
+    // Dirty tab: external change asks first; a dismissed confirm keeps the local edit.
+    const localEdit = '# Local edit\n'
+    await page.locator('#source-editor').fill(localEdit)
+    await page.waitForFunction(() => {
+      const active = document.querySelector('#tab-list .file-tab.active .file-tab-name')
+      return Boolean(active && active.textContent.includes('●'))
+    })
+
+    const secondExternal = '# Second external update\n'
+    await fs.writeFile(tempMarkdown, secondExternal, 'utf8')
+    await emitFileChanged(electronApp, { path: tempMarkdown, content: secondExternal, event: 'change' })
+
+    // Playwright auto-dismisses native dialogs, so confirm() returns false → keep edits.
+    await page.waitForFunction(expected => {
+      const editor = document.getElementById('source-editor')
+      const active = document.querySelector('#tab-list .file-tab.active .file-tab-name')
+      return editor.value === expected && active && active.textContent.includes('●')
+    }, localEdit)
+
+    assert.equal(await page.locator('#source-editor').inputValue(), localEdit)
   } finally {
     await electronApp.close()
     await cleanup()

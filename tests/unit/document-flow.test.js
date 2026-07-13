@@ -4,6 +4,7 @@ const assert = require('node:assert/strict')
 const {
   getLoadTargetsFromOpenResult,
   syncTabContentForSave,
+  detectSaveConflict,
 } = require('../../src/renderer/document-flow.js')
 
 test('getLoadTargetsFromOpenResult returns file targets from dialog payloads', () => {
@@ -48,4 +49,14 @@ test('syncTabContentForSave copies editor content into the active tab in source 
 
   assert.equal(tab.content, '# Split After')
   assert.equal(markdownValue, '# Split After')
+})
+
+test('detectSaveConflict flags disk content that diverged from the last saved snapshot', () => {
+  // Disk matches what we last saved: no conflict.
+  assert.equal(detectSaveConflict({ content: '# Same' }, '# Same'), false)
+  // Disk changed under us since the last save: conflict.
+  assert.equal(detectSaveConflict({ content: '# External edit' }, '# Same'), true)
+  // Read failed (e.g. file deleted): treat as no conflict so we can recreate it.
+  assert.equal(detectSaveConflict({ error: 'ENOENT' }, '# Same'), false)
+  assert.equal(detectSaveConflict(null, '# Same'), false)
 })

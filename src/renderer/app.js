@@ -94,6 +94,7 @@ document.addEventListener('DOMContentLoaded', () => {
     setMarkdown: value => { state.md = value },
     showToast: message => runtimeController.showToast(message),
     alertError: message => alert(message),
+    confirmOverwrite: message => confirm(message),
   })
 
   shellActionsController = window.MDVShellActions.createShellActionsController({
@@ -154,6 +155,8 @@ document.addEventListener('DOMContentLoaded', () => {
     setMarkdown: value => { state.md = value },
     confirmClose: message => confirm(message),
     openNewWindow: path => window.api.newWindow(path),
+    reportDirtyState: hasDirty => window.api.setDirtyState?.(hasDirty),
+    closeSearch: () => runtimeController.closeSearch(),
   })
 
   explorerController = window.MDVExplorer.createExplorerController({

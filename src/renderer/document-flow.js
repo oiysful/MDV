@@ -13,7 +13,13 @@
     return tab
   }
 
-  function createDocumentFlowController({ api, getWorkspaceController, getEditorController, setMarkdown, showToast, alertError }) {
+  function detectSaveConflict(diskResult, savedContent) {
+    // A missing/errored read (e.g. file deleted) is not a conflict — we simply recreate it.
+    if (!diskResult || diskResult.error) return false
+    return diskResult.content !== savedContent
+  }
+
+  function createDocumentFlowController({ api, getWorkspaceController, getEditorController, setMarkdown, showToast, alertError, confirmOverwrite }) {
     let watchedPath = null
 
     async function watchFile(path) {
@@ -49,7 +55,7 @@
       tab.filename = nextFilename
       tab.savedContent = tab.content
       tab.dirty = false
-      document.title = tab.filename.replace(/\.md$/i, '')
+      document.title = globalScope.MDVWorkspace.stripMarkdownExtension(tab.filename)
       getWorkspaceController().renderTabBar()
       watchFile(tab.path)
       showToast('저장됨')
@@ -72,6 +78,14 @@
       if (!tab.path) {
         await saveFileAs()
         return
+      }
+
+      const diskResult = JSON.parse(await api.readFile(tab.path))
+      if (detectSaveConflict(diskResult, tab.savedContent)) {
+        const overwrite = confirmOverwrite
+          ? confirmOverwrite('이 파일이 외부에서 변경되었습니다. 편집 중인 내용으로 덮어쓰시겠습니까?')
+          : true
+        if (!overwrite) return
       }
 
       const res = JSON.parse(await api.saveFile(tab.path, tab.content))
@@ -112,8 +126,8 @@
       await load(data)
     }
 
-    async function handleFileChanged({ path, content }) {
-      await getWorkspaceController().handleExternalFileChange({ path, content })
+    async function handleFileChanged({ path, content, event }) {
+      await getWorkspaceController().handleExternalFileChange({ path, content, event })
     }
 
     return {
@@ -131,6 +145,7 @@
     createDocumentFlowController,
     getLoadTargetsFromOpenResult,
     syncTabContentForSave,
+    detectSaveConflict,
   }
 
   globalScope.MDVDocumentFlow = api

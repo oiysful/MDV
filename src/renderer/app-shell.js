@@ -67,8 +67,8 @@
         await handleFileOpened(jsonStr)
       })
 
-      api.onFileChanged(async ({ path, content }) => {
-        await handleFileChanged({ path, content })
+      api.onFileChanged(async ({ path, content, event }) => {
+        await handleFileChanged({ path, content, event })
       })
 
       if (api.onRendererCommand && handleRendererCommand) {

@@ -4,6 +4,20 @@
     return tabs.find(tab => tab.path === targetPath) || null
   }
 
+  function stripMarkdownExtension(name) {
+    return String(name ?? '').replace(/\.(md|markdown)$/i, '')
+  }
+
+  function computeAggregateDirty(tabs) {
+    return tabs.some(tab => tab.dirty)
+  }
+
+  function resolveExternalChangeAction({ event, isDirty }) {
+    if (event === 'unlink') return 'mark-deleted'
+    if (isDirty) return 'confirm'
+    return 'reload'
+  }
+
   function getNextActiveTabIdAfterClose(tabs, closingTabId, currentActiveTabId) {
     const idx = tabs.findIndex(tab => tab.id === closingTabId)
     if (idx === -1) return currentActiveTabId
@@ -43,12 +57,22 @@
     setMarkdown,
     confirmClose,
     openNewWindow,
+    reportDirtyState,
+    closeSearch,
   }) {
     let tabs = []
     let activeTabId = null
     let tabIdCounter = 0
     let draggedTabId = null
     let restoreRenderVersion = 0
+    let lastReportedDirty = false
+
+    function syncDirtyState() {
+      const hasDirty = computeAggregateDirty(tabs)
+      if (hasDirty === lastReportedDirty) return
+      lastReportedDirty = hasDirty
+      reportDirtyState?.(hasDirty)
+    }
 
     function findTabByPath(targetPath) {
       return findTabByPathInTabs(tabs, targetPath)
@@ -92,7 +116,7 @@
       const refs = getRefs()
       refs.content.classList.remove('is-empty')
       markdownController.hydrateFromDom(tab.renderedHTML || '', tab.tocHTML || '', tab.content)
-      document.title = (tab.filename || 'untitled.md').replace(/\.md$/i, '')
+      document.title = stripMarkdownExtension(tab.filename || 'untitled.md')
       if (refs.btnMode) refs.btnMode.style.display = ''
       setSourceMode(tab.sourceMode || false)
       setSplitMode(tab.splitMode || false)
@@ -174,6 +198,7 @@
       updateToolbarActions()
       updateEntryAffordance()
       maybeShowWelcomeGuide()
+      syncDirtyState()
     }
 
     function onTabDragStart(event) {
@@ -265,6 +290,7 @@
       if (tabId === activeTabId) return
       const target = tabs.find(tab => tab.id === tabId)
       if (!target) return
+      closeSearch?.()
       saveCurrentTabState()
       activeTabId = tabId
       setMarkdown(target.content)
@@ -277,6 +303,7 @@
       const idx = tabs.findIndex(tab => tab.id === tabId)
       if (idx === -1) return
       if (tabs[idx].dirty && !confirmClose('저장하지 않은 변경 사항이 있습니다. 닫으시겠습니까?')) return
+      if (tabId === activeTabId) closeSearch?.()
       const nextActiveTabId = getNextActiveTabIdAfterClose(tabs, tabId, activeTabId)
       tabs.splice(idx, 1)
       if (tabs.length === 0) {
@@ -301,6 +328,7 @@
       if (!target) return
       const dirtyOthers = tabs.some(tab => tab.id !== tabId && tab.dirty)
       if (dirtyOthers && !confirmClose('저장하지 않은 변경 사항이 있는 다른 탭이 있습니다. 닫으시겠습니까?')) return
+      closeSearch?.()
       tabs = tabs.filter(tab => tab.id === tabId)
       activeTabId = tabId
       setMarkdown(target.content)
@@ -312,6 +340,7 @@
     function closeAllTabs() {
       const hasDirty = tabs.some(tab => tab.dirty)
       if (hasDirty && !confirmClose('저장하지 않은 변경 사항이 있는 탭이 있습니다. 모두 닫으시겠습니까?')) return
+      closeSearch?.()
       tabs = []
       activeTabId = null
       showEmptyState()
@@ -339,10 +368,30 @@
       if (idx > 0) switchToTab(tabs[idx - 1].id)
     }
 
-    async function handleExternalFileChange({ path, content }) {
+    async function handleExternalFileChange({ path, content, event }) {
       const refs = getRefs()
       const tab = findTabByPath(path)
       if (!tab) return
+
+      const action = resolveExternalChangeAction({ event, isDirty: tab.dirty })
+
+      if (action === 'mark-deleted') {
+        // File was removed on disk. Keep the buffer so the user can re-save it,
+        // and force dirty so it survives further keystrokes and save-conflict checks.
+        tab.dirty = true
+        tab.savedContent = null
+        renderTabBar()
+        return
+      }
+
+      if (action === 'confirm') {
+        const reload = confirmClose(`"${tab.filename}"이(가) 외부에서 변경되었습니다. 편집 중인 내용을 버리고 디스크 내용으로 다시 불러오시겠습니까?`)
+        if (!reload) {
+          renderTabBar()
+          return
+        }
+      }
+
       tab.content = content
       tab.savedContent = content
       tab.dirty = false
@@ -368,7 +417,9 @@
     function updateActiveTabDirtyFromEditor(value) {
       const tab = getActiveTab()
       if (!tab) return
-      tab.dirty = value !== tab.savedContent
+      const nextDirty = value !== tab.savedContent
+      if (nextDirty === tab.dirty) return
+      tab.dirty = nextDirty
       renderTabBar()
     }
 
@@ -396,6 +447,9 @@
     findTabByPathInTabs,
     getNextActiveTabIdAfterClose,
     reorderTabsById,
+    stripMarkdownExtension,
+    computeAggregateDirty,
+    resolveExternalChangeAction,
   }
   globalScope.MDVWorkspace = api
   if (typeof module !== 'undefined' && module.exports) module.exports = api
