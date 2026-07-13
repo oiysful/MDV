@@ -236,11 +236,15 @@
       editor.addEventListener('keydown', event => {
         if (event.key === 'Tab') {
           event.preventDefault()
-          const start = editor.selectionStart
-          const end = editor.selectionEnd
-          editor.value = editor.value.substring(0, start) + '\t' + editor.value.substring(end)
-          editor.selectionStart = editor.selectionEnd = start + 1
-          handleSourceInput(editor.value)
+          // execCommand keeps the native undo stack intact and fires its own 'input'
+          // event, which already routes through handleSourceInput; only drive it
+          // manually on the setRangeText fallback, which does not fire 'input'.
+          if (!document.execCommand('insertText', false, '\t')) {
+            const start = editor.selectionStart
+            const end = editor.selectionEnd
+            editor.setRangeText('\t', start, end, 'end')
+            handleSourceInput(editor.value)
+          }
         }
       })
 

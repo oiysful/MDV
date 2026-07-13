@@ -144,7 +144,12 @@
     }
 
     function closeCurrentTab() {
-      getWorkspaceController().closeCurrentTab()
+      const workspace = getWorkspaceController()
+      if (workspace.getTabCount() === 0) {
+        windowRef.close()
+        return
+      }
+      workspace.closeCurrentTab()
     }
 
     function switchToNextTab() {
@@ -175,7 +180,7 @@
       const suggestedName = `${(tab.filename || 'untitled.md').replace(/\.(md|markdown)$/i, '')}.pdf`
       const res = JSON.parse(await api.exportPdf(suggestedName))
       if (res.error) {
-        alertError(`PDF 내보내기 실패: ${res.error}`)
+        alert(`PDF 내보내기 실패: ${res.error}`)
         return
       }
       if (!res.cancelled) showToast('PDF 저장됨')
@@ -246,6 +251,8 @@
     }
 
     function toggleSearch() {
+      const editor = getEditorController()
+      if (editor.getSourceMode() || editor.getSplitMode()) return
       return searchController.toggleSearch()
     }
 
@@ -330,9 +337,9 @@
         if (modifier && event.key === 'w') { event.preventDefault(); closeCurrentTab() }
         if (modifier && event.key === 'u') { event.preventDefault(); void toggleSource() }
         if (modifier && event.key === '\\') { event.preventDefault(); void toggleSplitView() }
-        if (modifier && event.key === 'f') { event.preventDefault(); if (!getEditorController().getSourceMode() && !getEditorController().getSplitMode()) toggleSearch() }
-        if (modifier && event.key === 's' && event.shiftKey) { event.preventDefault(); void saveFileAs() }
-        if (modifier && event.key === 's' && !event.shiftKey) { event.preventDefault(); void saveFile() }
+        if (modifier && event.key === 'f') { event.preventDefault(); toggleSearch() }
+        if (modifier && event.key.toLowerCase() === 's' && event.shiftKey) { event.preventDefault(); void saveFileAs() }
+        if (modifier && event.key.toLowerCase() === 's' && !event.shiftKey) { event.preventDefault(); void saveFile() }
         if (modifier && event.shiftKey && (event.key === '}' || event.code === 'BracketRight')) { event.preventDefault(); switchToNextTab() }
         if (modifier && event.shiftKey && (event.key === '{' || event.code === 'BracketLeft')) { event.preventDefault(); switchToPrevTab() }
         if (event.key === 'Escape') closeSearch()
