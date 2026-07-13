@@ -204,7 +204,7 @@
       refs.panelExplorer.style.display = tab === 'explorer' ? 'flex' : 'none'
       refs.sidebarTabs.dataset.active = tab
       documentRef.querySelectorAll('.stab').forEach(button => {
-        button.classList.toggle('active', button.dataset.tab === tab)
+        button.classList.toggle('active', button.dataset.commandArg === tab)
       })
       if (!getSidebarOpen()) {
         setSidebarOpen(true)
