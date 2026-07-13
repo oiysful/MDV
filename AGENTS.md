@@ -77,9 +77,20 @@ npm start
 npm run build
 ```
 
+### Test tiers — run the cheap tier constantly, the expensive tier once
+```bash
+npm run test:unit                   # 0.9s  — after every edit. Always run it whole.
+E2E="split view" npm run test:e2e   # ~2-18s — while iterating on one Electron-covered behavior
+npm run test:electron               # 43s   — once, before declaring done or committing
+```
+`test:e2e` filters `smoke.test.js` by test name (`--test-name-pattern`). With `E2E` unset it
+falls back to the full suite, so it is never silently a no-op.
+
 ## NOTES
 - `tests/electron/smoke.test.js` covers real Electron boot/open/save/watch/explorer/shell/theme flows and asserts removed renderer command globals/inline handlers.
 - `tests/unit/*.test.js` cover extracted pure helpers and generated command markup.
+- The Electron suite costs ~43s because `tests/electron/helpers/launch.js` boots a fresh app per test (23 boots at ~2s). Do not run it after every edit — use `test:e2e` with a name pattern while iterating, and the full suite once before finishing.
+- Do NOT build a changed-file-to-test mapper for the unit suite: all 39 unit tests run in 0.9s, so subsetting saves nothing and the mapping would rot on every rename. The cost is entirely Electron boots.
 - No repo-local CI workflow found.
 - Current error-level diagnostics are clean for the recent renderer command refactor; remaining warnings are mostly style-oriented.
 - Repo is tiny by file count, but renderer complexity is concentrated in `src/renderer/index.html`.
