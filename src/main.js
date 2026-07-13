@@ -5,7 +5,8 @@ const os = require('os')
 const { pathToFileURL } = require('url')
 const chokidar = require('chokidar')
 
-const watchers = new Map() // path → chokidar.FSWatcher
+const watchers = new Map() // path → { watcher: chokidar.FSWatcher, subscribers: Set<WebContents> }
+const dirtyState = new Map() // BrowserWindow.id → boolean (미저장 변경 존재 여부)
 const MARKDOWN_EXTENSIONS = ['.md', '.markdown']
 
 // ── Window factory ──────────────────────────────────────────────
@@ -32,16 +33,36 @@ function createWindow(filePath = null) {
     }
   })
 
+  // 미저장 변경이 있으면 창을 닫기 전에 확인. 동기 다이얼로그를 쓰고
+  // '닫기'를 고르면 preventDefault 하지 않아, ⌘Q 종료 루프가 다음 창으로
+  // 자연스럽게 이어진다('취소'만 종료를 중단).
+  win.on('close', (event) => {
+    if (!dirtyState.get(win.id)) return
+    const choice = dialog.showMessageBoxSync(win, {
+      type: 'warning',
+      buttons: ['닫기', '취소'],
+      defaultId: 1,
+      cancelId: 1,
+      message: '저장하지 않은 변경이 있습니다.',
+      detail: '변경 내용을 저장하지 않고 창을 닫으시겠습니까?',
+    })
+    if (choice === 1) event.preventDefault()
+  })
+
+  win.on('closed', () => {
+    dirtyState.delete(win.id)
+  })
+
   return win
 }
 
-function sendFile(win, filePath) {
+async function sendFile(win, filePath) {
   try {
-    const content  = fs.readFileSync(filePath, 'utf-8')
+    const content  = await fs.promises.readFile(filePath, 'utf-8')
     const filename = path.basename(filePath)
-    win.webContents.send('file-opened', JSON.stringify({ content, filename, path: filePath }))
+    if (!win.isDestroyed()) win.webContents.send('file-opened', JSON.stringify({ content, filename, path: filePath }))
   } catch (e) {
-    win.webContents.send('file-opened', JSON.stringify({ error: e.message }))
+    if (!win.isDestroyed()) win.webContents.send('file-opened', JSON.stringify({ error: e.message }))
   }
 }
 
@@ -80,6 +101,11 @@ let pendingFilePath = null
 app.on('open-file', (event, filePath) => {
   event.preventDefault()
   if (app.isReady()) {
+    const focused = BrowserWindow.getFocusedWindow()
+    if (focused && !focused.webContents.isLoading()) {
+      sendFile(focused, filePath)
+      return
+    }
     const wins = BrowserWindow.getAllWindows()
     const idle = wins.find(w => !w.webContents.isLoading())
     if (idle) {
@@ -115,7 +141,7 @@ app.on('activate', () => {
 // ── IPC handlers ─────────────────────────────────────────────────
 ipcMain.handle('read-file', async (_, filePath) => {
   try {
-    const content  = fs.readFileSync(filePath, 'utf-8')
+    const content  = await fs.promises.readFile(filePath, 'utf-8')
     const filename = path.basename(filePath)
     return JSON.stringify({ content, filename, path: filePath })
   } catch (e) {
@@ -130,13 +156,13 @@ ipcMain.handle('open-file-dialog', async (event) => {
     filters: [{ name: 'Markdown', extensions: ['md', 'markdown'] }],
   })
   if (result.canceled) return JSON.stringify({ cancelled: true })
-  const files = result.filePaths.map(fp => {
+  const files = await Promise.all(result.filePaths.map(async fp => {
     try {
-      return { content: fs.readFileSync(fp, 'utf-8'), filename: path.basename(fp), path: fp }
+      return { content: await fs.promises.readFile(fp, 'utf-8'), filename: path.basename(fp), path: fp }
     } catch (e) {
       return { error: e.message }
     }
-  })
+  }))
   return JSON.stringify({ files })
 })
 
@@ -151,7 +177,7 @@ ipcMain.handle('open-folder-dialog', async (event) => {
 
 ipcMain.handle('list-directory', async (_, dirPath) => {
   try {
-    const entries = fs.readdirSync(dirPath, { withFileTypes: true })
+    const entries = await fs.promises.readdir(dirPath, { withFileTypes: true })
     const result = []
     const dirs  = entries.filter(e => e.isDirectory() && !e.name.startsWith('.'))
     const files = entries.filter(e => e.isFile() && /\.(md|markdown)$/i.test(e.name))
@@ -168,7 +194,7 @@ ipcMain.handle('list-directory', async (_, dirPath) => {
 
 ipcMain.handle('save-file', async (_, filePath, content) => {
   try {
-    fs.writeFileSync(filePath, content, 'utf-8')
+    await fs.promises.writeFile(filePath, content, 'utf-8')
     return JSON.stringify({ ok: true, filename: path.basename(filePath) })
   } catch (e) {
     return JSON.stringify({ error: e.message })
@@ -277,7 +303,7 @@ ipcMain.handle('get-markdown-default-app-status', async () => {
 
 ipcMain.handle('read-image-data-url', async (_, filePath) => {
   try {
-    const data    = fs.readFileSync(filePath)
+    const data    = await fs.promises.readFile(filePath)
     const ext     = path.extname(filePath).slice(1).toLowerCase()
     const mimeMap = { png: 'image/png', jpg: 'image/jpeg', jpeg: 'image/jpeg', gif: 'image/gif', webp: 'image/webp', svg: 'image/svg+xml' }
     const mime    = mimeMap[ext] || 'image/png'
@@ -287,22 +313,60 @@ ipcMain.handle('read-image-data-url', async (_, filePath) => {
   }
 })
 
+function removeWatchSubscriber(filePath, wc) {
+  const entry = watchers.get(filePath)
+  if (!entry) return
+  entry.subscribers.delete(wc)
+  if (entry.subscribers.size === 0) {
+    entry.watcher.close()
+    watchers.delete(filePath)
+  }
+}
+
+// filePath 하나에 여러 창(WebContents)이 구독할 수 있다. 마지막 구독자가
+// 빠질 때만 워처를 닫고, 각 구독 WebContents가 파괴되면 구독을 정리한다.
 ipcMain.handle('watch-file', async (event, filePath) => {
-  if (watchers.has(filePath)) return
-  const sender = event.sender
+  const wc = event.sender
+  const existing = watchers.get(filePath)
+  if (existing) {
+    if (!existing.subscribers.has(wc)) {
+      existing.subscribers.add(wc)
+      wc.once('destroyed', () => removeWatchSubscriber(filePath, wc))
+    }
+    return
+  }
+
   const watcher = chokidar.watch(filePath, { ignoreInitial: true, awaitWriteFinish: { stabilityThreshold: 200 } })
-  watcher.on('change', () => {
-    try {
-      const content = fs.readFileSync(filePath, 'utf-8')
-      if (!sender.isDestroyed()) sender.send('file-changed', { path: filePath, content })
-    } catch {}
-  })
-  watchers.set(filePath, watcher)
+  const notify = async (changeEvent) => {
+    const entry = watchers.get(filePath)
+    if (!entry) return
+    let content = null
+    if (changeEvent !== 'unlink') {
+      try {
+        content = await fs.promises.readFile(filePath, 'utf-8')
+      } catch {
+        return
+      }
+    }
+    for (const sub of entry.subscribers) {
+      if (!sub.isDestroyed()) sub.send('file-changed', { path: filePath, content, event: changeEvent })
+    }
+  }
+  watcher.on('change', () => notify('change'))
+  watcher.on('add',    () => notify('add'))
+  watcher.on('unlink', () => notify('unlink'))
+
+  watchers.set(filePath, { watcher, subscribers: new Set([wc]) })
+  wc.once('destroyed', () => removeWatchSubscriber(filePath, wc))
 })
 
-ipcMain.handle('unwatch-file', async (_, filePath) => {
-  const w = watchers.get(filePath)
-  if (w) { w.close(); watchers.delete(filePath) }
+ipcMain.handle('unwatch-file', async (event, filePath) => {
+  removeWatchSubscriber(filePath, event.sender)
+})
+
+ipcMain.on('set-dirty-state', (event, isDirty) => {
+  const win = BrowserWindow.fromWebContents(event.sender)
+  if (win) dirtyState.set(win.id, !!isDirty)
 })
 
 // ── Menu ─────────────────────────────────────────────────────────

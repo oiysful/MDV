@@ -1,4 +1,4 @@
-const { contextBridge, ipcRenderer } = require('electron')
+const { contextBridge, ipcRenderer, webUtils } = require('electron')
 
 contextBridge.exposeInMainWorld('api', {
   readFile:        (p)    => ipcRenderer.invoke('read-file', p),
@@ -15,6 +15,8 @@ contextBridge.exposeInMainWorld('api', {
   readImageDataUrl:(p)    => ipcRenderer.invoke('read-image-data-url', p),
   watchFile:       (p)    => ipcRenderer.invoke('watch-file', p),
   unwatchFile:     (p)    => ipcRenderer.invoke('unwatch-file', p),
+  setDirtyState:   (isDirty) => ipcRenderer.send('set-dirty-state', isDirty),
+  getPathForFile:  (file) => webUtils.getPathForFile(file),
 
   onFileChanged: (cb) => ipcRenderer.on('file-changed', (_, data) => cb(data)),
   onFileOpened:  (cb) => ipcRenderer.on('file-opened',  (_, path) => cb(path)),
