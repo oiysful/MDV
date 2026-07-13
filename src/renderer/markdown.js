@@ -73,17 +73,21 @@
       const images = Array.from(refs.content.querySelectorAll('img[src]'))
       await Promise.all(images.map(async img => {
         const rawSrc = img.getAttribute('src')
-        const localPath = pathUtils.resolveLocalImagePath(rawSrc, docPath)
-        if (!localPath) return
+        // A leading-slash src yields both an absolute and a document-relative
+        // candidate; take whichever actually exists on disk.
+        const candidates = pathUtils.resolveLocalImageCandidates(rawSrc, docPath)
         try {
-          let dataUrl = imageDataUrlCache.get(localPath)
-          if (!dataUrl) {
-            const res = JSON.parse(await api.readImageDataUrl(localPath))
-            if (!res.ok || !res.data_url) return
-            dataUrl = res.data_url
-            cacheImageDataUrl(localPath, dataUrl)
+          for (const localPath of candidates) {
+            let dataUrl = imageDataUrlCache.get(localPath)
+            if (!dataUrl) {
+              const res = JSON.parse(await api.readImageDataUrl(localPath))
+              if (!res.ok || !res.data_url) continue
+              dataUrl = res.data_url
+              cacheImageDataUrl(localPath, dataUrl)
+            }
+            img.src = dataUrl
+            return
           }
-          img.src = dataUrl
         } catch (e) {
           console.error('이미지 오류:', e)
         }
