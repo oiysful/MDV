@@ -18,6 +18,14 @@
     return 'reload'
   }
 
+  // A watcher 'change' carrying exactly the content we last wrote is our own save
+  // echoing back, not an external edit. A deletion is always real.
+  function isSelfWriteEcho({ event, content, savedContent }) {
+    if (event === 'unlink') return false
+    if (savedContent === null || savedContent === undefined) return false
+    return content === savedContent
+  }
+
   function getNextActiveTabIdAfterClose(tabs, closingTabId, currentActiveTabId) {
     const idx = tabs.findIndex(tab => tab.id === closingTabId)
     if (idx === -1) return currentActiveTabId
@@ -373,6 +381,11 @@
       const tab = findTabByPath(path)
       if (!tab) return
 
+      // Our own save comes back through the watcher a moment later. Treating that
+      // echo as an external edit would prompt the user to discard anything they
+      // typed since saving, so ignore a change whose content is what we just wrote.
+      if (isSelfWriteEcho({ event, content, savedContent: tab.savedContent })) return
+
       const action = resolveExternalChangeAction({ event, isDirty: tab.dirty })
 
       if (action === 'mark-deleted') {
@@ -450,6 +463,7 @@
     stripMarkdownExtension,
     computeAggregateDirty,
     resolveExternalChangeAction,
+    isSelfWriteEcho,
   }
   globalScope.MDVWorkspace = api
   if (typeof module !== 'undefined' && module.exports) module.exports = api

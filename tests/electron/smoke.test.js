@@ -4,7 +4,7 @@ const fs = require('node:fs/promises')
 const os = require('node:os')
 const path = require('node:path')
 
-const { ROOT, launchApp } = require('./helpers/launch')
+const { ROOT, launchApp, closeApp, stubCloseDialog, getCloseDialogCalls } = require('./helpers/launch')
 
 const BASIC_MD = path.join(ROOT, 'tests/fixtures/basic.md')
 const EXPLORER_DIR = path.join(ROOT, 'tests/fixtures/explorer')
@@ -245,7 +245,7 @@ test('app boots into empty state without renderer command globals', async () => 
     await page.waitForFunction(() => document.getElementById('default-app-guide')?.classList.contains('show'))
     assert.deepEqual(pageErrors, [])
   } finally {
-    await electronApp.close()
+    await closeApp(electronApp)
   }
 })
 
@@ -280,7 +280,7 @@ test('openFile loads markdown, updates title, and renders code highlighting', as
     await page.click('#btn-copy-all')
     await page.waitForFunction(() => document.getElementById('toast')?.textContent === '복사됨' && document.getElementById('toast')?.classList.contains('show'))
   } finally {
-    await electronApp.close()
+    await closeApp(electronApp)
   }
 })
 
@@ -324,7 +324,7 @@ test('PDF export button sits right of print and saves a PDF', async () => {
     const pdf = await fs.readFile(pdfPath)
     assert.equal(pdf.subarray(0, 4).toString('utf8'), '%PDF')
   } finally {
-    await electronApp.close()
+    await closeApp(electronApp)
     await fs.rm(tempDir, { recursive: true, force: true })
   }
 })
@@ -344,7 +344,7 @@ test('file-opened event from the main process opens a document tab', async () =>
     assert.match(await page.textContent('#tab-list .file-tab.active .file-tab-name'), /opened-from-main\.md/)
     assert.match(await page.textContent('#content'), /Sent through file-opened\./)
   } finally {
-    await electronApp.close()
+    await closeApp(electronApp)
   }
 })
 
@@ -368,7 +368,7 @@ test('opening the same file twice reuses the existing tab', async () => {
     assert.equal(await page.locator('#tab-list .file-tab').count(), 1)
     assert.match(await page.textContent('#tab-list .file-tab.active .file-tab-name'), /basic\.md/)
   } finally {
-    await electronApp.close()
+    await closeApp(electronApp)
   }
 })
 
@@ -401,7 +401,7 @@ test('add menu creates new untitled files and keeps Cmd+T behavior', async () =>
     })
     assert.equal(addBeforeSidebar, true)
   } finally {
-    await electronApp.close()
+    await closeApp(electronApp)
   }
 })
 
@@ -431,7 +431,7 @@ test('closing tabs selects the next tab and restores empty state when the last t
     assert.equal(await page.locator('#tab-list .file-tab').count(), 0)
     assert.equal(await page.title(), 'MDV')
   } finally {
-    await electronApp.close()
+    await closeApp(electronApp)
   }
 })
 
@@ -467,7 +467,7 @@ test('editing in source mode marks the tab dirty and save clears it', async () =
     const savedContent = await fs.readFile(tempMarkdown, 'utf8')
     assert.match(savedContent, /Extra line for save coverage\./)
   } finally {
-    await electronApp.close()
+    await closeApp(electronApp)
     await cleanup()
   }
 })
@@ -516,7 +516,7 @@ test('save as rewires the active tab path and future saves to the new file', asy
     const originalContent = await fs.readFile(initialPath, 'utf8')
     assert.doesNotMatch(originalContent, /Saved to a chosen path\.|Saved again to same path\./)
   } finally {
-    await electronApp.close()
+    await closeApp(electronApp)
     await cleanup()
   }
 })
@@ -551,7 +551,7 @@ test('toggleSource switches between preview and editor and re-renders preview on
     const previewText = await page.textContent('#content')
     assert.match(previewText, /Changed in editor mode\./)
   } finally {
-    await electronApp.close()
+    await closeApp(electronApp)
   }
 })
 
@@ -605,7 +605,7 @@ test('split view shows editor and preview together, live-renders edits, and save
 
     assert.equal(await fs.readFile(tempMarkdown, 'utf8'), '# Split Edited\n\nPreview updates while editing.\n')
   } finally {
-    await electronApp.close()
+    await closeApp(electronApp)
     await cleanup()
   }
 })
@@ -681,7 +681,7 @@ test('split view restores fresh preview and pane scroll after immediate tab swit
     assert.ok(restoredScroll.preview > 0, `preview scroll should restore, got ${restoredScroll.preview}`)
     assert.ok(restoredScroll.source > 0, `source scroll should restore, got ${restoredScroll.source}`)
   } finally {
-    await electronApp.close()
+    await closeApp(electronApp)
   }
 })
 
@@ -723,7 +723,7 @@ test('split view ignores stale async preview renders after newer edits', async (
     assert.match(body, /This must remain visible\./)
     assert.doesNotMatch(body, /Stale Render/)
   } finally {
-    await electronApp.close()
+    await closeApp(electronApp)
     await fs.rm(tempDir, { recursive: true, force: true })
   }
 })
@@ -776,7 +776,7 @@ test('split view restores active tab when async preview finishes after tab switc
       activeTab: 'async-b.md',
     })
   } finally {
-    await electronApp.close()
+    await closeApp(electronApp)
   }
 })
 
@@ -832,7 +832,7 @@ test('split view keeps active tab when dirty restore render finishes after tab s
       activeTab: 'restore-b.md',
     })
   } finally {
-    await electronApp.close()
+    await closeApp(electronApp)
   }
 })
 
@@ -882,7 +882,7 @@ test('external file changes reload clean tabs and prompt before clobbering dirty
 
     assert.equal(await page.locator('#source-editor').inputValue(), localEdit)
   } finally {
-    await electronApp.close()
+    await closeApp(electronApp)
     await cleanup()
   }
 })
@@ -910,7 +910,7 @@ test('switching tabs rewires the watched file to the active tab path', async () 
     await fs.writeFile(firstPath, firstContent, 'utf8')
     await page.waitForFunction(expected => document.getElementById('content').textContent.includes(expected), 'Watcher switched with the active tab.')
   } finally {
-    await electronApp.close()
+    await closeApp(electronApp)
     await cleanupFirst()
     await cleanupSecond()
   }
@@ -938,7 +938,7 @@ test('tab labels render filenames as text instead of HTML', async () => {
     assert.equal(tabState.injectedImageCount, 0)
     assert.equal(tabState.injectedFlag, false)
   } finally {
-    await electronApp.close()
+    await closeApp(electronApp)
     await cleanup()
   }
 })
@@ -995,7 +995,7 @@ test('openFolder loads explorer entries, expands nested folders, opens files, an
         && close.classList.contains('hidden')
     })
   } finally {
-    await electronApp.close()
+    await closeApp(electronApp)
   }
 })
 
@@ -1030,7 +1030,7 @@ test('shared context menu works for tab and explorer-root surfaces', async () =>
     await page.locator('#app-context-menu .ctx-item').filter({ hasText: '폴더 닫기' }).click()
     await page.waitForFunction(() => document.getElementById('btn-explorer-close').classList.contains('hidden'))
   } finally {
-    await electronApp.close()
+    await closeApp(electronApp)
   }
 })
 
@@ -1067,7 +1067,7 @@ test('shell actions keep add-menu and drag-drop behavior working', async () => {
       return document.title === 'dropped' && active && active.textContent.includes('dropped.md')
     })
   } finally {
-    await electronApp.close()
+    await closeApp(electronApp)
   }
 })
 
@@ -1121,6 +1121,56 @@ test('toggleTheme cycles theme state and highlight stylesheets', async () => {
     })
     assert.equal(afterAuto.theme, 'auto')
   } finally {
-    await electronApp.close()
+    await closeApp(electronApp)
+  }
+})
+
+test('closing a window with unsaved changes prompts, and cancelling keeps the window open', async () => {
+  const { path: tempMarkdown, cleanup } = await createTempMarkdown(BASIC_MD, 'close-guard.md')
+  const { electronApp, page } = await launchApp()
+
+  try {
+    await page.waitForSelector('#empty')
+    await stubOpenDialog(electronApp, [tempMarkdown])
+    await emitRendererCommand(electronApp, 'openFile')
+    await page.waitForFunction(() => document.title === 'close-guard')
+
+    // Dirty the tab.
+    await emitRendererCommand(electronApp, 'toggleSource')
+    await page.waitForFunction(() => document.getElementById('source-view').style.display === 'block')
+    await page.locator('#source-editor').fill('# Smoke Fixture\n\nunsaved edit\n')
+    await page.waitForFunction(() => {
+      const active = document.querySelector('#tab-list .file-tab.active .file-tab-name')
+      return active && active.textContent.trim().startsWith('●')
+    })
+
+    // Answer 취소 (1) to a REAL close: Electron must honour preventDefault and the
+    // window must survive. Driving win.close() rather than emitting the event keeps
+    // this from passing for the wrong reason.
+    await stubCloseDialog(electronApp, 1)
+    const openAfterCancel = await electronApp.evaluate(async ({ BrowserWindow }) => {
+      const win = BrowserWindow.getAllWindows()[0]
+      win.close()
+      await new Promise(resolve => setTimeout(resolve, 300))
+      return BrowserWindow.getAllWindows().length
+    })
+    assert.equal(openAfterCancel, 1, 'cancelling must keep the window open')
+
+    const calls = await getCloseDialogCalls(electronApp)
+    assert.equal(calls.length, 1, 'a dirty close must prompt exactly once')
+    assert.match(calls[0].message, /저장하지 않은 변경/)
+
+    // Answer 닫기 (0): the same close now goes through.
+    await stubCloseDialog(electronApp, 0)
+    const openAfterConfirm = await electronApp.evaluate(async ({ BrowserWindow }) => {
+      const win = BrowserWindow.getAllWindows()[0]
+      win.close()
+      await new Promise(resolve => setTimeout(resolve, 500))
+      return BrowserWindow.getAllWindows().length
+    })
+    assert.equal(openAfterConfirm, 0, 'confirming must actually close the window')
+  } finally {
+    await closeApp(electronApp)
+    await cleanup()
   }
 })

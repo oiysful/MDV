@@ -58,13 +58,18 @@ Main stack: Electron main/preload + split renderer HTML/CSS/JS modules.
 - Do not add new file operations in renderer without matching IPC handler + preload bridge entry.
 - Do not assume this app handles arbitrary file types: directory explorer and dialogs are markdown-focused.
 - Do not scatter renderer logic into multiple assumptions without checking duplicated state paths (`EMPTY_HTML`, tab restore, watcher flow).
+- Do not relax `read-image-data-url` back to serving any extension: the image path comes from untrusted markdown, and an unrestricted read is an arbitrary-file-read primitive (`![](../../.ssh/id_rsa)`).
+- Do not drop the `will-navigate` / `setWindowOpenHandler` guards in `createWindow`: the renderer holds `window.api`, so any remote page loaded into that frame would inherit the bridge.
+- Do not treat a watcher `change` event as external without checking it against `savedContent` — the app's own save echoes back through `chokidar` and prompting on it discards the user's in-flight typing.
 
 ## UNIQUE STYLES
 - `src/renderer/index.html` remains the shell, but renderer logic is now progressively split into plain browser scripts under `src/renderer/`.
 - Renderer command controls use `data-command` attributes bound by `app-shell.js`; do not reintroduce inline handlers or `window.openFile`-style command globals.
 - Main menu actions dispatch explicit `renderer-command` IPC events rather than evaluating renderer-global function names.
-- Markdown rendering uses CDN-loaded `marked` and `highlight.js` under an explicit CSP allowlist.
-- File watching is per-path via `chokidar`; active tab changes rewire the watch target.
+- Markdown rendering uses locally bundled `marked`, `highlight.js`, and `DOMPurify` loaded from `node_modules/`; the CSP allows no remote script origins.
+- Rendered markdown is sanitized with DOMPurify before it reaches `innerHTML`; untrusted `.md` files are treated as hostile input.
+- File watching is per-path via `chokidar`, with a `path → { watcher, subscribers: Set<WebContents> }` map so several windows can watch one file; the watcher closes only when the last subscriber leaves. Active tab changes rewire the watch target, so only the active tab is watched per window.
+- `webPreferences` sets `sandbox: true` alongside `contextIsolation`; the preload only uses `contextBridge`/`ipcRenderer`/`webUtils`, all of which are sandbox-safe.
 - Directory explorer hides dot-directories and only surfaces `.md` / `.markdown` files.
 - Explorer root has header actions for exact-path viewing, closing the opened root, and Finder reveal via context menu.
 - Toolbar now includes save/print actions with dirty-state save enablement and transient save toast feedback.
@@ -77,9 +82,20 @@ npm start
 npm run build
 ```
 
+### Test tiers — run the cheap tier constantly, the expensive tier once
+```bash
+npm run test:unit                   # 0.9s  — after every edit. Always run it whole.
+E2E="split view" npm run test:e2e   # ~2-18s — while iterating on one Electron-covered behavior
+npm run test:electron               # 43s   — once, before declaring done or committing
+```
+`test:e2e` filters `smoke.test.js` by test name (`--test-name-pattern`). With `E2E` unset it
+falls back to the full suite, so it is never silently a no-op.
+
 ## NOTES
 - `tests/electron/smoke.test.js` covers real Electron boot/open/save/watch/explorer/shell/theme flows and asserts removed renderer command globals/inline handlers.
 - `tests/unit/*.test.js` cover extracted pure helpers and generated command markup.
+- The Electron suite costs ~43s because `tests/electron/helpers/launch.js` boots a fresh app per test (23 boots at ~2s). Do not run it after every edit — use `test:e2e` with a name pattern while iterating, and the full suite once before finishing.
+- Do NOT build a changed-file-to-test mapper for the unit suite: all 39 unit tests run in 0.9s, so subsetting saves nothing and the mapping would rot on every rename. The cost is entirely Electron boots.
 - No repo-local CI workflow found.
 - Current error-level diagnostics are clean for the recent renderer command refactor; remaining warnings are mostly style-oriented.
 - Repo is tiny by file count, but renderer complexity is concentrated in `src/renderer/index.html`.

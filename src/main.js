@@ -21,10 +21,24 @@ function createWindow(filePath = null) {
       preload: path.join(__dirname, 'preload.js'),
       contextIsolation: true,
       nodeIntegration: false,
+      sandbox: true,
     },
   })
 
   win.loadFile(path.join(__dirname, 'renderer', 'index.html'))
+
+  // The renderer holds `window.api`, so it must never navigate away from the local
+  // shell: any remote page loaded into this frame would inherit that bridge. The
+  // in-app link handler already routes clicks to the OS browser; these are the
+  // backstops for anything that slips past it.
+  win.webContents.setWindowOpenHandler(({ url }) => {
+    shell.openExternal(url).catch(() => {})
+    return { action: 'deny' }
+  })
+
+  win.webContents.on('will-navigate', (event, url) => {
+    if (url !== win.webContents.getURL()) event.preventDefault()
+  })
 
   win.webContents.on('did-finish-load', () => {
     win.webContents.send('theme-changed', nativeTheme.shouldUseDarkColors)
@@ -145,7 +159,9 @@ ipcMain.handle('read-file', async (_, filePath) => {
     const filename = path.basename(filePath)
     return JSON.stringify({ content, filename, path: filePath })
   } catch (e) {
-    return JSON.stringify({ error: e.message })
+    // 저장 전 충돌 검사가 "삭제됨"(ENOENT)과 "읽을 수 없음"(EACCES 등)을
+    // 구분해야 하므로 코드도 함께 넘긴다.
+    return JSON.stringify({ error: e.message, code: e.code })
   }
 })
 
@@ -301,12 +317,28 @@ ipcMain.handle('get-markdown-default-app-status', async () => {
   }
 })
 
+const IMAGE_MIME_TYPES = {
+  png: 'image/png',
+  jpg: 'image/jpeg',
+  jpeg: 'image/jpeg',
+  gif: 'image/gif',
+  webp: 'image/webp',
+  svg: 'image/svg+xml',
+  bmp: 'image/bmp',
+  avif: 'image/avif',
+}
+
+// 마크다운의 이미지 경로는 신뢰할 수 없는 입력이다. 예전에는 확장자와 무관하게
+// 아무 파일이나 읽어 data URL로 만들었기 때문에 ![](../../.ssh/id_rsa) 같은
+// 임의 파일 읽기가 가능했다. 알려진 이미지 확장자만 허용한다.
 ipcMain.handle('read-image-data-url', async (_, filePath) => {
   try {
-    const data    = await fs.promises.readFile(filePath)
-    const ext     = path.extname(filePath).slice(1).toLowerCase()
-    const mimeMap = { png: 'image/png', jpg: 'image/jpeg', jpeg: 'image/jpeg', gif: 'image/gif', webp: 'image/webp', svg: 'image/svg+xml' }
-    const mime    = mimeMap[ext] || 'image/png'
+    const ext  = path.extname(filePath).slice(1).toLowerCase()
+    const mime = IMAGE_MIME_TYPES[ext]
+    if (!mime) {
+      return JSON.stringify({ ok: false, error: `Unsupported image type: .${ext || '(none)'}` })
+    }
+    const data = await fs.promises.readFile(filePath)
     return JSON.stringify({ ok: true, data_url: `data:${mime};base64,${data.toString('base64')}` })
   } catch (e) {
     return JSON.stringify({ ok: false, error: e.message })
@@ -323,16 +355,27 @@ function removeWatchSubscriber(filePath, wc) {
   }
 }
 
+// 탭을 바꿀 때마다 unwatch+watch가 호출되므로, 경로마다 'destroyed' 리스너를
+// 달면 창 하나에 리스너가 무한히 쌓인다. WebContents당 한 번만 등록해서
+// 파괴될 때 그 창의 모든 구독을 한 번에 정리한다.
+const sweepRegistered = new WeakSet()
+
+function registerWatchSweep(wc) {
+  if (sweepRegistered.has(wc)) return
+  sweepRegistered.add(wc)
+  wc.once('destroyed', () => {
+    for (const filePath of [...watchers.keys()]) removeWatchSubscriber(filePath, wc)
+  })
+}
+
 // filePath 하나에 여러 창(WebContents)이 구독할 수 있다. 마지막 구독자가
-// 빠질 때만 워처를 닫고, 각 구독 WebContents가 파괴되면 구독을 정리한다.
+// 빠질 때만 워처를 닫는다.
 ipcMain.handle('watch-file', async (event, filePath) => {
   const wc = event.sender
+  registerWatchSweep(wc)
   const existing = watchers.get(filePath)
   if (existing) {
-    if (!existing.subscribers.has(wc)) {
-      existing.subscribers.add(wc)
-      wc.once('destroyed', () => removeWatchSubscriber(filePath, wc))
-    }
+    existing.subscribers.add(wc)
     return
   }
 
@@ -357,7 +400,6 @@ ipcMain.handle('watch-file', async (event, filePath) => {
   watcher.on('unlink', () => notify('unlink'))
 
   watchers.set(filePath, { watcher, subscribers: new Set([wc]) })
-  wc.once('destroyed', () => removeWatchSubscriber(filePath, wc))
 })
 
 ipcMain.handle('unwatch-file', async (event, filePath) => {

@@ -51,12 +51,16 @@ test('syncTabContentForSave copies editor content into the active tab in source 
   assert.equal(markdownValue, '# Split After')
 })
 
-test('detectSaveConflict flags disk content that diverged from the last saved snapshot', () => {
-  // Disk matches what we last saved: no conflict.
-  assert.equal(detectSaveConflict({ content: '# Same' }, '# Same'), false)
-  // Disk changed under us since the last save: conflict.
-  assert.equal(detectSaveConflict({ content: '# External edit' }, '# Same'), true)
-  // Read failed (e.g. file deleted): treat as no conflict so we can recreate it.
-  assert.equal(detectSaveConflict({ error: 'ENOENT' }, '# Same'), false)
-  assert.equal(detectSaveConflict(null, '# Same'), false)
+test('detectSaveConflict distinguishes a clean save, an external edit, a deletion, and an unreadable file', () => {
+  // Disk matches what we last saved: nothing to warn about.
+  assert.equal(detectSaveConflict({ content: '# Same' }, '# Same'), null)
+  // Disk changed under us since the last save.
+  assert.equal(detectSaveConflict({ content: '# External edit' }, '# Same'), 'changed')
+  // File was deleted: saving just recreates it, so no prompt.
+  assert.equal(detectSaveConflict({ error: 'no such file', code: 'ENOENT' }, '# Same'), 'deleted')
+  // We could not read the file, so we cannot know whether we are clobbering someone.
+  // This used to be treated as "no conflict" and overwrote silently.
+  assert.equal(detectSaveConflict({ error: 'permission denied', code: 'EACCES' }, '# Same'), 'unreadable')
+  assert.equal(detectSaveConflict({ error: 'io error' }, '# Same'), 'unreadable')
+  assert.equal(detectSaveConflict(null, '# Same'), 'unreadable')
 })

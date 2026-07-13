@@ -1072,7 +1072,9 @@ kbd {
   #main-pane { display: block; }
   #scroll-area { padding: 0; }
   #scroll-area.split-mode { display: block; background: transparent; overflow: visible; }
-  #content { max-width: 100%; }
+  /* 소스/분할 모드는 #content에 인라인 display:none을 걸어두므로, 인쇄 시에는
+     !important로 되돌려야 한다. 그러지 않으면 두 pane이 모두 숨겨져 빈 PDF가 나온다. */
+  #content { max-width: 100%; display: block !important; }
   /* 배경색/테두리 등 색상을 그대로 인쇄 */
   * { -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; }
   /* 다크 모드로 열려 있어도 인쇄는 항상 라이트 값으로 강제 */

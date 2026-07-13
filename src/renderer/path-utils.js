@@ -10,24 +10,41 @@
     return `file://${absolutePath.split('/').map(encodeURIComponent).join('/')}`
   }
 
-  function resolveLocalImagePath(src, docPath) {
-    if (!src || isExternalUrl(src) || src.startsWith('#')) return null
+  // `%` that is not part of a valid %XX escape would make decodeURIComponent throw,
+  // which silently dropped image filenames like `50%.png`.
+  function escapeBarePercent(value) {
+    return value.replace(/%(?![0-9A-Fa-f]{2})/g, '%25')
+  }
+
+  function toFsPath(relative, baseDir) {
+    const guarded = escapeBarePercent(relative).replace(/[#?]/g, encodeURIComponent)
+    return decodeURIComponent(new URL(guarded, pathToFileUrl(baseDir)).pathname)
+  }
+
+  // A leading `/` is ambiguous in a local markdown file: it may be a real absolute
+  // filesystem path (`/Users/me/pic.png`) or a document-root-relative one (`/img.png`)
+  // that only makes sense relative to the document. Both readings are legitimate, and
+  // no pure function can tell them apart — so return the candidates in priority order
+  // and let the caller probe the filesystem.
+  function resolveLocalImageCandidates(src, docPath) {
+    if (!src || isExternalUrl(src) || src.startsWith('#') || !docPath) return []
     try {
-      if (!docPath) return null
       const baseDir = docPath.replace(/[^/]+$/, '')
-      // A leading `/` in a markdown image is document-root relative, which has no
-      // meaning on the local filesystem — resolve it against the document dir
-      // rather than the OS root. Guard `#`/`?` so they stay part of the path.
-      const relative = src.replace(/^\/+/, '').replace(/[#?]/g, encodeURIComponent)
-      return decodeURIComponent(new URL(relative, pathToFileUrl(baseDir)).pathname)
+      if (src.startsWith('/')) {
+        const literal = decodeURIComponent(pathToFileUrl(escapeBarePercent(src)).slice('file://'.length))
+        const docRelative = toFsPath(src.replace(/^\/+/, ''), baseDir)
+        return literal === docRelative ? [literal] : [literal, docRelative]
+      }
+      return [toFsPath(src, baseDir)]
     } catch {
-      return null
+      return []
     }
   }
 
+
   const api = {
     isExternalUrl,
-    resolveLocalImagePath,
+    resolveLocalImageCandidates,
     pathToFileUrl,
   }
 
