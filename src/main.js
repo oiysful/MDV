@@ -387,7 +387,6 @@ ipcMain.handle('watch-file', async (event, filePath) => {
   watcher.on('unlink', () => notify('unlink'))
 
   watchers.set(filePath, { watcher, subscribers: new Set([wc]) })
-  wc.once('destroyed', () => removeWatchSubscriber(filePath, wc))
 })
 
 ipcMain.handle('unwatch-file', async (event, filePath) => {
