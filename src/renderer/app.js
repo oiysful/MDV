@@ -85,6 +85,7 @@ document.addEventListener('DOMContentLoaded', () => {
     getDocumentFlowController: () => documentFlowController,
     getShellActionsController: () => shellActionsController,
     getContextMenuController: () => contextMenuController,
+    ensurePreviewRendered,
   })
 
   documentFlowController = window.MDVDocumentFlow.createDocumentFlowController({
@@ -272,6 +273,25 @@ async function renderSplitPreview(tab, value, renderVersion) {
   tab.previewDirty = false
   const nextPreviewMaxScroll = $.content.scrollHeight - $.content.clientHeight
   if (nextPreviewMaxScroll > 0) $.content.scrollTop = nextPreviewMaxScroll * Math.max(previewRatio, sourceRatio)
+}
+
+// Print and PDF export capture the preview DOM. In source mode that pane is never
+// re-rendered as you type, and in split mode a render may still be debounced, so
+// both would otherwise output stale content. Bring it up to date first.
+async function ensurePreviewRendered() {
+  if (!workspaceController || !editorController) return
+  const tab = workspaceController.getActiveTab()
+  if (!tab) return
+
+  const inEditor = editorController.getSourceMode() || editorController.getSplitMode()
+  if (!inEditor && !tab.previewDirty) return
+
+  const value = inEditor ? editorController.getEditorValue() : tab.content
+  window.clearTimeout(splitRenderTimer)
+  await render(value, tab.filename || '', tab.path || null)
+  tab.renderedHTML = $.content.innerHTML
+  tab.tocHTML = $.tocList.innerHTML
+  tab.previewDirty = false
 }
 
 async function runRendererCommand(commandName) {

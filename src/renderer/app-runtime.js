@@ -40,6 +40,7 @@
     getDocumentFlowController,
     getShellActionsController,
     getContextMenuController,
+    ensurePreviewRendered,
   }) {
     let untitledCounter = 0
 
@@ -170,13 +171,15 @@
       getRefs().scrollArea.scrollTo({ top: 0, behavior: 'smooth' })
     }
 
-    function printDoc() {
+    async function printDoc() {
+      if (ensurePreviewRendered) await ensurePreviewRendered()
       windowRef.print()
     }
 
     async function exportPdf() {
       const tab = getWorkspaceController().getActiveTab()
       if (!tab) return
+      if (ensurePreviewRendered) await ensurePreviewRendered()
       const suggestedName = `${(tab.filename || 'untitled.md').replace(/\.(md|markdown)$/i, '')}.pdf`
       const res = JSON.parse(await api.exportPdf(suggestedName))
       if (res.error) {
