@@ -8,6 +8,7 @@ const {
   stripMarkdownExtension,
   computeAggregateDirty,
   resolveExternalChangeAction,
+  isSelfWriteEcho,
 } = require('../../src/renderer/workspace.js')
 
 test('findTabByPathInTabs returns the matching tab for a file path', () => {
@@ -60,4 +61,27 @@ test('resolveExternalChangeAction picks a policy from the event and dirty state'
   // Absent event (older main process) degrades safely to the change path.
   assert.equal(resolveExternalChangeAction({ event: undefined, isDirty: false }), 'reload')
   assert.equal(resolveExternalChangeAction({ event: undefined, isDirty: true }), 'confirm')
+})
+
+test('isSelfWriteEcho ignores the watcher event caused by our own save', () => {
+  // Saved, then kept typing: the echo must not prompt the user to discard the new keystrokes.
+  assert.equal(
+    isSelfWriteEcho({ event: 'change', content: 'saved text', savedContent: 'saved text' }),
+    true
+  )
+  // A genuine external edit differs from what we wrote, so it must still be handled.
+  assert.equal(
+    isSelfWriteEcho({ event: 'change', content: 'edited by another app', savedContent: 'saved text' }),
+    false
+  )
+  // Deletion is always real, even if content happens to match.
+  assert.equal(
+    isSelfWriteEcho({ event: 'unlink', content: 'saved text', savedContent: 'saved text' }),
+    false
+  )
+  // A tab whose file was deleted has savedContent === null; never treat that as an echo.
+  assert.equal(
+    isSelfWriteEcho({ event: 'add', content: '', savedContent: null }),
+    false
+  )
 })
