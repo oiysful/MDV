@@ -69,8 +69,9 @@ MDV_RELEASE_TAG=v1.0.0 npm run install:release
 - chokidar
 - marked
 - highlight.js
+- DOMPurify
 
-Renderer libraries are loaded by CDN from `src/renderer/index.html` under the app CSP allowlist.
+Renderer libraries are bundled locally and loaded from `node_modules/` by `src/renderer/index.html`; the CSP allows no remote script origins. Rendered markdown is sanitized with DOMPurify before it reaches the DOM.
 
 ## Renderer Structure
 
