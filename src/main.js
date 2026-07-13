@@ -315,12 +315,28 @@ ipcMain.handle('get-markdown-default-app-status', async () => {
   }
 })
 
+const IMAGE_MIME_TYPES = {
+  png: 'image/png',
+  jpg: 'image/jpeg',
+  jpeg: 'image/jpeg',
+  gif: 'image/gif',
+  webp: 'image/webp',
+  svg: 'image/svg+xml',
+  bmp: 'image/bmp',
+  avif: 'image/avif',
+}
+
+// 마크다운의 이미지 경로는 신뢰할 수 없는 입력이다. 예전에는 확장자와 무관하게
+// 아무 파일이나 읽어 data URL로 만들었기 때문에 ![](../../.ssh/id_rsa) 같은
+// 임의 파일 읽기가 가능했다. 알려진 이미지 확장자만 허용한다.
 ipcMain.handle('read-image-data-url', async (_, filePath) => {
   try {
-    const data    = await fs.promises.readFile(filePath)
-    const ext     = path.extname(filePath).slice(1).toLowerCase()
-    const mimeMap = { png: 'image/png', jpg: 'image/jpeg', jpeg: 'image/jpeg', gif: 'image/gif', webp: 'image/webp', svg: 'image/svg+xml' }
-    const mime    = mimeMap[ext] || 'image/png'
+    const ext  = path.extname(filePath).slice(1).toLowerCase()
+    const mime = IMAGE_MIME_TYPES[ext]
+    if (!mime) {
+      return JSON.stringify({ ok: false, error: `Unsupported image type: .${ext || '(none)'}` })
+    }
+    const data = await fs.promises.readFile(filePath)
     return JSON.stringify({ ok: true, data_url: `data:${mime};base64,${data.toString('base64')}` })
   } catch (e) {
     return JSON.stringify({ ok: false, error: e.message })
