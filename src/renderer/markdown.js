@@ -6,20 +6,65 @@
     return { words, minutes }
   }
 
-  function createMarkdownController({ getRefs, markedLib, hljsLib, pathUtils, api, onShowModeButton }) {
+  const AUTO_DETECT_LANGUAGES = [
+    'javascript', 'typescript', 'python', 'java', 'json', 'bash',
+    'xml', 'css', 'sql', 'yaml', 'go', 'rust', 'c', 'cpp',
+  ]
+  const IMAGE_CACHE_LIMIT = 100
+
+  function escapeHtml(value) {
+    return String(value).replace(/[&<>"']/g, ch => (
+      ch === '&' ? '&amp;'
+        : ch === '<' ? '&lt;'
+          : ch === '>' ? '&gt;'
+            : ch === '"' ? '&quot;'
+              : '&#39;'
+    ))
+  }
+
+  function createMarkdownController({ getRefs, markedLib, hljsLib, pathUtils, api, onShowModeButton, domPurify }) {
     let cachedHeadings = []
     let cachedTocLinks = []
     let prevTocLink = null
     let prevTocHref = ''
     const imageDataUrlCache = new Map()
+    const purify = domPurify || globalScope.DOMPurify
+
+    // hljs.highlightAuto over every language is slow; restrict auto-detection to
+    // a common subset, filtered to the languages this build actually registers.
+    const autoSubset = AUTO_DETECT_LANGUAGES.filter(
+      lang => typeof hljsLib.getLanguage === 'function' && hljsLib.getLanguage(lang)
+    )
+
+    // The rendered HTML comes from untrusted markdown; sanitize before it ever
+    // touches innerHTML. Falls back to full escaping if DOMPurify is missing so
+    // a misconfigured load degrades to inert text rather than executing scripts.
+    function sanitizeHtml(html) {
+      if (purify && typeof purify.sanitize === 'function') {
+        return purify.sanitize(html)
+      }
+      return escapeHtml(html)
+    }
+
+    function cacheImageDataUrl(key, dataUrl) {
+      if (imageDataUrlCache.size >= IMAGE_CACHE_LIMIT && !imageDataUrlCache.has(key)) {
+        const oldest = imageDataUrlCache.keys().next().value
+        if (oldest !== undefined) imageDataUrlCache.delete(oldest)
+      }
+      imageDataUrlCache.set(key, dataUrl)
+    }
+
+    function renderMarkdown(text) {
+      return sanitizeHtml(markedLib.parse(text))
+    }
 
     const renderer = new markedLib.Renderer()
     renderer.code = (code, lang) => {
       const langId = lang ? lang.split(/[\s{]/)[0] : ''
       const hl = (langId && hljsLib.getLanguage(langId))
         ? hljsLib.highlight(code, { language: langId }).value
-        : hljsLib.highlightAuto(code).value
-      return `<div class="code-wrapper"><div class="code-meta"><span class="code-lang">${langId || ''}</span><button class="copy-btn" type="button" data-command="copyCode" data-command-element="true" title="코드 복사" aria-label="코드 복사">복사</button></div><pre><code class="hljs">${hl}</code></pre></div>`
+        : hljsLib.highlightAuto(code, autoSubset.length ? autoSubset : undefined).value
+      return `<div class="code-wrapper"><div class="code-meta"><span class="code-lang">${escapeHtml(langId)}</span><button class="copy-btn" type="button" data-command="copyCode" data-command-element="true" title="코드 복사" aria-label="코드 복사">복사</button></div><pre><code class="hljs">${hl}</code></pre></div>`
     }
     markedLib.setOptions({ renderer, breaks: true, gfm: true })
 
@@ -36,7 +81,7 @@
             const res = JSON.parse(await api.readImageDataUrl(localPath))
             if (!res.ok || !res.data_url) return
             dataUrl = res.data_url
-            imageDataUrlCache.set(localPath, dataUrl)
+            cacheImageDataUrl(localPath, dataUrl)
           }
           img.src = dataUrl
         } catch (e) {
@@ -86,16 +131,9 @@
 
     async function render(text, filename, docPath) {
       const refs = getRefs()
-      refs.content.innerHTML = markedLib.parse(text)
+      refs.content.innerHTML = renderMarkdown(text)
       await resolveRenderedImagePaths(docPath)
-      refs.content.querySelectorAll('li').forEach(li => {
-        const labelText = li.textContent
-        if (/^\[[ x]\] /.test(labelText)) {
-          const checked = labelText.startsWith('[x]')
-          li.innerHTML = `<label><input type="checkbox" ${checked ? 'checked' : ''} disabled>${li.innerHTML.replace(/^\[.\] /, '')}</label>`
-        }
-      })
-      document.title = (filename || 'untitled.md').replace(/\.md$/i, '')
+      document.title = (filename || 'untitled.md').replace(/\.(md|markdown)$/i, '')
       updateStats(text)
       buildToc()
       if (onShowModeButton) onShowModeButton()
@@ -156,6 +194,7 @@
 
     return {
       render,
+      renderMarkdown,
       hydrateFromDom,
       resetEmptyStats,
       refreshTocActive,
