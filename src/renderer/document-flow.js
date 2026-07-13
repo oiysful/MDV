@@ -13,10 +13,23 @@
     return tab
   }
 
+  // Returns why saving might clobber someone else's work:
+  //   null         — safe: disk matches what we last wrote
+  //   'deleted'    — the file is gone; saving simply recreates it
+  //   'changed'    — the file was edited outside the app since our last save
+  //   'unreadable' — we could not check (permissions, I/O). Treating this as "no
+  //                  conflict" used to silently overwrite, so ask instead.
   function detectSaveConflict(diskResult, savedContent) {
-    // A missing/errored read (e.g. file deleted) is not a conflict — we simply recreate it.
-    if (!diskResult || diskResult.error) return false
-    return diskResult.content !== savedContent
+    if (!diskResult) return 'unreadable'
+    if (diskResult.error) {
+      return diskResult.code === 'ENOENT' ? 'deleted' : 'unreadable'
+    }
+    return diskResult.content === savedContent ? null : 'changed'
+  }
+
+  const SAVE_CONFLICT_PROMPTS = {
+    changed: '이 파일이 외부에서 변경되었습니다. 편집 중인 내용으로 덮어쓰시겠습니까?',
+    unreadable: '이 파일의 디스크 상태를 확인할 수 없습니다. 그래도 덮어쓰시겠습니까?',
   }
 
   function createDocumentFlowController({ api, getWorkspaceController, getEditorController, setMarkdown, showToast, alertError, confirmOverwrite }) {
@@ -81,10 +94,10 @@
       }
 
       const diskResult = JSON.parse(await api.readFile(tab.path))
-      if (detectSaveConflict(diskResult, tab.savedContent)) {
-        const overwrite = confirmOverwrite
-          ? confirmOverwrite('이 파일이 외부에서 변경되었습니다. 편집 중인 내용으로 덮어쓰시겠습니까?')
-          : true
+      const conflict = detectSaveConflict(diskResult, tab.savedContent)
+      const prompt = SAVE_CONFLICT_PROMPTS[conflict]
+      if (prompt) {
+        const overwrite = confirmOverwrite ? confirmOverwrite(prompt) : true
         if (!overwrite) return
       }
 
