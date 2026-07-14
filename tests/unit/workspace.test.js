@@ -52,15 +52,24 @@ test('computeAggregateDirty reports whether any tab has unsaved changes', () => 
   assert.equal(computeAggregateDirty([{ dirty: false }, { dirty: true }]), true)
 })
 
-test('resolveExternalChangeAction picks a policy from the event and dirty state', () => {
-  assert.equal(resolveExternalChangeAction({ event: 'unlink', isDirty: false }), 'mark-deleted')
-  assert.equal(resolveExternalChangeAction({ event: 'unlink', isDirty: true }), 'mark-deleted')
-  assert.equal(resolveExternalChangeAction({ event: 'change', isDirty: true }), 'confirm')
-  assert.equal(resolveExternalChangeAction({ event: 'add', isDirty: true }), 'confirm')
-  assert.equal(resolveExternalChangeAction({ event: 'change', isDirty: false }), 'reload')
+test('resolveExternalChangeAction picks a policy from the event, dirty state, and active tab', () => {
+  assert.equal(resolveExternalChangeAction({ event: 'unlink', isDirty: false, isActive: true }), 'mark-deleted')
+  assert.equal(resolveExternalChangeAction({ event: 'unlink', isDirty: true, isActive: true }), 'mark-deleted')
+  // A deleted background tab is still just marked deleted, never a silent modal.
+  assert.equal(resolveExternalChangeAction({ event: 'unlink', isDirty: true, isActive: false }), 'mark-deleted')
+  assert.equal(resolveExternalChangeAction({ event: 'change', isDirty: true, isActive: true }), 'confirm')
+  assert.equal(resolveExternalChangeAction({ event: 'add', isDirty: true, isActive: true }), 'confirm')
+  assert.equal(resolveExternalChangeAction({ event: 'change', isDirty: false, isActive: true }), 'reload')
+  assert.equal(resolveExternalChangeAction({ event: 'change', isDirty: false, isActive: false }), 'reload')
   // Absent event (older main process) degrades safely to the change path.
-  assert.equal(resolveExternalChangeAction({ event: undefined, isDirty: false }), 'reload')
-  assert.equal(resolveExternalChangeAction({ event: undefined, isDirty: true }), 'confirm')
+  assert.equal(resolveExternalChangeAction({ event: undefined, isDirty: false, isActive: true }), 'reload')
+  assert.equal(resolveExternalChangeAction({ event: undefined, isDirty: true, isActive: true }), 'confirm')
+})
+
+test('resolveExternalChangeAction marks a conflict instead of prompting for a dirty background tab', () => {
+  // A dirty tab the user isn't looking at must not pop a modal — mark it and ask on switch.
+  assert.equal(resolveExternalChangeAction({ event: 'change', isDirty: true, isActive: false }), 'mark-conflict')
+  assert.equal(resolveExternalChangeAction({ event: 'add', isDirty: true, isActive: false }), 'mark-conflict')
 })
 
 test('isSelfWriteEcho ignores the watcher event caused by our own save', () => {

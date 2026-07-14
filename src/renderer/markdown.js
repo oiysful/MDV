@@ -54,6 +54,17 @@
       imageDataUrlCache.set(key, dataUrl)
     }
 
+    // The cache is keyed by path only, so a changed image on disk keeps serving its
+    // old data URL until this is called. Callers clear it around events that mean
+    // "images referenced here may be stale": an external file change, or a fresh save.
+    function clearImageCache() {
+      imageDataUrlCache.clear()
+    }
+
+    function clearImageCacheEntry(localPath) {
+      imageDataUrlCache.delete(localPath)
+    }
+
     function renderMarkdown(text) {
       return sanitizeHtml(markedLib.parse(text))
     }
@@ -71,6 +82,7 @@
     async function resolveRenderedImagePaths(docPath) {
       const refs = getRefs()
       const images = Array.from(refs.content.querySelectorAll('img[src]'))
+      const resolvedPaths = new Set()
       await Promise.all(images.map(async img => {
         const rawSrc = img.getAttribute('src')
         // A leading-slash src yields both an absolute and a document-relative
@@ -86,12 +98,14 @@
               cacheImageDataUrl(localPath, dataUrl)
             }
             img.src = dataUrl
+            resolvedPaths.add(localPath)
             return
           }
         } catch (e) {
           console.error('이미지 오류:', e)
         }
       }))
+      return resolvedPaths
     }
 
     function updateStats(text) {
@@ -136,11 +150,12 @@
     async function render(text, filename, docPath) {
       const refs = getRefs()
       refs.content.innerHTML = renderMarkdown(text)
-      await resolveRenderedImagePaths(docPath)
+      const imagePaths = await resolveRenderedImagePaths(docPath)
       document.title = (filename || 'untitled.md').replace(/\.(md|markdown)$/i, '')
       updateStats(text)
       buildToc()
       if (onShowModeButton) onShowModeButton()
+      return imagePaths
     }
 
     function hydrateFromDom(contentNode, tocNode, text) {
@@ -203,6 +218,8 @@
       resetEmptyStats,
       refreshTocActive,
       refreshHeadingOffsets,
+      clearImageCache,
+      clearImageCacheEntry,
     }
   }
 

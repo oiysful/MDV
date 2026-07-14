@@ -69,6 +69,10 @@
         refs.btnSplit.style.display = 'none'
         refs.btnSplit.classList.remove('split-active')
       }
+      if (refs.btnWrap) {
+        refs.btnWrap.disabled = true
+        refs.btnWrap.style.display = 'none'
+      }
       markdownController.resetEmptyStats()
       getEditorController()?.setSourceMode(false)
       getEditorController()?.setSplitMode(false)
@@ -103,6 +107,14 @@
       onboardingController.dismissDefaultAppGuide()
     }
 
+    function showShortcuts() {
+      getRefs().shortcutsGuide?.classList.add('show')
+    }
+
+    function hideShortcuts() {
+      getRefs().shortcutsGuide?.classList.remove('show')
+    }
+
     function showToast(message) {
       return onboardingController.showToast(message)
     }
@@ -133,6 +145,10 @@
       if (refs.btnSplit) {
         refs.btnSplit.disabled = !activeTab
         refs.btnSplit.style.display = activeTab ? '' : 'none'
+      }
+      if (refs.btnWrap) {
+        refs.btnWrap.disabled = !activeTab
+        refs.btnWrap.style.display = activeTab ? '' : 'none'
       }
     }
 
@@ -197,6 +213,10 @@
       await getEditorController().toggleSplitView()
     }
 
+    function toggleWrap() {
+      getEditorController()?.toggleWrap()
+    }
+
     function switchTab(tab) {
       const refs = getRefs()
       setActiveTabName(tab)
@@ -255,8 +275,8 @@
 
     function toggleSearch() {
       const editor = getEditorController()
-      if (editor.getSourceMode() || editor.getSplitMode()) return
-      return searchController.toggleSearch()
+      const inEditor = editor.getSourceMode() || editor.getSplitMode()
+      return searchController.toggleSearch({ target: inEditor ? 'editor' : 'preview' })
     }
 
     function closeSearch() {
@@ -331,22 +351,23 @@
         documentRef.getElementById('hljs-light').disabled = isDark
       })
 
+      // ⌘T/⌘W/⌘U/⌘\/⌘F/⌘P/⌘⇧]/⌘⇧[ are handled by native menu accelerators
+      // (src/main.js#buildMenu) so they aren't duplicated here — a key with an
+      // accelerator fires the menu's click handler on top of any keydown listener.
       documentRef.addEventListener('keydown', event => {
         const modifier = event.metaKey || event.ctrlKey
-        if (modifier && event.key === 'p') { event.preventDefault(); if (getMarkdown()) printDoc() }
         if (modifier && event.key === 'o') { event.preventDefault(); void openFile() }
-        if (modifier && event.key === 't') { event.preventDefault(); void newFile() }
         if (modifier && event.key === 'n') { event.preventDefault(); void newWindow() }
-        if (modifier && event.key === 'w') { event.preventDefault(); closeCurrentTab() }
-        if (modifier && event.key === 'u') { event.preventDefault(); void toggleSource() }
-        if (modifier && event.key === '\\') { event.preventDefault(); void toggleSplitView() }
-        if (modifier && event.key === 'f') { event.preventDefault(); toggleSearch() }
         if (modifier && event.key.toLowerCase() === 's' && event.shiftKey) { event.preventDefault(); void saveFileAs() }
         if (modifier && event.key.toLowerCase() === 's' && !event.shiftKey) { event.preventDefault(); void saveFile() }
-        if (modifier && event.shiftKey && (event.key === '}' || event.code === 'BracketRight')) { event.preventDefault(); switchToNextTab() }
-        if (modifier && event.shiftKey && (event.key === '{' || event.code === 'BracketLeft')) { event.preventDefault(); switchToPrevTab() }
-        if (event.key === 'Escape') closeSearch()
-        if (event.key === 'Escape') hideAppContextMenu()
+        if (event.key === 'Escape') {
+          // Close one layer per press, topmost first: guides, then search, then the context menu.
+          if (onboardingController.isDefaultAppGuideOpen()) dismissDefaultAppGuide()
+          else if (getRefs().shortcutsGuide?.classList.contains('show')) hideShortcuts()
+          else if (onboardingController.isWelcomeGuideOpen()) dismissWelcomeGuide()
+          else if (searchController.isSearchOpen()) closeSearch()
+          else hideAppContextMenu()
+        }
       })
 
       documentRef.addEventListener('click', () => {
@@ -365,6 +386,8 @@
       revealInFinder,
       checkMarkdownDefaultAppStatus,
       dismissDefaultAppGuide,
+      showShortcuts,
+      hideShortcuts,
       showToast,
       updateEntryAffordance,
       dismissWelcomeGuide,
@@ -382,6 +405,7 @@
       exportPdf,
       toggleSource,
       toggleSplitView,
+      toggleWrap,
       switchTab,
       newWindow,
       newFile,

@@ -18,6 +18,7 @@
       btnPrint: documentRef.getElementById('btn-print'),
       btnExportPdf: documentRef.getElementById('btn-export-pdf'),
       btnSplit: documentRef.getElementById('btn-split'),
+      btnWrap: documentRef.getElementById('btn-wrap'),
       goTop: documentRef.getElementById('go-top'),
       btnMode: documentRef.getElementById('btn-mode'),
       modeLabel: documentRef.getElementById('mode-label'),
@@ -39,12 +40,13 @@
       toast: documentRef.getElementById('toast'),
       welcomeGuide: documentRef.getElementById('welcome-guide'),
       defaultAppGuide: documentRef.getElementById('default-app-guide'),
+      shortcutsGuide: documentRef.getElementById('shortcuts-guide'),
       defaultAppDoNotShow: documentRef.getElementById('default-app-do-not-show'),
     }
   }
 
-  function createAppShellController({ documentRef, windowRef, api, getRefs, themeController, markdownController, getExplorerRoot, revealInFinder, clearExplorerRoot, showAppContextMenu, hideAppContextMenu, runSearch, searchNext, searchPrev, closeSearch, handleFileOpened, handleFileChanged, handleRendererCommand }) {
-    function initializeUi({ applyTheme, sidebarOpen, activeTab, syncExplorerHeader, updateToolbarActions, updateEntryAffordance, maybeShowWelcomeGuide }) {
+  function createAppShellController({ documentRef, windowRef, api, getRefs, themeController, markdownController, getExplorerRoot, revealInFinder, clearExplorerRoot, showAppContextMenu, hideAppContextMenu, runSearch, searchNext, searchPrev, handleFileOpened, handleFileChanged, handleRendererCommand }) {
+    function initializeUi({ applyTheme, sidebarOpen, activeTab, syncExplorerHeader, updateToolbarActions, updateEntryAffordance, maybeShowWelcomeGuide, applyWrapMode }) {
       const refs = getRefs()
       applyTheme()
       refs.sidebar.classList.toggle('closed', !sidebarOpen)
@@ -54,6 +56,7 @@
       updateToolbarActions()
       updateEntryAffordance()
       maybeShowWelcomeGuide()
+      applyWrapMode()
     }
 
     function registerIpcHandlers() {
@@ -150,10 +153,10 @@
         } else if (event.key === 'Enter') {
           event.preventDefault()
           searchNext()
-        } else if (event.key === 'Escape') {
-          event.preventDefault()
-          closeSearch()
         }
+        // Escape is deliberately not handled here: it bubbles to the document-level
+        // handler (app-runtime.js), which closes the topmost layer first (guides,
+        // then search, then the context menu) instead of always closing search.
       })
     }
 
