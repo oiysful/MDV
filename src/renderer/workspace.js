@@ -12,9 +12,9 @@
     return tabs.some(tab => tab.dirty)
   }
 
-  function resolveExternalChangeAction({ event, isDirty }) {
+  function resolveExternalChangeAction({ event, isDirty, isActive }) {
     if (event === 'unlink') return 'mark-deleted'
-    if (isDirty) return 'confirm'
+    if (isDirty) return isActive ? 'confirm' : 'mark-conflict'
     return 'reload'
   }
 
@@ -53,7 +53,8 @@
     render,
     applySourceMode,
     showEmptyState,
-    watchFile,
+    watchPath,
+    unwatchPath,
     updateToolbarActions,
     updateEntryAffordance,
     maybeShowWelcomeGuide,
@@ -84,6 +85,34 @@
 
     function findTabByPath(targetPath) {
       return findTabByPathInTabs(tabs, targetPath)
+    }
+
+    function findTabsByImagePath(imagePath) {
+      return tabs.filter(tab => tab.watchedImagePaths && tab.watchedImagePaths.has(imagePath))
+    }
+
+    // Keeps the watcher subscriptions for a tab's embedded images in sync with what
+    // its last render actually resolved, so a changed image is caught even when the
+    // document itself never changes (main.js already supports per-path multi-subscriber
+    // watching; this is what actually points it at rendered image paths).
+    function syncTabImageWatches(tab, imagePaths) {
+      const next = imagePaths instanceof Set ? imagePaths : new Set(imagePaths || [])
+      const prev = tab.watchedImagePaths || new Set()
+      for (const path of prev) {
+        if (!next.has(path)) unwatchPath(path)
+      }
+      for (const path of next) {
+        if (!prev.has(path)) watchPath(path)
+      }
+      tab.watchedImagePaths = next
+    }
+
+    function releaseTabWatches(tab) {
+      if (tab.path) unwatchPath(tab.path)
+      if (tab.watchedImagePaths) {
+        for (const path of tab.watchedImagePaths) unwatchPath(path)
+        tab.watchedImagePaths = null
+      }
     }
 
     function getActiveTab() {
@@ -129,9 +158,12 @@
       setSourceMode(tab.sourceMode || false)
       setSplitMode(tab.splitMode || false)
       applySourceMode()
-      if (tab.splitMode && tab.previewDirty) {
+      // previewDirty also gets set on a background tab that picked up an external
+      // change while inactive (see applyExternalContent) — its cached renderedHTML
+      // is stale relative to tab.content, regardless of split mode, so re-render here.
+      if (tab.previewDirty) {
         const renderVersion = ++restoreRenderVersion
-        void render(tab.content, tab.filename || '', tab.path || null).then(() => {
+        void render(tab.content, tab.filename || '', tab.path || null).then(imagePaths => {
           if (getActiveTab() !== tab || renderVersion !== restoreRenderVersion) {
             restoreActiveTabState()
             return
@@ -139,7 +171,9 @@
           tab.renderedHTML = refs.content.innerHTML
           tab.tocHTML = refs.tocList.innerHTML
           tab.previewDirty = false
-          refs.content.scrollTop = tab.previewScrollTop || 0
+          syncTabImageWatches(tab, imagePaths)
+          if (tab.splitMode) refs.content.scrollTop = tab.previewScrollTop || 0
+          else refs.scrollArea.scrollTop = tab.scrollTop || 0
         })
       }
       requestAnimationFrame(() => {
@@ -164,12 +198,14 @@
       list.innerHTML = ''
       tabs.forEach(tab => {
         const el = document.createElement('div')
-        el.className = 'file-tab' + (tab.id === activeTabId ? ' active' : '')
+        el.className = 'file-tab' + (tab.id === activeTabId ? ' active' : '') + (tab.conflictPending ? ' has-conflict' : '')
         el.dataset.tabId = tab.id
         el.draggable = true
         const name = document.createElement('span')
         name.className = 'file-tab-name'
-        name.textContent = `${tab.dirty ? '● ' : ''}${tab.filename}`
+        const marker = tab.conflictPending ? '⚠ ' : (tab.dirty ? '● ' : '')
+        name.textContent = `${marker}${tab.filename}`
+        if (tab.conflictPending) name.title = '이 파일이 외부에서 변경되었습니다. 탭을 열면 확인합니다.'
         const closeButton = document.createElement('button')
         closeButton.className = 'file-tab-close'
         closeButton.innerHTML = '&times;'
@@ -286,15 +322,16 @@
       setSourceMode(false)
       setSplitMode(false)
       applySourceMode()
-      await render(tab.content, tab.filename, tab.path)
+      const imagePaths = await render(tab.content, tab.filename, tab.path)
       tab.renderedHTML = refs.content.innerHTML
       tab.tocHTML = refs.tocList.innerHTML
+      syncTabImageWatches(tab, imagePaths)
       renderTabBar()
-      if (tab.path) watchFile(tab.path)
+      if (tab.path) watchPath(tab.path)
       return tab
     }
 
-    function switchToTab(tabId) {
+    async function switchToTab(tabId) {
       if (tabId === activeTabId) return
       const target = tabs.find(tab => tab.id === tabId)
       if (!target) return
@@ -304,7 +341,7 @@
       setMarkdown(target.content)
       restoreTabState(target)
       renderTabBar()
-      if (target.path) watchFile(target.path)
+      await resolvePendingConflict(target)
     }
 
     function closeTab(tabId) {
@@ -313,12 +350,12 @@
       if (tabs[idx].dirty && !confirmClose('저장하지 않은 변경 사항이 있습니다. 닫으시겠습니까?')) return
       if (tabId === activeTabId) closeSearch?.()
       const nextActiveTabId = getNextActiveTabIdAfterClose(tabs, tabId, activeTabId)
-      tabs.splice(idx, 1)
+      const [closedTab] = tabs.splice(idx, 1)
+      releaseTabWatches(closedTab)
       if (tabs.length === 0) {
         activeTabId = null
         showEmptyState()
         renderTabBar()
-        watchFile(null)
         return
       }
       if (activeTabId === tabId) {
@@ -326,7 +363,6 @@
         const nextTab = getActiveTab()
         setMarkdown(nextTab.content)
         restoreTabState(nextTab)
-        if (nextTab.path) watchFile(nextTab.path)
       }
       renderTabBar()
     }
@@ -337,23 +373,25 @@
       const dirtyOthers = tabs.some(tab => tab.id !== tabId && tab.dirty)
       if (dirtyOthers && !confirmClose('저장하지 않은 변경 사항이 있는 다른 탭이 있습니다. 닫으시겠습니까?')) return
       closeSearch?.()
+      for (const tab of tabs) {
+        if (tab.id !== tabId) releaseTabWatches(tab)
+      }
       tabs = tabs.filter(tab => tab.id === tabId)
       activeTabId = tabId
       setMarkdown(target.content)
       restoreTabState(target)
       renderTabBar()
-      if (target.path) watchFile(target.path)
     }
 
     function closeAllTabs() {
       const hasDirty = tabs.some(tab => tab.dirty)
       if (hasDirty && !confirmClose('저장하지 않은 변경 사항이 있는 탭이 있습니다. 모두 닫으시겠습니까?')) return
       closeSearch?.()
+      for (const tab of tabs) releaseTabWatches(tab)
       tabs = []
       activeTabId = null
       showEmptyState()
       renderTabBar()
-      watchFile(null)
     }
 
     async function openTabInNewWindow(tabId) {
@@ -376,23 +414,101 @@
       if (idx > 0) switchToTab(tabs[idx - 1].id)
     }
 
-    async function handleExternalFileChange({ path, content, event }) {
+    async function applyExternalContent(tab, content) {
+      tab.content = content
+      tab.savedContent = content
+      tab.dirty = false
+      if (tab.id !== activeTabId) {
+        // Cached renderedHTML is now stale; restoreTabState re-renders once this
+        // tab is actually activated instead of paying for it while backgrounded.
+        tab.previewDirty = true
+        return
+      }
       const refs = getRefs()
+      setMarkdown(content)
+      if (getSourceMode()) {
+        refs.sourceEditor.value = content
+      }
+      // The doc changed externally; any of its images could have changed with it,
+      // and the self-write echo on our own saves means this is the only place that
+      // reliably fires for an externally-edited document.
+      markdownController.clearImageCache()
+      const imagePaths = await render(content, tab.filename, tab.path)
+      tab.renderedHTML = refs.content.innerHTML
+      tab.tocHTML = refs.tocList.innerHTML
+      tab.previewDirty = false
+      syncTabImageWatches(tab, imagePaths)
+      if (getSourceMode()) {
+        applySourceMode()
+      } else if (getSplitMode()) {
+        refs.sourceEditor.value = content
+        applySourceMode()
+      }
+    }
+
+    // A background tab that's dirty when an external change lands can't be resolved
+    // right away without popping a modal for a tab the user isn't even looking at.
+    // Stash the disk content and ask when they actually switch to it.
+    async function resolvePendingConflict(tab) {
+      const pending = tab.conflictPending
+      if (!pending) return
+      tab.conflictPending = null
+      const reload = confirmClose(`"${tab.filename}"이(가) 외부에서 변경되었습니다. 편집 중인 내용을 버리고 디스크 내용으로 다시 불러오시겠습니까?`)
+      if (!reload) {
+        renderTabBar()
+        return
+      }
+      await applyExternalContent(tab, pending.content)
+      renderTabBar()
+    }
+
+    // A changed path that isn't any tab's document is one of the rendered image
+    // paths we asked main.js to watch (see syncTabImageWatches). Evict just that
+    // cache entry and refresh every tab that embeds it.
+    async function handleExternalImageChange(imagePath) {
+      const affectedTabs = findTabsByImagePath(imagePath)
+      if (!affectedTabs.length) return
+      markdownController.clearImageCacheEntry(imagePath)
+      for (const tab of affectedTabs) {
+        if (tab.id !== activeTabId) {
+          tab.previewDirty = true
+          continue
+        }
+        const refs = getRefs()
+        const imagePaths = await render(tab.content, tab.filename, tab.path)
+        tab.renderedHTML = refs.content.innerHTML
+        tab.tocHTML = refs.tocList.innerHTML
+        tab.previewDirty = false
+        syncTabImageWatches(tab, imagePaths)
+      }
+      renderTabBar()
+    }
+
+    async function handleExternalFileChange({ path, content, event }) {
       const tab = findTabByPath(path)
-      if (!tab) return
+      if (!tab) {
+        await handleExternalImageChange(path)
+        return
+      }
 
       // Our own save comes back through the watcher a moment later. Treating that
       // echo as an external edit would prompt the user to discard anything they
       // typed since saving, so ignore a change whose content is what we just wrote.
       if (isSelfWriteEcho({ event, content, savedContent: tab.savedContent })) return
 
-      const action = resolveExternalChangeAction({ event, isDirty: tab.dirty })
+      const action = resolveExternalChangeAction({ event, isDirty: tab.dirty, isActive: tab.id === activeTabId })
 
       if (action === 'mark-deleted') {
         // File was removed on disk. Keep the buffer so the user can re-save it,
         // and force dirty so it survives further keystrokes and save-conflict checks.
         tab.dirty = true
         tab.savedContent = null
+        renderTabBar()
+        return
+      }
+
+      if (action === 'mark-conflict') {
+        tab.conflictPending = { content, event }
         renderTabBar()
         return
       }
@@ -405,25 +521,7 @@
         }
       }
 
-      tab.content = content
-      tab.savedContent = content
-      tab.dirty = false
-      if (tab.id === activeTabId) {
-        setMarkdown(content)
-        if (getSourceMode()) {
-          refs.sourceEditor.value = content
-        }
-        await render(content, tab.filename, tab.path)
-        tab.renderedHTML = refs.content.innerHTML
-        tab.tocHTML = refs.tocList.innerHTML
-        tab.previewDirty = false
-        if (getSourceMode()) {
-          applySourceMode()
-        } else if (getSplitMode()) {
-          refs.sourceEditor.value = content
-          applySourceMode()
-        }
-      }
+      await applyExternalContent(tab, content)
       renderTabBar()
     }
 
@@ -452,6 +550,7 @@
       handleExternalFileChange,
       updateActiveTabDirtyFromEditor,
       renderTabBar,
+      syncTabImageWatches,
     }
   }
 

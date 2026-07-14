@@ -96,6 +96,7 @@ document.addEventListener('DOMContentLoaded', () => {
     showToast: message => runtimeController.showToast(message),
     alertError: message => alert(message),
     confirmOverwrite: message => confirm(message),
+    clearImageCache: () => markdownController.clearImageCache(),
   })
 
   shellActionsController = window.MDVShellActions.createShellActionsController({
@@ -115,6 +116,7 @@ document.addEventListener('DOMContentLoaded', () => {
     onSourceInput: value => handleSourceInput(value),
     render,
     closeSearch: () => runtimeController.closeSearch(),
+    storage: localStorage,
   })
 
   appShellController = window.MDVAppShell.createAppShellController({
@@ -132,7 +134,6 @@ document.addEventListener('DOMContentLoaded', () => {
     runSearch: query => runtimeController.runSearch(query),
     searchNext: () => runtimeController.searchNext(),
     searchPrev: () => runtimeController.searchPrev(),
-    closeSearch: () => runtimeController.closeSearch(),
     handleFileOpened: jsonStr => documentFlowController.handleFileOpened(jsonStr),
     handleFileChanged: payload => documentFlowController.handleFileChanged(payload),
     handleRendererCommand: commandName => runRendererCommand(commandName),
@@ -144,7 +145,8 @@ document.addEventListener('DOMContentLoaded', () => {
     render,
     applySourceMode: () => editorController.applySourceMode(),
     showEmptyState: () => runtimeController.showEmptyState(),
-    watchFile: path => documentFlowController.watchFile(path),
+    watchPath: path => documentFlowController.watchPath(path),
+    unwatchPath: path => documentFlowController.unwatchPath(path),
     updateToolbarActions: () => runtimeController.updateToolbarActions(),
     updateEntryAffordance: () => runtimeController.updateEntryAffordance(),
     maybeShowWelcomeGuide: () => runtimeController.maybeShowWelcomeGuide(),
@@ -180,6 +182,7 @@ document.addEventListener('DOMContentLoaded', () => {
     updateToolbarActions: () => runtimeController.updateToolbarActions(),
     updateEntryAffordance: () => runtimeController.updateEntryAffordance(),
     maybeShowWelcomeGuide: () => runtimeController.maybeShowWelcomeGuide(),
+    applyWrapMode: () => editorController.applyWrapMode(),
   })
   appShellController.registerIpcHandlers()
   appShellController.bindUiEvents(rendererCommands)
@@ -190,7 +193,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
 async function render(text, filename, docPath) {
   $.content.classList.remove('is-empty')
-  await markdownController.render(text, filename, docPath)
+  return markdownController.render(text, filename, docPath)
 }
 
 function createRendererCommands() {
@@ -205,12 +208,18 @@ function createRendererCommands() {
     toggleSidebar: () => runtimeController.toggleSidebar(),
     toggleSource: () => runtimeController.toggleSource(),
     toggleSplitView: () => runtimeController.toggleSplitView(),
+    toggleWrap: () => runtimeController.toggleWrap(),
     toggleSearch: () => runtimeController.toggleSearch(),
     copyAll: () => runtimeController.copyAll(),
     printDoc: () => runtimeController.printDoc(),
     exportPdf: () => runtimeController.exportPdf(),
     toggleTheme: () => runtimeController.toggleTheme(),
     newFile: () => runtimeController.newFile(),
+    closeCurrentTab: () => runtimeController.closeCurrentTab(),
+    switchToNextTab: () => runtimeController.switchToNextTab(),
+    switchToPrevTab: () => runtimeController.switchToPrevTab(),
+    showShortcuts: () => runtimeController.showShortcuts(),
+    hideShortcuts: () => runtimeController.hideShortcuts(),
     toggleAddMenu: event => runtimeController.toggleAddMenu(event),
     hideAddMenu: () => runtimeController.hideAddMenu(),
     dismissWelcomeGuide: () => runtimeController.dismissWelcomeGuide(),
@@ -258,7 +267,7 @@ async function renderSplitPreview(tab, value, renderVersion) {
   const sourceMaxScroll = $.sourceView.scrollHeight - $.sourceView.clientHeight
   const previewRatio = previewMaxScroll > 0 ? $.content.scrollTop / previewMaxScroll : 0
   const sourceRatio = sourceMaxScroll > 0 ? $.sourceView.scrollTop / sourceMaxScroll : 0
-  await render(value, tab.filename || '', tab.path || null)
+  const imagePaths = await render(value, tab.filename || '', tab.path || null)
   if (workspaceController.getActiveTab() !== tab) {
     workspaceController.restoreActiveTabState()
     return
@@ -271,6 +280,7 @@ async function renderSplitPreview(tab, value, renderVersion) {
   tab.renderedHTML = $.content.innerHTML
   tab.tocHTML = $.tocList.innerHTML
   tab.previewDirty = false
+  workspaceController.syncTabImageWatches(tab, imagePaths)
   const nextPreviewMaxScroll = $.content.scrollHeight - $.content.clientHeight
   if (nextPreviewMaxScroll > 0) $.content.scrollTop = nextPreviewMaxScroll * Math.max(previewRatio, sourceRatio)
 }
@@ -288,10 +298,11 @@ async function ensurePreviewRendered() {
 
   const value = inEditor ? editorController.getEditorValue() : tab.content
   window.clearTimeout(splitRenderTimer)
-  await render(value, tab.filename || '', tab.path || null)
+  const imagePaths = await render(value, tab.filename || '', tab.path || null)
   tab.renderedHTML = $.content.innerHTML
   tab.tocHTML = $.tocList.innerHTML
   tab.previewDirty = false
+  workspaceController.syncTabImageWatches(tab, imagePaths)
 }
 
 async function runRendererCommand(commandName) {

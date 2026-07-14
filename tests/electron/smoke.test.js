@@ -32,6 +32,11 @@ const REMOVED_GLOBALS = [
   'searchPrev',
   'searchNext',
   'closeSearch',
+  'closeCurrentTab',
+  'switchToNextTab',
+  'switchToPrevTab',
+  'showShortcuts',
+  'hideShortcuts',
   'switchTab',
   'toggleExplorerPathInfo',
   'clearExplorerRoot',
@@ -49,6 +54,18 @@ async function stubOpenDialog(electronApp, filePaths) {
       filePaths: result.filePaths,
     })
   }, { filePaths })
+}
+
+// Overrides the real (OS-dependent) default-app-status IPC handler with a fixed, delayed
+// response, so a test can focus something before the guide claims focus during page load.
+async function stubDefaultAppStatusDelay(electronApp, delayMs) {
+  await electronApp.evaluate(async ({ ipcMain }, ms) => {
+    ipcMain.removeHandler('get-markdown-default-app-status')
+    ipcMain.handle('get-markdown-default-app-status', async () => {
+      await new Promise(resolve => setTimeout(resolve, ms))
+      return JSON.stringify({ ok: true, registered: false, needsAction: true, appPath: '/Applications/MDV.app', defaultHandlers: [] })
+    })
+  }, delayMs)
 }
 
 async function stubSaveDialog(electronApp, filePath) {
@@ -372,7 +389,7 @@ test('opening the same file twice reuses the existing tab', async () => {
   }
 })
 
-test('add menu creates new untitled files and keeps Cmd+T behavior', async () => {
+test('add menu creates new untitled files and keeps ⌘T menu behavior', async () => {
   const { electronApp, page } = await launchApp()
 
   try {
@@ -386,9 +403,9 @@ test('add menu creates new untitled files and keeps Cmd+T behavior', async () =>
       return document.title === 'untitled' && active && active.textContent.includes('untitled.md') && menu.style.display === 'none'
     })
 
-    await page.evaluate(() => {
-      document.dispatchEvent(new KeyboardEvent('keydown', { key: 't', metaKey: true, bubbles: true, cancelable: true }))
-    })
+    // ⌘T is now owned by the native menu accelerator (src/main.js#buildMenu),
+    // not a renderer keydown listener -- exercise it the same way the OS would.
+    await clickApplicationMenuItem(electronApp, '파일', '새 파일')
     await page.waitForFunction(() => {
       const active = document.querySelector('#tab-list .file-tab.active .file-tab-name')
       return document.querySelectorAll('#tab-list .file-tab').length === 2 && active && active.textContent.includes('untitled-2.md')
@@ -518,6 +535,129 @@ test('save as rewires the active tab path and future saves to the new file', asy
   } finally {
     await closeApp(electronApp)
     await cleanup()
+  }
+})
+
+test('Enter continues a bullet list item and exits an empty one, each undoable in one step', async () => {
+  const { electronApp, page } = await launchApp()
+
+  try {
+    await page.waitForSelector('#empty')
+    await stubOpenDialog(electronApp, [BASIC_MD])
+    await emitRendererCommand(electronApp, 'openFile')
+    await page.waitForFunction(() => document.title === 'basic')
+
+    await emitRendererCommand(electronApp, 'toggleSource')
+    await page.waitForFunction(() => document.getElementById('source-view').style.display === 'block')
+
+    const editor = page.locator('#source-editor')
+    await editor.click()
+    await page.keyboard.press('Meta+a')
+    await page.keyboard.type('- item')
+    await page.keyboard.press('Enter')
+
+    await page.waitForFunction(() => document.getElementById('source-editor').value === '- item\n- ')
+    assert.equal(await editor.inputValue(), '- item\n- ')
+
+    // The list item is now empty ("- " with nothing after it) — Enter here must exit the
+    // list (remove the prefix) rather than add another bullet, or there'd be no way out.
+    await page.keyboard.press('Enter')
+    await page.waitForFunction(() => document.getElementById('source-editor').value === '- item\n')
+    assert.equal(await editor.inputValue(), '- item\n')
+
+    // Both edits went through execCommand, so each Cmd+Z must revert exactly one of them —
+    // this is the whole reason execCommand is mandated over direct .value assignment.
+    await page.keyboard.press('Meta+z')
+    await page.waitForFunction(() => document.getElementById('source-editor').value === '- item\n- ')
+    assert.equal(await editor.inputValue(), '- item\n- ')
+
+    await page.keyboard.press('Meta+z')
+    await page.waitForFunction(() => document.getElementById('source-editor').value === '- item')
+    assert.equal(await editor.inputValue(), '- item')
+  } finally {
+    await closeApp(electronApp)
+  }
+})
+
+test('Cmd+B toggles bold markers on the selection and undo reverts each step', async () => {
+  const { electronApp, page } = await launchApp()
+
+  try {
+    await page.waitForSelector('#empty')
+    await stubOpenDialog(electronApp, [BASIC_MD])
+    await emitRendererCommand(electronApp, 'openFile')
+    await page.waitForFunction(() => document.title === 'basic')
+
+    await emitRendererCommand(electronApp, 'toggleSource')
+    await page.waitForFunction(() => document.getElementById('source-view').style.display === 'block')
+
+    const editor = page.locator('#source-editor')
+    await editor.click()
+    await page.keyboard.press('Meta+a')
+    await page.keyboard.type('hello world')
+    await page.evaluate(() => document.getElementById('source-editor').setSelectionRange(0, 5))
+
+    await page.keyboard.press('Meta+b')
+    await page.waitForFunction(() => document.getElementById('source-editor').value === '**hello** world')
+    assert.equal(await editor.inputValue(), '**hello** world')
+
+    // Re-select the wrapped word (inside the markers) and toggle again: must unwrap, not
+    // wrap a second time.
+    await page.evaluate(() => document.getElementById('source-editor').setSelectionRange(2, 7))
+    await page.keyboard.press('Meta+b')
+    await page.waitForFunction(() => document.getElementById('source-editor').value === 'hello world')
+    assert.equal(await editor.inputValue(), 'hello world')
+
+    // Each toggle is a single execCommand call, so each Cmd+Z must revert exactly one step.
+    await page.keyboard.press('Meta+z')
+    await page.waitForFunction(() => document.getElementById('source-editor').value === '**hello** world')
+    assert.equal(await editor.inputValue(), '**hello** world')
+
+    await page.keyboard.press('Meta+z')
+    await page.waitForFunction(() => document.getElementById('source-editor').value === 'hello world')
+    assert.equal(await editor.inputValue(), 'hello world')
+  } finally {
+    await closeApp(electronApp)
+  }
+})
+
+test('wrap toggle hides the line-number gutter and un-hides it when toggled off', async () => {
+  const { electronApp, page } = await launchApp()
+
+  try {
+    await page.waitForSelector('#empty')
+    await stubOpenDialog(electronApp, [BASIC_MD])
+    await emitRendererCommand(electronApp, 'openFile')
+    await page.waitForFunction(() => document.title === 'basic')
+
+    await emitRendererCommand(electronApp, 'toggleSource')
+    await page.waitForFunction(() => document.getElementById('source-view').style.display === 'block')
+
+    // Read the starting state instead of assuming it, since wrap mode persists across
+    // launches via localStorage and a prior test in this run may have left it on.
+    const wasWrapped = await page.evaluate(() => document.getElementById('scroll-area').classList.contains('wrap-mode'))
+
+    await emitRendererCommand(electronApp, 'toggleWrap')
+    await page.waitForFunction(
+      previous => document.getElementById('scroll-area').classList.contains('wrap-mode') !== previous,
+      wasWrapped,
+    )
+    const nowWrapped = await page.evaluate(() => document.getElementById('scroll-area').classList.contains('wrap-mode'))
+    assert.notEqual(nowWrapped, wasWrapped)
+    // The gutter is built from raw '\n' counts, so it hides exactly when wrap is on —
+    // otherwise it drifts out of sync with wrapped visual rows.
+    const gutterDisplay = await page.locator('#source-lines').evaluate(el => getComputedStyle(el).display)
+    assert.equal(gutterDisplay === 'none', nowWrapped)
+
+    await emitRendererCommand(electronApp, 'toggleWrap')
+    await page.waitForFunction(
+      original => document.getElementById('scroll-area').classList.contains('wrap-mode') === original,
+      wasWrapped,
+    )
+    const gutterRestored = await page.locator('#source-lines').evaluate(el => getComputedStyle(el).display)
+    assert.equal(gutterRestored === 'none', wasWrapped)
+  } finally {
+    await closeApp(electronApp)
   }
 })
 
@@ -887,7 +1027,7 @@ test('external file changes reload clean tabs and prompt before clobbering dirty
   }
 })
 
-test('switching tabs rewires the watched file to the active tab path', async () => {
+test('background tabs stay watched and pick up clean external edits without rewiring on switch', async () => {
   const { path: firstPath, cleanup: cleanupFirst } = await createTempMarkdown(BASIC_MD, 'watch-one.md')
   const { path: secondPath, cleanup: cleanupSecond } = await createTempMarkdown(ROOT_MD, 'watch-two.md')
   const { electronApp, page } = await launchApp()
@@ -899,20 +1039,188 @@ test('switching tabs rewires the watched file to the active tab path', async () 
     await page.waitForFunction(() => document.querySelectorAll('#tab-list .file-tab').length === 2)
     await page.waitForFunction(() => document.title === 'watch-two')
 
-    const secondContent = '# Watch Two Updated\n\nActive watcher should refresh this tab.\n'
-    await fs.writeFile(secondPath, secondContent, 'utf8')
-    await page.waitForFunction(expected => document.getElementById('content').textContent.includes(expected), 'Active watcher should refresh this tab.')
+    // watch-one is the inactive background tab. Editing its file on disk must still
+    // reach the renderer — both tabs are watched at once now, not just the active one.
+    const firstContent = '# Watch One Updated\n\nBackground tab should pick this up while inactive.\n'
+    await fs.writeFile(firstPath, firstContent, 'utf8')
+    await page.waitForTimeout(400)
 
+    // The active tab (watch-two) is untouched by the background tab's change.
+    assert.doesNotMatch(await page.textContent('#content'), /Background tab should pick this up/)
+
+    // Switching to watch-one shows the update immediately — it was already applied
+    // while backgrounded, and no reload prompt was needed since it was clean.
     await page.locator('#tab-list .file-tab').filter({ hasText: 'watch-one.md' }).click()
     await page.waitForFunction(() => document.title === 'watch-one')
-
-    const firstContent = '# Watch One Updated\n\nWatcher switched with the active tab.\n'
-    await fs.writeFile(firstPath, firstContent, 'utf8')
-    await page.waitForFunction(expected => document.getElementById('content').textContent.includes(expected), 'Watcher switched with the active tab.')
+    await page.waitForFunction(expected => document.getElementById('content').textContent.includes(expected), 'Background tab should pick this up while inactive.')
+    const activeLabel = await page.textContent('#tab-list .file-tab.active .file-tab-name')
+    assert.doesNotMatch(activeLabel, /[●⚠]/)
   } finally {
     await closeApp(electronApp)
     await cleanupFirst()
     await cleanupSecond()
+  }
+})
+
+test('a dirty background tab is marked as a conflict instead of prompting, and confirms on switch', async () => {
+  const { path: firstPath, cleanup: cleanupFirst } = await createTempMarkdown(BASIC_MD, 'watch-conflict-one.md')
+  const { path: secondPath, cleanup: cleanupSecond } = await createTempMarkdown(ROOT_MD, 'watch-conflict-two.md')
+  const { electronApp, page } = await launchApp()
+
+  try {
+    await page.waitForSelector('#empty')
+    await stubOpenDialog(electronApp, [firstPath, secondPath])
+    await emitRendererCommand(electronApp, 'openFile')
+    await page.waitForFunction(() => document.querySelectorAll('#tab-list .file-tab').length === 2)
+    await page.waitForFunction(() => document.title === 'watch-conflict-two')
+
+    // Dirty the first tab, then switch away so it becomes an inactive, dirty tab.
+    await page.locator('#tab-list .file-tab').filter({ hasText: 'watch-conflict-one.md' }).click()
+    await page.waitForFunction(() => document.title === 'watch-conflict-one')
+    await emitRendererCommand(electronApp, 'toggleSource')
+    await page.waitForFunction(() => document.getElementById('source-view').style.display === 'block')
+    const localEdit = '# Local Edit\n\nUnsaved change on the background tab.\n'
+    await page.locator('#source-editor').fill(localEdit)
+    await page.waitForFunction(() => {
+      const tab = [...document.querySelectorAll('#tab-list .file-tab')].find(el => el.textContent.includes('watch-conflict-one.md'))
+      return Boolean(tab && tab.textContent.includes('●'))
+    })
+
+    await page.locator('#tab-list .file-tab').filter({ hasText: 'watch-conflict-two.md' }).click()
+    await page.waitForFunction(() => document.title === 'watch-conflict-two')
+
+    // External edit on the now-inactive, dirty tab must not pop a modal for a tab
+    // the user isn't looking at — it gets marked with a conflict indicator instead.
+    const externalContent = '# External Update\n\nChanged on disk while the tab was in the background.\n'
+    await fs.writeFile(firstPath, externalContent, 'utf8')
+    await page.waitForFunction(() => {
+      const tab = [...document.querySelectorAll('#tab-list .file-tab')].find(el => el.textContent.includes('watch-conflict-one.md'))
+      return Boolean(tab && tab.classList.contains('has-conflict') && tab.textContent.includes('⚠'))
+    })
+
+    // The active tab is unaffected.
+    assert.doesNotMatch(await page.textContent('#content'), /Changed on disk while the tab was in the background/)
+
+    // Switching to the conflicted tab asks; Playwright auto-dismisses confirm() → keep local edits.
+    await page.locator('#tab-list .file-tab').filter({ hasText: 'watch-conflict-one.md' }).click()
+    await page.waitForFunction(() => document.title === 'watch-conflict-one')
+    await page.waitForFunction(() => {
+      const tab = [...document.querySelectorAll('#tab-list .file-tab')].find(el => el.textContent.includes('watch-conflict-one.md'))
+      return Boolean(tab && !tab.classList.contains('has-conflict') && tab.textContent.includes('●'))
+    })
+    assert.equal(await page.locator('#source-editor').inputValue(), localEdit)
+  } finally {
+    await closeApp(electronApp)
+    await cleanupFirst()
+    await cleanupSecond()
+  }
+})
+
+test('save as unwatches the old path and watches the new one', async () => {
+  const { path: initialPath, cleanup } = await createTempMarkdown(BASIC_MD, 'rewatch-source.md')
+  const tempDir = path.dirname(initialPath)
+  const savedPath = path.join(tempDir, 'rewatch-saved-as.md')
+  const { electronApp, page } = await launchApp()
+
+  try {
+    await page.waitForSelector('#empty')
+    await stubOpenDialog(electronApp, [initialPath])
+    await stubSaveDialog(electronApp, savedPath)
+    await emitRendererCommand(electronApp, 'openFile')
+    await page.waitForFunction(() => document.title === 'rewatch-source')
+
+    await clickApplicationMenuItem(electronApp, '파일', '다른 이름으로 저장…')
+    await page.waitForFunction(() => document.title === 'rewatch-saved-as')
+
+    // The old path is no longer watched: writing to it must not affect the tab.
+    await fs.writeFile(initialPath, '# Stale Path Edit\n\nMust be ignored.\n', 'utf8')
+    await page.waitForTimeout(400)
+    assert.doesNotMatch(await page.textContent('#content'), /Must be ignored/)
+
+    // The new path is watched: writing to it must reach the renderer.
+    const updatedContent = '# New Path Edit\n\nThe new path is watched after save as.\n'
+    await fs.writeFile(savedPath, updatedContent, 'utf8')
+    await page.waitForFunction(expected => document.getElementById('content').textContent.includes(expected), 'The new path is watched after save as.')
+  } finally {
+    await closeApp(electronApp)
+    await cleanup()
+  }
+})
+
+test('changing an embedded image on disk refreshes it without editing the document', async () => {
+  const tempDir = await fs.mkdtemp(path.join(os.tmpdir(), 'mdv-smoke-image-'))
+  const imagePath = path.join(tempDir, 'pic.svg')
+  const docPath = path.join(tempDir, 'image-doc.md')
+  await fs.writeFile(imagePath, '<svg xmlns="http://www.w3.org/2000/svg" width="10"><rect fill="red"/></svg>', 'utf8')
+  await fs.writeFile(docPath, '# Image Doc\n\n![pic](pic.svg)\n', 'utf8')
+  const { electronApp, page } = await launchApp()
+
+  try {
+    await page.waitForSelector('#empty')
+    await stubOpenDialog(electronApp, [docPath])
+    await emitRendererCommand(electronApp, 'openFile')
+    await page.waitForFunction(() => document.title === 'image-doc')
+    await page.waitForFunction(() => {
+      const img = document.querySelector('#content img')
+      return Boolean(img && img.src.startsWith('data:image/svg+xml;base64,'))
+    })
+    const beforeSrc = await page.getAttribute('#content img', 'src')
+
+    // Only the image file changes on disk. The document itself is untouched.
+    await fs.writeFile(imagePath, '<svg xmlns="http://www.w3.org/2000/svg" width="10"><rect fill="blue"/></svg>', 'utf8')
+    await page.waitForFunction(expected => {
+      const img = document.querySelector('#content img')
+      return Boolean(img && img.src.startsWith('data:image/svg+xml;base64,') && img.src !== expected)
+    }, beforeSrc)
+  } finally {
+    await closeApp(electronApp)
+    await fs.rm(tempDir, { recursive: true, force: true })
+  }
+})
+
+test('a background tab\'s embedded image change is picked up silently and shown fresh on switch', async () => {
+  const tempDir = await fs.mkdtemp(path.join(os.tmpdir(), 'mdv-smoke-image-bg-'))
+  const imagePath = path.join(tempDir, 'pic.svg')
+  const firstDocPath = path.join(tempDir, 'image-doc-one.md')
+  const secondDocPath = path.join(tempDir, 'image-doc-two.md')
+  await fs.writeFile(imagePath, '<svg xmlns="http://www.w3.org/2000/svg" width="10"><rect fill="red"/></svg>', 'utf8')
+  await fs.writeFile(firstDocPath, '# Image Doc One\n\n![pic](pic.svg)\n', 'utf8')
+  await fs.writeFile(secondDocPath, '# Image Doc Two\n\nNo image here.\n', 'utf8')
+  const { electronApp, page } = await launchApp()
+
+  try {
+    await page.waitForSelector('#empty')
+    await stubOpenDialog(electronApp, [firstDocPath, secondDocPath])
+    await emitRendererCommand(electronApp, 'openFile')
+    await page.waitForFunction(() => document.querySelectorAll('#tab-list .file-tab').length === 2)
+    await page.waitForFunction(() => document.title === 'image-doc-two')
+
+    // image-doc-one is inactive; grab its (cached) rendered src before the change by
+    // switching to it once, then back, so we have a known-good baseline to diff against.
+    await page.locator('#tab-list .file-tab').filter({ hasText: 'image-doc-one.md' }).click()
+    await page.waitForFunction(() => {
+      const img = document.querySelector('#content img')
+      return Boolean(img && img.src.startsWith('data:image/svg+xml;base64,'))
+    })
+    const beforeSrc = await page.getAttribute('#content img', 'src')
+    await page.locator('#tab-list .file-tab').filter({ hasText: 'image-doc-two.md' }).click()
+    await page.waitForFunction(() => document.title === 'image-doc-two')
+
+    await fs.writeFile(imagePath, '<svg xmlns="http://www.w3.org/2000/svg" width="10"><rect fill="blue"/></svg>', 'utf8')
+    await page.waitForTimeout(400)
+
+    // Active tab (no image) is unaffected; no confirm dialog was needed since it's clean.
+    assert.equal(await page.locator('#tab-list .file-tab.active .file-tab-name').textContent(), 'image-doc-two.md')
+
+    await page.locator('#tab-list .file-tab').filter({ hasText: 'image-doc-one.md' }).click()
+    await page.waitForFunction(() => document.title === 'image-doc-one')
+    await page.waitForFunction(expected => {
+      const img = document.querySelector('#content img')
+      return Boolean(img && img.src.startsWith('data:image/svg+xml;base64,') && img.src !== expected)
+    }, beforeSrc)
+  } finally {
+    await closeApp(electronApp)
+    await fs.rm(tempDir, { recursive: true, force: true })
   }
 })
 
@@ -1172,5 +1480,336 @@ test('closing a window with unsaved changes prompts, and cancelling keeps the wi
   } finally {
     await closeApp(electronApp)
     await cleanup()
+  }
+})
+
+test('search finds matches in preview mode and steps through them', async () => {
+  const { electronApp, page } = await launchApp()
+
+  try {
+    await page.waitForSelector('#empty')
+    await stubOpenDialog(electronApp, [BASIC_MD])
+    await emitRendererCommand(electronApp, 'openFile')
+    await page.waitForFunction(() => document.title === 'basic')
+
+    // The default-app guide takes ESC priority over search; force it out of the way so this
+    // test can isolate search's own Escape-closes-the-bar behavior (covered separately by the
+    // guide-priority e2e tests).
+    await page.evaluate(() => document.getElementById('default-app-guide')?.classList.remove('show'))
+
+    await emitRendererCommand(electronApp, 'toggleSearch')
+    await page.waitForSelector('#search-bar', { state: 'visible' })
+    await page.fill('#search-input', 'smoke')
+    await page.waitForFunction(() => document.getElementById('search-count').textContent === '1/2')
+
+    const currentMarks = await page.evaluate(() => document.querySelectorAll('mark.search-hl.current').length)
+    assert.equal(currentMarks, 1)
+
+    await page.locator('#search-input').press('Enter')
+    await page.waitForFunction(() => document.getElementById('search-count').textContent === '2/2')
+
+    await page.locator('#search-input').press('Escape')
+    await page.waitForFunction(() => document.getElementById('search-bar').style.display === 'none')
+  } finally {
+    await closeApp(electronApp)
+  }
+})
+
+test('search steps through matches in source mode using the editor selection', async () => {
+  const { electronApp, page } = await launchApp()
+
+  try {
+    await page.waitForSelector('#empty')
+    await stubOpenDialog(electronApp, [BASIC_MD])
+    await emitRendererCommand(electronApp, 'openFile')
+    await page.waitForFunction(() => document.title === 'basic')
+
+    await emitRendererCommand(electronApp, 'toggleSource')
+    await page.waitForFunction(() => document.getElementById('source-view').style.display === 'block')
+
+    await emitRendererCommand(electronApp, 'toggleSearch')
+    await page.waitForSelector('#search-bar', { state: 'visible' })
+    await page.fill('#search-input', 'smoke')
+    await page.waitForFunction(() => document.getElementById('search-count').textContent === '1/2')
+
+    const firstSelection = await page.evaluate(() => {
+      const editor = document.getElementById('source-editor')
+      return { start: editor.selectionStart, end: editor.selectionEnd }
+    })
+    assert.deepEqual(firstSelection, { start: 2, end: 7 })
+
+    await page.locator('#search-input').press('Enter')
+    await page.waitForFunction(() => document.getElementById('search-count').textContent === '2/2')
+
+    const second = await page.evaluate(() => {
+      const editor = document.getElementById('source-editor')
+      const expectedStart = editor.value.toLowerCase().lastIndexOf('smoke')
+      return { start: editor.selectionStart, end: editor.selectionEnd, expectedStart, activeId: document.activeElement?.id }
+    })
+    assert.equal(second.start, second.expectedStart)
+    assert.equal(second.end, second.expectedStart + 5)
+    assert.equal(second.activeId, 'search-input', 'focus must return to the search input after stepping to the next match')
+  } finally {
+    await closeApp(electronApp)
+  }
+})
+
+test('search in split mode selects editor matches without marking the preview pane', async () => {
+  const { electronApp, page } = await launchApp()
+
+  try {
+    await page.waitForSelector('#empty')
+    await stubOpenDialog(electronApp, [BASIC_MD])
+    await emitRendererCommand(electronApp, 'openFile')
+    await page.waitForFunction(() => document.title === 'basic')
+
+    await emitRendererCommand(electronApp, 'toggleSplitView')
+    await page.waitForFunction(() => document.getElementById('scroll-area').classList.contains('split-mode'))
+
+    await emitRendererCommand(electronApp, 'toggleSearch')
+    await page.waitForSelector('#search-bar', { state: 'visible' })
+    await page.fill('#search-input', 'smoke')
+    await page.waitForFunction(() => document.getElementById('search-count').textContent === '1/2')
+
+    const state = await page.evaluate(() => {
+      const editor = document.getElementById('source-editor')
+      return {
+        selectionStart: editor.selectionStart,
+        selectionEnd: editor.selectionEnd,
+        previewMarks: document.querySelectorAll('#content mark.search-hl').length,
+      }
+    })
+    assert.deepEqual({ selectionStart: state.selectionStart, selectionEnd: state.selectionEnd }, { selectionStart: 2, selectionEnd: 7 })
+    assert.equal(state.previewMarks, 0, 'split-mode search must not touch the debounced preview pane')
+  } finally {
+    await closeApp(electronApp)
+  }
+})
+
+test('search closes automatically when leaving source mode', async () => {
+  const { electronApp, page } = await launchApp()
+
+  try {
+    await page.waitForSelector('#empty')
+    await stubOpenDialog(electronApp, [BASIC_MD])
+    await emitRendererCommand(electronApp, 'openFile')
+    await page.waitForFunction(() => document.title === 'basic')
+
+    await emitRendererCommand(electronApp, 'toggleSource')
+    await page.waitForFunction(() => document.getElementById('source-view').style.display === 'block')
+
+    await emitRendererCommand(electronApp, 'toggleSearch')
+    await page.waitForSelector('#search-bar', { state: 'visible' })
+
+    await emitRendererCommand(electronApp, 'toggleSource')
+    await page.waitForFunction(() => document.getElementById('content').style.display === '')
+
+    const barDisplay = await page.evaluate(() => document.getElementById('search-bar').style.display)
+    assert.equal(barDisplay, 'none')
+  } finally {
+    await closeApp(electronApp)
+  }
+})
+
+test('native menu exposes previously hidden file, edit, view, and help commands', async () => {
+  const { electronApp, page } = await launchApp()
+
+  try {
+    await page.waitForSelector('#empty')
+    await stubOpenDialog(electronApp, [BASIC_MD])
+    await emitRendererCommand(electronApp, 'openFile')
+    await page.waitForFunction(() => document.title === 'basic')
+
+    await clickApplicationMenuItem(electronApp, '파일', '새 파일')
+    await page.waitForFunction(() => document.querySelectorAll('#tab-list .file-tab').length === 2)
+
+    await clickApplicationMenuItem(electronApp, '파일', '탭 닫기')
+    await page.waitForFunction(() => document.querySelectorAll('#tab-list .file-tab').length === 1)
+
+    await clickApplicationMenuItem(electronApp, '편집', '찾기…')
+    await page.waitForSelector('#search-bar', { state: 'visible' })
+    await clickApplicationMenuItem(electronApp, '편집', '찾기…')
+    await page.waitForFunction(() => document.getElementById('search-bar').style.display === 'none')
+
+    await clickApplicationMenuItem(electronApp, '보기', '소스 보기')
+    await page.waitForFunction(() => document.getElementById('source-view').style.display === 'block')
+    await clickApplicationMenuItem(electronApp, '보기', '소스 보기')
+    await page.waitForFunction(() => document.getElementById('content').style.display === '')
+
+    await clickApplicationMenuItem(electronApp, '보기', '분할뷰')
+    await page.waitForFunction(() => document.getElementById('scroll-area').classList.contains('split-mode'))
+    await clickApplicationMenuItem(electronApp, '보기', '분할뷰')
+    await page.waitForFunction(() => !document.getElementById('scroll-area').classList.contains('split-mode'))
+
+    // data-theme can stay the same string across a toggle when 'auto' already
+    // resolves to the system's current appearance, so assert on the theme label
+    // (which always cycles auto → light → dark) instead of the resolved value.
+    const themeLabelBefore = await page.evaluate(() => document.getElementById('btn-theme').title)
+    await clickApplicationMenuItem(electronApp, '보기', '테마 전환')
+    await page.waitForFunction(before => document.getElementById('btn-theme').title !== before, themeLabelBefore)
+
+    await clickApplicationMenuItem(electronApp, '도움말', '단축키')
+    await page.waitForFunction(() => document.getElementById('shortcuts-guide')?.classList.contains('show'))
+    await page.locator('#shortcuts-guide .guide-close').click()
+    await page.waitForFunction(() => !document.getElementById('shortcuts-guide')?.classList.contains('show'))
+  } finally {
+    await closeApp(electronApp)
+  }
+})
+
+test('native menu switches tabs via next/prev commands', async () => {
+  const { electronApp, page } = await launchApp()
+
+  try {
+    await page.waitForSelector('#empty')
+    await emitFileOpened(electronApp, { content: '# A\n', filename: 'a.md', path: '/tmp/mdv-menu-a.md' })
+    await page.waitForFunction(() => document.title === 'a')
+    await emitFileOpened(electronApp, { content: '# B\n', filename: 'b.md', path: '/tmp/mdv-menu-b.md' })
+    await page.waitForFunction(() => document.title === 'b')
+
+    await clickApplicationMenuItem(electronApp, '보기', '이전 탭')
+    await page.waitForFunction(() => document.title === 'a')
+
+    await clickApplicationMenuItem(electronApp, '보기', '다음 탭')
+    await page.waitForFunction(() => document.title === 'b')
+  } finally {
+    await closeApp(electronApp)
+  }
+})
+
+test('newFile is owned exclusively by the menu accelerator, not a leftover renderer keydown handler', async () => {
+  const { electronApp, page } = await launchApp()
+
+  try {
+    await page.waitForSelector('#empty')
+
+    // The main-process menu accelerator (⌘T) reaches the renderer only through
+    // this IPC command, never through the page's own keydown listener.
+    await emitRendererCommand(electronApp, 'newFile')
+    await page.waitForFunction(() => document.querySelectorAll('#tab-list .file-tab').length === 1)
+
+    // A raw Cmd+T keydown must be a no-op now that the menu (src/main.js#buildMenu)
+    // owns this accelerator -- if the renderer still had its own 't' handler, this
+    // would create a second tab and the original bug (double-fire) would be back.
+    await page.evaluate(() => {
+      document.dispatchEvent(new KeyboardEvent('keydown', { key: 't', metaKey: true, bubbles: true, cancelable: true }))
+    })
+    await page.waitForTimeout(200)
+    assert.equal(await page.locator('#tab-list .file-tab').count(), 1)
+  } finally {
+    await closeApp(electronApp)
+  }
+})
+
+test('default app guide has dialog semantics, traps Tab focus, and restores focus on ESC', async () => {
+  const { electronApp, page } = await launchApp()
+
+  try {
+    await page.waitForSelector('#empty')
+    // A prior run (or a real OS default-handler check) may have already opened and dismissed
+    // this guide in the shared profile; force it back to "eligible to show" before asserting.
+    await page.evaluate(() => {
+      localStorage.removeItem('mdv-default-app-guide-dismissed')
+      localStorage.removeItem('mdv-default-app-guide-dismissed-v2')
+    })
+
+    assert.deepEqual(
+      await page.locator('#default-app-guide').evaluate(el => ({
+        role: el.getAttribute('role'),
+        ariaModal: el.getAttribute('aria-modal'),
+        labelledBy: el.getAttribute('aria-labelledby'),
+        labelText: document.getElementById(el.getAttribute('aria-labelledby'))?.textContent,
+      })),
+      { role: 'dialog', ariaModal: 'true', labelledBy: 'default-app-guide-title', labelText: 'Markdown 기본 앱 등록' }
+    )
+
+    // The real status IPC round trip resolves before a test script can race it, so there's no
+    // window to plant a "previously focused" element. Delay the response to open one deliberately.
+    await stubDefaultAppStatusDelay(electronApp, 400)
+    await page.reload()
+    await page.waitForFunction(() => document.documentElement.dataset.rendererReady === 'true')
+    await page.evaluate(() => document.getElementById('btn-theme').focus())
+    await page.waitForFunction(() => document.getElementById('default-app-guide')?.classList.contains('show'))
+
+    await page.waitForFunction(() => document.activeElement?.id === 'default-app-do-not-show')
+
+    // Shift+Tab from the first focusable element must wrap to the last one, not escape the dialog.
+    await page.keyboard.press('Shift+Tab')
+    assert.equal(await page.evaluate(() => document.activeElement?.closest('.guide-actions') !== null), true)
+
+    // Tab from the last focusable element must wrap back to the first one.
+    await page.keyboard.press('Tab')
+    assert.equal(await page.evaluate(() => document.activeElement?.id), 'default-app-do-not-show')
+
+    await page.keyboard.press('Escape')
+    await page.waitForFunction(() => !document.getElementById('default-app-guide')?.classList.contains('show'))
+    assert.equal(await page.evaluate(() => document.activeElement?.id), 'btn-theme', 'focus must return to the element focused before the modal opened')
+  } finally {
+    await closeApp(electronApp)
+  }
+})
+
+test('welcome guide is a non-blocking dialog: no focus trap, and ESC closes it before the search bar', async () => {
+  const { electronApp, page } = await launchApp()
+
+  try {
+    await page.waitForSelector('#empty')
+    // A prior run may have already dismissed the welcome guide in this shared profile;
+    // force it back to "eligible to show" and reload so this test is deterministic.
+    await page.evaluate(() => {
+      localStorage.removeItem('mdv-welcome-guide-dismissed')
+      localStorage.removeItem('mdv-default-app-guide-dismissed')
+      localStorage.removeItem('mdv-default-app-guide-dismissed-v2')
+    })
+    await page.reload()
+    await page.waitForFunction(() => document.documentElement.dataset.rendererReady === 'true')
+
+    assert.deepEqual(
+      await page.locator('#welcome-guide').evaluate(el => ({
+        role: el.getAttribute('role'),
+        ariaModal: el.getAttribute('aria-modal'),
+        labelledBy: el.getAttribute('aria-labelledby'),
+      })),
+      { role: 'dialog', ariaModal: null, labelledBy: 'welcome-guide-title' }
+    )
+
+    // The default app guide takes ESC priority; dismiss it first so welcome-guide is the top layer.
+    await page.waitForFunction(() => document.getElementById('default-app-guide')?.classList.contains('show'))
+    await page.click('#default-app-guide .guide-actions button')
+    await page.waitForFunction(() => !document.getElementById('default-app-guide')?.classList.contains('show'))
+
+    await page.waitForFunction(() => document.getElementById('welcome-guide')?.classList.contains('show'))
+
+    // No focus trap: Shift+Tab from the first focusable element inside the card must escape it,
+    // proving the card never intercepts Tab the way the blocking default-app-guide does.
+    await page.evaluate(() => document.querySelector('#welcome-guide .guide-close').focus())
+    await page.keyboard.press('Shift+Tab')
+    assert.equal(await page.evaluate(() => Boolean(document.activeElement?.closest('#welcome-guide'))), false)
+
+    // ESC priority: guide closes before the search bar.
+    await emitRendererCommand(electronApp, 'toggleSearch')
+    await page.waitForSelector('#search-bar', { state: 'visible' })
+    await page.keyboard.press('Escape')
+    await page.waitForFunction(() => !document.getElementById('welcome-guide')?.classList.contains('show'))
+    assert.equal(await page.locator('#search-bar').evaluate(el => el.style.display), 'flex', 'the guide should close first, leaving search open')
+
+    await page.keyboard.press('Escape')
+    await page.waitForFunction(() => document.getElementById('search-bar').style.display === 'none')
+  } finally {
+    await closeApp(electronApp)
+  }
+})
+
+test('toast announces status changes to assistive tech', async () => {
+  const { electronApp, page } = await launchApp()
+
+  try {
+    await page.waitForSelector('#empty')
+    assert.deepEqual(
+      await page.locator('#toast').evaluate(el => ({ role: el.getAttribute('role'), ariaLive: el.getAttribute('aria-live') })),
+      { role: 'status', ariaLive: 'polite' }
+    )
+  } finally {
+    await closeApp(electronApp)
   }
 })

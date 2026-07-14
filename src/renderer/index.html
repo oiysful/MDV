@@ -485,6 +485,7 @@ mark.search-hl.current {
 .file-tab-close:hover { background: var(--hover); color: var(--text); }
 .file-tab.drag-before { box-shadow: inset 2px 0 0 var(--brand); }
 .file-tab.drag-after  { box-shadow: inset -2px 0 0 var(--brand); }
+.file-tab.has-conflict .file-tab-name { color: var(--danger); }
 
 #panel-toc { overflow-y: auto; flex: 1; padding: 6px 0 var(--sp-xl); }
 #panel-toc::-webkit-scrollbar { width: 6px; background: transparent; }
@@ -652,6 +653,16 @@ mark.search-hl.current {
 }
 #scroll-area.split-mode #source-editor { min-height: 100%; }
 
+/* Wrap mode: the line-number gutter is built from raw '\n' counts, so it drifts out of
+   sync once long lines wrap into extra visual rows. Hide the gutter instead of trying to
+   keep it aligned — most prose-focused markdown editors skip line numbers entirely. */
+#scroll-area.wrap-mode #source-editor {
+  white-space: pre-wrap; overflow-wrap: break-word; overflow-x: hidden;
+  width: 100%; margin-left: 0;
+}
+#scroll-area.wrap-mode #source-lines,
+#scroll-area.wrap-mode #line-highlight { display: none; }
+
 /* Empty state */
 #empty {
   display: flex; flex-direction: column; align-items: center; justify-content: center;
@@ -766,6 +777,35 @@ body.empty-entry-emphasis #open-entry-hint {
   display: none;
 }
 #default-app-guide.show { display: block; }
+#shortcuts-guide {
+  position: fixed;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  z-index: 540;
+  width: min(360px, calc(100vw - 40px));
+  padding: 20px;
+  border-radius: 20px;
+  border: 1px solid color-mix(in srgb, var(--brand) 24%, var(--border));
+  background: color-mix(in srgb, var(--surface) 99%, transparent);
+  box-shadow: 0 28px 70px rgba(0,0,0,0.24);
+  display: none;
+}
+#shortcuts-guide.show { display: block; }
+.shortcuts-list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.shortcuts-list li {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 6px 0;
+  color: var(--text);
+  font-size: 12px;
+}
 #default-app-guide .guide-title { margin-bottom: 12px; justify-content: center; }
 #default-app-guide .guide-title strong { font-size: 15px; }
 #default-app-guide .guide-body { font-size: 13px; color: var(--text); }
@@ -1187,6 +1227,15 @@ kbd {
     </svg>
   </button>
 
+  <button type="button" id="btn-wrap" class="btn btn-icon" data-command="toggleWrap" title="줄바꿈" aria-label="줄바꿈" style="display:none" disabled>
+    <svg aria-hidden="true" width="13" height="13" viewBox="0 0 13 13" fill="none">
+      <line x1="1.5" y1="3" x2="11.5" y2="3" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/>
+      <line x1="1.5" y1="6.5" x2="11.5" y2="6.5" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/>
+      <path d="M1.5 10h7a1.5 1.5 0 0 0 0-3H8" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"/>
+      <path d="M6.3 8.7 8 10.4 6.3 12" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"/>
+    </svg>
+  </button>
+
   <!-- Search -->
   <button type="button" class="btn btn-icon" id="btn-search" data-command="toggleSearch" title="검색 (⌘F)" aria-label="검색 (⌘F)">
     <svg aria-hidden="true" width="15" height="15" viewBox="0 0 15 15" fill="none">
@@ -1255,10 +1304,10 @@ kbd {
 </header>
 
 <div id="app-context-menu" class="ctx-menu ctx-menu-floating" style="display:none"></div>
-<div id="toast"></div>
-<div id="welcome-guide">
+<div id="toast" role="status" aria-live="polite"></div>
+<div id="welcome-guide" role="dialog" aria-labelledby="welcome-guide-title">
   <div class="guide-title">
-    <strong>처음 시작하기</strong>
+    <strong id="welcome-guide-title">처음 시작하기</strong>
     <button type="button" class="guide-close" data-command="dismissWelcomeGuide" title="안내 닫기" aria-label="안내 닫기">×</button>
   </div>
   <div class="guide-body">
@@ -1279,9 +1328,9 @@ kbd {
   </div>
 </div>
 
-<div id="default-app-guide">
+<div id="default-app-guide" role="dialog" aria-modal="true" aria-labelledby="default-app-guide-title">
   <div class="guide-title">
-    <strong>Markdown 기본 앱 등록</strong>
+    <strong id="default-app-guide-title">Markdown 기본 앱 등록</strong>
   </div>
   <div class="guide-body">
     <p>마크다운 문서(<code>.md</code>, <code>.markdown</code> 확장자)를 편리하게 보기 위해서 아래의 단계를 진행해주세요.</p>
@@ -1298,6 +1347,32 @@ kbd {
   </div>
   <div class="guide-actions">
     <button type="button" class="guide-btn primary" data-command="dismissDefaultAppGuide" title="확인했습니다." aria-label="확인했습니다.">확인했습니다.</button>
+  </div>
+</div>
+
+<div id="shortcuts-guide">
+  <div class="guide-title">
+    <strong>단축키</strong>
+    <button type="button" class="guide-close" data-command="hideShortcuts" title="닫기" aria-label="닫기">×</button>
+  </div>
+  <div class="guide-body">
+    <ul class="shortcuts-list">
+      <li><span>파일 열기</span><kbd>⌘O</kbd></li>
+      <li><span>새 파일</span><kbd>⌘T</kbd></li>
+      <li><span>새 창</span><kbd>⌘N</kbd></li>
+      <li><span>탭 닫기</span><kbd>⌘W</kbd></li>
+      <li><span>저장</span><kbd>⌘S</kbd></li>
+      <li><span>다른 이름으로 저장</span><kbd>⌘⇧S</kbd></li>
+      <li><span>소스 보기</span><kbd>⌘U</kbd></li>
+      <li><span>분할뷰</span><kbd>⌘\</kbd></li>
+      <li><span>찾기</span><kbd>⌘F</kbd></li>
+      <li><span>인쇄</span><kbd>⌘P</kbd></li>
+      <li><span>다음 탭</span><kbd>⌘⇧]</kbd></li>
+      <li><span>이전 탭</span><kbd>⌘⇧[</kbd></li>
+    </ul>
+  </div>
+  <div class="guide-actions">
+    <button type="button" class="guide-btn primary" data-command="hideShortcuts" title="닫기" aria-label="닫기">닫기</button>
   </div>
 </div>
 

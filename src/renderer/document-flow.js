@@ -32,14 +32,29 @@
     unreadable: '이 파일의 디스크 상태를 확인할 수 없습니다. 그래도 덮어쓰시겠습니까?',
   }
 
-  function createDocumentFlowController({ api, getWorkspaceController, getEditorController, setMarkdown, showToast, alertError, confirmOverwrite }) {
-    let watchedPath = null
+  function createDocumentFlowController({ api, getWorkspaceController, getEditorController, setMarkdown, showToast, alertError, confirmOverwrite, clearImageCache }) {
+    // Reference-counted: a document path has exactly one watching tab, but an image
+    // path can be embedded in several open tabs at once, so only the last reference
+    // going away should actually unwatch it.
+    const pathRefCounts = new Map()
 
-    async function watchFile(path) {
-      if (watchedPath === path) return
-      if (watchedPath) await api.unwatchFile(watchedPath)
-      watchedPath = path
-      if (path) await api.watchFile(path)
+    async function watchPath(path) {
+      if (!path) return
+      const count = pathRefCounts.get(path) || 0
+      pathRefCounts.set(path, count + 1)
+      if (count === 0) await api.watchFile(path)
+    }
+
+    async function unwatchPath(path) {
+      if (!path) return
+      const count = pathRefCounts.get(path) || 0
+      if (count <= 0) return
+      if (count === 1) {
+        pathRefCounts.delete(path)
+        await api.unwatchFile(path)
+      } else {
+        pathRefCounts.set(path, count - 1)
+      }
     }
 
     async function load(data) {
@@ -64,13 +79,21 @@
     }
 
     function updateTabAfterSave(tab, nextPath, nextFilename) {
+      const previousPath = tab.path
       tab.path = nextPath
       tab.filename = nextFilename
       tab.savedContent = tab.content
       tab.dirty = false
       document.title = globalScope.MDVWorkspace.stripMarkdownExtension(tab.filename)
       getWorkspaceController().renderTabBar()
-      watchFile(tab.path)
+      if (previousPath !== nextPath) {
+        unwatchPath(previousPath)
+        watchPath(nextPath)
+      }
+      // Our own save is ignored as a self-write echo, so it never triggers the
+      // external-change cache clear. Do it here instead, since this save may have
+      // also changed an image the document references.
+      clearImageCache?.()
       showToast('저장됨')
     }
 
@@ -144,7 +167,8 @@
     }
 
     return {
-      watchFile,
+      watchPath,
+      unwatchPath,
       load,
       openFile,
       saveFile,

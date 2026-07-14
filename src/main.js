@@ -459,6 +459,27 @@ function buildMenu() {
         },
         { type: 'separator' },
         {
+          label: '새 파일',
+          accelerator: 'CmdOrCtrl+T',
+          click: (_, win) => sendRendererCommand('newFile', win),
+        },
+        {
+          label: '탭 닫기',
+          accelerator: 'CmdOrCtrl+W',
+          click: (_, win) => sendRendererCommand('closeCurrentTab', win),
+        },
+        { type: 'separator' },
+        {
+          label: 'PDF로 내보내기…',
+          click: (_, win) => sendRendererCommand('exportPdf', win),
+        },
+        {
+          label: '인쇄…',
+          accelerator: 'CmdOrCtrl+P',
+          click: (_, win) => sendRendererCommand('printDoc', win),
+        },
+        { type: 'separator' },
+        {
           label: '새 창',
           accelerator: 'CmdOrCtrl+N',
           click: () => createWindow(),
@@ -475,11 +496,43 @@ function buildMenu() {
         { role: 'copy' },
         { role: 'paste' },
         { role: 'selectAll' },
+        { type: 'separator' },
+        {
+          label: '찾기…',
+          accelerator: 'CmdOrCtrl+F',
+          click: (_, win) => sendRendererCommand('toggleSearch', win),
+        },
       ],
     },
     {
       label: '보기',
       submenu: [
+        {
+          label: '소스 보기',
+          accelerator: 'CmdOrCtrl+U',
+          click: (_, win) => sendRendererCommand('toggleSource', win),
+        },
+        {
+          label: '분할뷰',
+          accelerator: 'CmdOrCtrl+\\',
+          click: (_, win) => sendRendererCommand('toggleSplitView', win),
+        },
+        {
+          label: '테마 전환',
+          click: (_, win) => sendRendererCommand('toggleTheme', win),
+        },
+        { type: 'separator' },
+        {
+          label: '다음 탭',
+          accelerator: 'CmdOrCtrl+Shift+]',
+          click: (_, win) => sendRendererCommand('switchToNextTab', win),
+        },
+        {
+          label: '이전 탭',
+          accelerator: 'CmdOrCtrl+Shift+[',
+          click: (_, win) => sendRendererCommand('switchToPrevTab', win),
+        },
+        { type: 'separator' },
         { role: 'reload' },
         { role: 'forceReload' },
         { role: 'toggleDevTools' },
@@ -498,6 +551,15 @@ function buildMenu() {
         { role: 'zoom' },
         { type: 'separator' },
         { role: 'front' },
+      ],
+    },
+    {
+      label: '도움말',
+      submenu: [
+        {
+          label: '단축키',
+          click: (_, win) => sendRendererCommand('showShortcuts', win),
+        },
       ],
     },
   ]
