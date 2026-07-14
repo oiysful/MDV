@@ -1,3 +1,5 @@
+<!-- Parent: ../AGENTS.md -->
+
 # SRC KNOWLEDGE BASE
 
 ## OVERVIEW

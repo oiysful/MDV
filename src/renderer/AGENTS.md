@@ -1,3 +1,5 @@
+<!-- Parent: ../AGENTS.md -->
+
 # RENDERER KNOWLEDGE BASE
 
 ## OVERVIEW

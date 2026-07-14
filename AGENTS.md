@@ -11,6 +11,7 @@ Main stack: Electron main/preload + split renderer HTML/CSS/JS modules.
 ./
 ├── src/              # app code: Electron main, preload bridge, renderer
 ├── assets/           # packaged desktop assets (icon only right now)
+├── scripts/          # build/install/update shell scripts (see scripts/AGENTS.md)
 ├── package.json      # app entry, npm scripts, electron-builder config
 └── package-lock.json # large generated lockfile
 ```
