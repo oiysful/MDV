@@ -351,15 +351,11 @@
         documentRef.getElementById('hljs-light').disabled = isDark
       })
 
-      // ⌘T/⌘W/⌘U/⌘\/⌘F/⌘P/⌘⇧]/⌘⇧[ are handled by native menu accelerators
-      // (src/main.js#buildMenu) so they aren't duplicated here — a key with an
-      // accelerator fires the menu's click handler on top of any keydown listener.
+      // ⌘O/⌘N/⌘S/⌘⇧S/⌘T/⌘W/⌘U/⌘\/⌘F/⌘P/⌘⇧]/⌘⇧[ are handled by native menu
+      // accelerators (src/main.js#buildMenu) so they aren't duplicated here — a
+      // key with an accelerator fires the menu's click handler on top of any
+      // keydown listener.
       documentRef.addEventListener('keydown', event => {
-        const modifier = event.metaKey || event.ctrlKey
-        if (modifier && event.key === 'o') { event.preventDefault(); void openFile() }
-        if (modifier && event.key === 'n') { event.preventDefault(); void newWindow() }
-        if (modifier && event.key.toLowerCase() === 's' && event.shiftKey) { event.preventDefault(); void saveFileAs() }
-        if (modifier && event.key.toLowerCase() === 's' && !event.shiftKey) { event.preventDefault(); void saveFile() }
         if (event.key === 'Escape') {
           // Close one layer per press, topmost first: guides, then search, then the context menu.
           if (onboardingController.isDefaultAppGuideOpen()) dismissDefaultAppGuide()

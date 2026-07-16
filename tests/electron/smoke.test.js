@@ -579,6 +579,51 @@ test('Enter continues a bullet list item and exits an empty one, each undoable i
   }
 })
 
+// Repro for the reported "duplicate list items" bug: repeatedly pressing Enter with the
+// caret reset to the same earlier list line each time (e.g. a user clicking back into item 1)
+// inserts one new empty item per press, at that spot — this is correct list-splitting applied
+// N times, not a runaway/compounding bug. The caret naturally advances onto the new item after
+// each Enter (proven by the test above, where a second Enter hits the "exit empty item" branch),
+// so accumulation only occurs when something external forces the caret back. The real-world
+// cause reported alongside this (Korean IME composition potentially double-firing the Enter
+// keydown) is covered by the `event.isComposing` guard in editor.js, which can't be exercised
+// here since Playwright's synthetic KeyboardEvents always report isComposing: false.
+test('repeated Enter at a manually reset cursor position adds one item per press (expected, not a runaway bug)', async () => {
+  const { electronApp, page } = await launchApp()
+
+  try {
+    await page.waitForSelector('#empty')
+    await stubOpenDialog(electronApp, [BASIC_MD])
+    await emitRendererCommand(electronApp, 'openFile')
+    await page.waitForFunction(() => document.title === 'basic')
+
+    await emitRendererCommand(electronApp, 'toggleSource')
+    await page.waitForFunction(() => document.getElementById('source-view').style.display === 'block')
+
+    const editor = page.locator('#source-editor')
+    await editor.click()
+    // .fill() sets the value directly rather than sending real keydowns, so embedded
+    // newlines don't get intercepted by the Enter list-continuation handler under test.
+    await editor.fill('- a\n- b\n- c')
+
+    const resetCursorToEndOfLineOne = () =>
+      page.evaluate(() => document.getElementById('source-editor').setSelectionRange(3, 3))
+
+    for (let i = 1; i <= 3; i += 1) {
+      await resetCursorToEndOfLineOne()
+      await page.keyboard.press('Enter')
+      const expected = `- a\n${'- \n'.repeat(i)}- b\n- c`
+      await page.waitForFunction(
+        value => document.getElementById('source-editor').value === value,
+        expected,
+      )
+      assert.equal(await editor.inputValue(), expected)
+    }
+  } finally {
+    await closeApp(electronApp)
+  }
+})
+
 test('Cmd+B toggles bold markers on the selection and undo reverts each step', async () => {
   const { electronApp, page } = await launchApp()
 

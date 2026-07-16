@@ -7,6 +7,7 @@ const {
   reorderTabsById,
   stripMarkdownExtension,
   computeAggregateDirty,
+  shouldMarkPreviewDirty,
   resolveExternalChangeAction,
   isSelfWriteEcho,
 } = require('../../src/renderer/workspace.js')
@@ -50,6 +51,29 @@ test('computeAggregateDirty reports whether any tab has unsaved changes', () => 
   assert.equal(computeAggregateDirty([]), false)
   assert.equal(computeAggregateDirty([{ dirty: false }, { dirty: false }]), false)
   assert.equal(computeAggregateDirty([{ dirty: false }, { dirty: true }]), true)
+})
+
+test('shouldMarkPreviewDirty flags a stale preview for source-mode edits too, not just split-mode', () => {
+  // Pure source-mode edits (e.g. deleting an image line) must invalidate the cached
+  // preview HTML just like split-mode edits do, or a tab switch serves stale content.
+  assert.equal(
+    shouldMarkPreviewDirty({ sourceMode: true, splitMode: false, contentChanged: true }),
+    true
+  )
+  assert.equal(
+    shouldMarkPreviewDirty({ sourceMode: false, splitMode: true, contentChanged: true }),
+    true
+  )
+  // No content change means nothing to invalidate, regardless of mode.
+  assert.equal(
+    shouldMarkPreviewDirty({ sourceMode: true, splitMode: false, contentChanged: false }),
+    false
+  )
+  // Preview-only mode has no separate source edit to speak of.
+  assert.equal(
+    shouldMarkPreviewDirty({ sourceMode: false, splitMode: false, contentChanged: true }),
+    false
+  )
 })
 
 test('resolveExternalChangeAction picks a policy from the event, dirty state, and active tab', () => {

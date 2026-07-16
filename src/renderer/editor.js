@@ -89,7 +89,7 @@
 
   const WRAP_STORAGE_KEY = 'mdv-editor-wrap'
 
-  function createEditorController({ getRefs, getMarkdown, setMarkdown, getActiveTab, rerenderTabBar, onSourceInput, render, closeSearch, storage }) {
+  function createEditorController({ getRefs, getMarkdown, setMarkdown, getActiveTab, rerenderTabBar, syncTabImageWatches, onSourceInput, render, closeSearch, storage }) {
     let sourceMode = false
     let splitMode = false
     let syncingSplitScroll = false
@@ -249,7 +249,8 @@
           tab.content = edited
           tab.dirty = edited !== tab.savedContent
           rerenderTabBar()
-          await render(edited, tab.filename || '', tab.path || null)
+          const imagePaths = await render(edited, tab.filename || '', tab.path || null)
+          syncTabImageWatches(tab, imagePaths)
         }
       }
 
@@ -270,7 +271,8 @@
         tab.content = edited
         tab.dirty = edited !== tab.savedContent
         rerenderTabBar()
-        await render(edited, tab.filename || '', tab.path || null)
+        const imagePaths = await render(edited, tab.filename || '', tab.path || null)
+        syncTabImageWatches(tab, imagePaths)
         splitMode = false
         sourceMode = false
         applySourceMode()
@@ -283,7 +285,8 @@
         tab.content = edited
         tab.dirty = edited !== tab.savedContent
         rerenderTabBar()
-        await render(edited, tab.filename || '', tab.path || null)
+        const imagePaths = await render(edited, tab.filename || '', tab.path || null)
+        syncTabImageWatches(tab, imagePaths)
       }
 
       splitMode = true
@@ -349,7 +352,7 @@
           return
         }
 
-        if (event.key === 'Enter' && !modifier && !event.shiftKey && !event.altKey && editor.selectionStart === editor.selectionEnd) {
+        if (event.key === 'Enter' && !event.isComposing && !modifier && !event.shiftKey && !event.altKey && editor.selectionStart === editor.selectionEnd) {
           const cursor = editor.selectionStart
           const lineStart = editor.value.lastIndexOf('\n', cursor - 1) + 1
           const lineEndIndex = editor.value.indexOf('\n', cursor)

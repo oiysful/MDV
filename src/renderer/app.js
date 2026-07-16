@@ -113,6 +113,7 @@ document.addEventListener('DOMContentLoaded', () => {
     setMarkdown: value => { state.md = value },
     getActiveTab: () => (workspaceController ? workspaceController.getActiveTab() : null),
     rerenderTabBar: () => { if (workspaceController) workspaceController.renderTabBar() },
+    syncTabImageWatches: (tab, imagePaths) => { if (workspaceController) workspaceController.syncTabImageWatches(tab, imagePaths) },
     onSourceInput: value => handleSourceInput(value),
     render,
     closeSearch: () => runtimeController.closeSearch(),
