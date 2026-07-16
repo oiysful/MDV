@@ -12,6 +12,13 @@
     return tabs.some(tab => tab.dirty)
   }
 
+  // Any edit made while looking at the raw text (source or split view) must invalidate the
+  // cached preview HTML, not just split-view edits — otherwise a pure-source-mode edit (e.g.
+  // deleting an image line) gets snapshotted as stale HTML and served again on tab switch.
+  function shouldMarkPreviewDirty({ sourceMode, splitMode, contentChanged }) {
+    return (sourceMode || splitMode) && contentChanged
+  }
+
   function resolveExternalChangeAction({ event, isDirty, isActive }) {
     if (event === 'unlink') return 'mark-deleted'
     if (isDirty) return isActive ? 'confirm' : 'mark-conflict'
@@ -136,8 +143,8 @@
       tab.sourceScrollTop = refs.sourceView.scrollTop || 0
       if (sourceMode || splitMode) {
         const nextContent = refs.sourceEditor.value
-        if (splitMode && nextContent !== tab.content) tab.previewDirty = true
-        tab.content = refs.sourceEditor.value
+        if (shouldMarkPreviewDirty({ sourceMode, splitMode, contentChanged: nextContent !== tab.content })) tab.previewDirty = true
+        tab.content = nextContent
         setMarkdown(tab.content)
       }
       if (splitMode && tab.previewDirty) {
@@ -561,6 +568,7 @@
     reorderTabsById,
     stripMarkdownExtension,
     computeAggregateDirty,
+    shouldMarkPreviewDirty,
     resolveExternalChangeAction,
     isSelfWriteEcho,
   }
