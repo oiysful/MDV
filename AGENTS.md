@@ -117,5 +117,5 @@ surface in the much slower Electron suite.
 - `.github/workflows/release.yml` builds and attaches release artifacts on `v*` tag push (macOS runner, unsigned `.zip` + `SHA256SUMS`) — see README's Distribution Notes for the `GITHUB_TOKEN` requirement (none; it's the default Actions token, no repo secret to configure).
 - Current error-level diagnostics are clean for the recent renderer command refactor; remaining warnings are mostly style-oriented.
 - Repo is tiny by file count, but renderer complexity is concentrated in `src/renderer/index.html`.
-- Local macOS packaging emits `dist/MDV-1.0.0-arm64-mac.zip` (switched from `.dmg` 2026-07-20); notarization is still not configured.
+- Local macOS packaging emits `dist/MDV-<version>-arm64-mac.zip` (filename follows `package.json#version`; switched from `.dmg` 2026-07-20); notarization is still not configured.
 - Local Sisyphus planning files are intentionally ignored and should not be treated as tracked project documentation.
