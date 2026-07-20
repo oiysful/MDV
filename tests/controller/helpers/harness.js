@@ -15,6 +15,14 @@
 
 const { JSDOM } = require('jsdom')
 
+// workspace.js/explorer.js read roving-tabindex index math off globalThis.MDVRoving
+// (see src/renderer/roving.js) rather than importing it directly, matching how
+// index.html loads it as a plain <script> before workspace.js/explorer.js. Requiring
+// it here (a side-effecting module load) is the Node/CommonJS equivalent of that
+// script order, so createWorkspaceController/createExplorerController don't blow up
+// looking up getRovingIndex on an unset global.
+require('../../../src/renderer/roving.js')
+
 // Minimal DOM containing every element the workspace/editor/search controllers look up,
 // either through getRefs() or directly via document.getElementById(...).
 const DOM_TEMPLATE = `
@@ -46,6 +54,11 @@ function createDom() {
   global.getComputedStyle = dom.window.getComputedStyle.bind(dom.window)
   global.NodeFilter = dom.window.NodeFilter
   global.requestAnimationFrame = () => {}
+  // jsdom doesn't implement scrollIntoView (see docs/plans/07-tab-scroll-into-view.md's
+  // own test-plan note); renderTabBar() calls it unconditionally after every render.
+  if (!dom.window.Element.prototype.scrollIntoView) {
+    dom.window.Element.prototype.scrollIntoView = () => {}
+  }
   return dom
 }
 
