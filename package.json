@@ -33,7 +33,7 @@
     "appId": "com.ian.mdv",
     "productName": "MDV",
     "mac": {
-      "target": "dmg",
+      "target": "zip",
       "icon": "assets/icon.icns"
     },
     "fileAssociations": [
