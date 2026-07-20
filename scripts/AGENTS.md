@@ -38,5 +38,6 @@ scripts/
 
 ## NOTES
 - `update-release.sh` is just `install-release.sh` under another name — there is no behavioral difference between "install" and "update" for the release flow (both always fetch the latest/tagged asset).
+- `install-release.sh`/`update-release.sh` only work against a GitHub Release that has a built `.zip` (and ideally `SHA256SUMS`) attached. `.github/workflows/release.yml` produces these automatically on `v*` tag push; a tag pushed without that workflow having run (or one pushed before the workflow existed) has no downloadable asset and `download_latest_release_asset` will fail with "ships no MDV .dmg or .zip asset".
 - `resolve_local_build_path` depends on `electron-builder`'s per-arch output directory naming (`dist/mac`, `dist/mac-arm64`, `dist/mac-universal`, ...); if `package.json#build` targets change, check this function stays in sync.
 - These scripts are meant to be run via `npm run install:local` / `install:release` / `update:local` / `update:release`, not invoked directly by convention.

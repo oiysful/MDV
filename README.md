@@ -189,6 +189,7 @@ Current build outputs:
 - Local install/update scripts build with `CSC_IDENTITY_AUTO_DISCOVERY=false` and `--publish=never`.
 - All install/update scripts replace `/Applications/MDV.app` and run `xattr -dr com.apple.quarantine` on the installed app bundle.
 - If `/Applications` is not writable for your user, rerun the install/update command with appropriate macOS permissions.
+- Pushing a `v*` tag triggers `.github/workflows/release.yml`, which builds the same unsigned `.zip` on a macOS runner and attaches it plus a `SHA256SUMS` file to that tag's GitHub Release. `npm run install:release` / `update:release` depend on these assets being present — a tag without a completed release run will not have a downloadable build. If a release run fails or a tag was pushed before this workflow existed, build locally and attach the artifacts manually: `npm run build -- --publish=never`, then `shasum -a 256 dist/MDV-*.zip > dist/SHA256SUMS` and `gh release upload <tag> dist/MDV-*.zip dist/SHA256SUMS`.
 
 ## Security / Architecture Notes
 
