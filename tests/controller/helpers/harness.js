@@ -143,9 +143,12 @@ function createModeState() {
 // A no-op markdown controller. The three regressions under test are about controller
 // wiring, not markdown rendering, so the real markdown.js (which needs marked/hljs/
 // DOMPurify globals) is stubbed out. Real wiring: app.js:25-37 / app.js:145.
-function createMarkdownStub() {
+function createMarkdownStub(refs) {
   return {
     hydrateFromDom: createSpy(),
+    // Mirrors the real captureSnapshotHTML closely enough for wiring tests: it
+    // reads the live content node so callers still snapshot whatever render wrote.
+    captureSnapshotHTML: createSpy(() => (refs ? refs.content.innerHTML : '')),
     clearImageCache: createSpy(),
     clearImageCacheEntry: createSpy(),
   }

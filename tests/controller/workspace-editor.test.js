@@ -29,7 +29,7 @@ function makeHarness() {
   const dom = createDom()
   const refs = createRefs(dom)
   const getRefs = () => refs
-  const markdownController = createMarkdownStub()
+  const markdownController = createMarkdownStub(refs)
   const { watchPath, unwatchPath } = createWatchSpies()
   const imagePaths = new Set(['/img/hero.png'])
   const render = createRenderStub(refs, imagePaths)

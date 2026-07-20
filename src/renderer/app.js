@@ -283,7 +283,7 @@ async function renderSplitPreview(tab, value, renderVersion) {
     await renderSplitPreview(tab, tab.content, splitRenderVersion)
     return
   }
-  tab.renderedHTML = $.content.innerHTML
+  tab.renderedHTML = markdownController.captureSnapshotHTML()
   tab.tocHTML = $.tocList.innerHTML
   tab.previewDirty = false
   workspaceController.syncTabImageWatches(tab, imagePaths)
@@ -305,7 +305,7 @@ async function ensurePreviewRendered() {
   const value = inEditor ? editorController.getEditorValue() : tab.content
   window.clearTimeout(splitRenderTimer)
   const imagePaths = await render(value, tab.filename || '', tab.path || null)
-  tab.renderedHTML = $.content.innerHTML
+  tab.renderedHTML = markdownController.captureSnapshotHTML()
   tab.tocHTML = $.tocList.innerHTML
   tab.previewDirty = false
   workspaceController.syncTabImageWatches(tab, imagePaths)

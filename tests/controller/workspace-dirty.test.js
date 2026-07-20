@@ -27,7 +27,7 @@ function makeHarness() {
   const dom = createDom()
   const refs = createRefs(dom)
   const getRefs = () => refs
-  const markdownController = createMarkdownStub()
+  const markdownController = createMarkdownStub(refs)
   const { watchPath, unwatchPath } = createWatchSpies()
   const render = createRenderStub(refs)
   const mode = createModeState()

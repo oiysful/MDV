@@ -1371,6 +1371,45 @@ test('a background tab\'s embedded image change is picked up silently and shown 
   }
 })
 
+test('switching between tabs that each embed a different image keeps every src a live data URL', async () => {
+  const tempDir = await fs.mkdtemp(path.join(os.tmpdir(), 'mdv-smoke-image-multi-'))
+  const colors = ['red', 'green', 'blue']
+  const docPaths = []
+  for (let i = 0; i < colors.length; i += 1) {
+    const imgPath = path.join(tempDir, `pic-${i}.svg`)
+    const docPath = path.join(tempDir, `multi-doc-${i}.md`)
+    await fs.writeFile(imgPath, `<svg xmlns="http://www.w3.org/2000/svg" width="10"><rect fill="${colors[i]}"/></svg>`, 'utf8')
+    await fs.writeFile(docPath, `# Multi Doc ${i}\n\n![pic](pic-${i}.svg)\n`, 'utf8')
+    docPaths.push(docPath)
+  }
+  const { electronApp, page } = await launchApp()
+
+  try {
+    await page.waitForSelector('#empty')
+    await stubOpenDialog(electronApp, docPaths)
+    await emitRendererCommand(electronApp, 'openFile')
+    await page.waitForFunction(() => document.querySelectorAll('#tab-list .file-tab').length === 3)
+
+    // Sweep across every tab twice: the first pass renders each; the second pass
+    // exercises the snapshot rehydration path (renderedHTML now stores no base64).
+    for (let pass = 0; pass < 2; pass += 1) {
+      for (let i = 0; i < colors.length; i += 1) {
+        await page.locator('#tab-list .file-tab').filter({ hasText: `multi-doc-${i}.md` }).click()
+        await page.waitForFunction(expected => document.title === expected, `multi-doc-${i}`)
+        // The embedded image must resolve to a non-empty data URL every time —
+        // no broken-image frame after a tab switch restores from the snapshot.
+        await page.waitForFunction(() => {
+          const img = document.querySelector('#content img')
+          return Boolean(img && /^data:image\/svg\+xml;base64,.+/.test(img.src))
+        })
+      }
+    }
+  } finally {
+    await closeApp(electronApp)
+    await fs.rm(tempDir, { recursive: true, force: true })
+  }
+})
+
 test('tab labels render filenames as text instead of HTML', async () => {
   const maliciousName = '<img src=x onerror="window.__mdvInjected=true">.md'
   const { path: tempMarkdown, cleanup } = await createTempMarkdown(BASIC_MD, maliciousName)

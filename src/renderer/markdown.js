@@ -98,6 +98,9 @@
               cacheImageDataUrl(localPath, dataUrl)
             }
             img.src = dataUrl
+            // Record which local file this base64 came from, independent of the
+            // payload itself, so snapshots can strip the base64 and rehydrate later.
+            img.dataset.mdvLocalPath = localPath
             resolvedPaths.add(localPath)
             return
           }
@@ -158,10 +161,67 @@
       return imagePaths
     }
 
+    // Snapshot for tab.renderedHTML. Cloning + attribute removal (rather than a
+    // regex over the string) means a `data:` URI that happens to appear as text
+    // inside a code block is never mistaken for an <img src> and mangled. Local
+    // images keep their data-mdv-local-path so rehydration can refill src from the
+    // shared imageDataUrlCache instead of baking the base64 into every tab's copy.
+    function captureSnapshotHTML() {
+      const refs = getRefs()
+      const clone = refs.content.cloneNode(true)
+      clone.querySelectorAll('img[data-mdv-local-path]').forEach(img => {
+        img.removeAttribute('src')
+      })
+      return clone.innerHTML
+    }
+
+    // Bumped on every hydrate/rehydrate. A cache-miss fallback below is async, so
+    // if the user switches tabs again before it resolves this version no longer
+    // matches and the stale fetch becomes a no-op — mirrors workspace.js's
+    // restoreRenderVersion guard, kept here since this controller owns the DOM write.
+    let rehydrateVersion = 0
+
+    // After a stripped snapshot is inserted, refill each local image's src. Warm
+    // cache hits are synchronous (no broken-image frame); LRU-evicted paths fall
+    // back to the same async IPC path resolveRenderedImagePaths uses.
+    function rehydrateSnapshotImages() {
+      const refs = getRefs()
+      const version = ++rehydrateVersion
+      const pending = Array.from(refs.content.querySelectorAll('img[data-mdv-local-path]:not([src])'))
+      pending.forEach(img => {
+        const localPath = img.dataset.mdvLocalPath
+        if (!localPath) return
+        const cached = imageDataUrlCache.get(localPath)
+        if (cached) {
+          img.src = cached
+          return
+        }
+        void (async () => {
+          try {
+            const res = JSON.parse(await api.readImageDataUrl(localPath))
+            if (!res.ok || !res.data_url) return
+            // Warm the shared cache regardless of whether this tab is still active,
+            // so the next hydrate of any tab embedding this path hits synchronously.
+            cacheImageDataUrl(localPath, res.data_url)
+            // Guard the DOM write: a newer hydrate (tab switch) bumps the version,
+            // and the previewDirty/split re-render replaces innerHTML on the same
+            // tab without bumping it, which detaches this node — contains() catches
+            // that. Either way we must not write into the wrong/stale DOM.
+            if (version !== rehydrateVersion) return
+            if (!refs.content.contains(img)) return
+            img.src = res.data_url
+          } catch (e) {
+            console.error('이미지 오류:', e)
+          }
+        })()
+      })
+    }
+
     function hydrateFromDom(contentNode, tocNode, text) {
       const refs = getRefs()
       refs.content.innerHTML = contentNode || ''
       refs.tocList.innerHTML = tocNode || ''
+      rehydrateSnapshotImages()
       updateStats(text)
       cachedHeadings = Array.from(refs.content.querySelectorAll('h1,h2,h3')).map(heading => ({ el: heading, id: heading.id, top: heading.offsetTop }))
       cachedTocLinks = Array.from(refs.tocList.querySelectorAll('a')).map(anchor => ({ el: anchor, href: anchor.getAttribute('href') }))
@@ -215,6 +275,8 @@
       render,
       renderMarkdown,
       hydrateFromDom,
+      captureSnapshotHTML,
+      rehydrateSnapshotImages,
       resetEmptyStats,
       refreshTocActive,
       refreshHeadingOffsets,

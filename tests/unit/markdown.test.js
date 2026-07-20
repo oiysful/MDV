@@ -65,3 +65,108 @@ test('renderMarkdown preserves custom code-block markup and data attributes', ()
   assert.ok(/class="hljs"/.test(html), html)
   assert.ok(/class="code-lang"/.test(html), html)
 })
+
+// --- snapshot capture / rehydration (plan 06) ---
+
+const IMAGE_DATA_URL = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg=='
+const LOCAL_PATH = '/docs/assets/pic.png'
+
+// Build a real jsdom-backed refs object plus a spied api. resolveRenderedImagePaths
+// walks refs.content for img[src]; buildToc/updateStats need the id="content" node
+// attached and the stats elements present.
+function makeSnapshotHarness() {
+  const dom = new JSDOM('<!DOCTYPE html><body><div id="content"></div><ul id="toc"></ul><div id="stats"></div><span id="sw"></span><span id="st"></span></body>')
+  const prevDocument = global.document
+  const prevWindow = global.window
+  global.document = dom.window.document
+  global.window = dom.window
+  const refs = {
+    content: dom.window.document.getElementById('content'),
+    tocList: dom.window.document.getElementById('toc'),
+    stats: dom.window.document.getElementById('stats'),
+    sWords: dom.window.document.getElementById('sw'),
+    sTime: dom.window.document.getElementById('st'),
+  }
+  let readCalls = 0
+  const api = {
+    readImageDataUrl: async localPath => {
+      readCalls += 1
+      return JSON.stringify({ ok: true, data_url: IMAGE_DATA_URL })
+    },
+  }
+  const controller = createMarkdownController({
+    getRefs: () => refs,
+    markedLib: marked,
+    hljsLib: hljsStub,
+    pathUtils: {
+      resolveLocalImageCandidates: (src, docPath) => (docPath ? [LOCAL_PATH] : []),
+    },
+    api,
+    domPurify: DOMPurify,
+  })
+  return {
+    controller,
+    refs,
+    getReadCalls: () => readCalls,
+    resetReadCalls: () => { readCalls = 0 },
+    restore: () => { global.document = prevDocument; global.window = prevWindow },
+  }
+}
+
+const flushMacrotask = () => new Promise(resolve => setTimeout(resolve, 0))
+
+test('captureSnapshotHTML strips base64 payloads but keeps the local-path marker', async () => {
+  const h = makeSnapshotHarness()
+  try {
+    await h.controller.render('# Doc\n\n![pic](pic.png)\n', 'doc.md', '/docs/doc.md')
+    const liveHtml = h.refs.content.innerHTML
+    assert.ok(liveHtml.includes('base64,'), 'live DOM should have base64 src before capture')
+
+    const snapshot = h.controller.captureSnapshotHTML()
+    assert.ok(!snapshot.includes('base64,'), snapshot)
+    assert.ok(!snapshot.includes(IMAGE_DATA_URL), 'snapshot must not contain the data URL')
+    assert.ok(snapshot.includes('data-mdv-local-path'), 'snapshot keeps the local-path marker')
+    assert.ok(snapshot.length < liveHtml.length, `snapshot (${snapshot.length}) should be shorter than live (${liveHtml.length})`)
+  } finally {
+    h.restore()
+  }
+})
+
+test('hydrateFromDom refills img src synchronously from a warm cache without IPC', async () => {
+  const h = makeSnapshotHarness()
+  try {
+    await h.controller.render('# Doc\n\n![pic](pic.png)\n', 'doc.md', '/docs/doc.md')
+    const snapshot = h.controller.captureSnapshotHTML()
+    h.resetReadCalls()
+
+    h.controller.hydrateFromDom(snapshot, '', 'body text')
+
+    const img = h.refs.content.querySelector('img')
+    assert.equal(img.getAttribute('src'), IMAGE_DATA_URL)
+    assert.equal(h.getReadCalls(), 0, 'warm cache must not hit the IPC mock')
+  } finally {
+    h.restore()
+  }
+})
+
+test('hydrateFromDom falls back to async IPC on a cold cache and converges', async () => {
+  const h = makeSnapshotHarness()
+  try {
+    await h.controller.render('# Doc\n\n![pic](pic.png)\n', 'doc.md', '/docs/doc.md')
+    const snapshot = h.controller.captureSnapshotHTML()
+    h.controller.clearImageCacheEntry(LOCAL_PATH)
+    h.resetReadCalls()
+
+    h.controller.hydrateFromDom(snapshot, '', 'body text')
+
+    // Synchronously the image has no src yet (cache miss); the fallback is async.
+    assert.equal(h.refs.content.querySelector('img').getAttribute('src'), null)
+
+    await flushMacrotask()
+
+    assert.equal(h.getReadCalls(), 1, 'cold cache must hit the IPC mock exactly once')
+    assert.equal(h.refs.content.querySelector('img').getAttribute('src'), IMAGE_DATA_URL)
+  } finally {
+    h.restore()
+  }
+})

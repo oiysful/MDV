@@ -153,7 +153,7 @@
         tab.renderedHTML = ''
         tab.tocHTML = ''
       } else {
-        tab.renderedHTML = refs.content.innerHTML
+        tab.renderedHTML = markdownController.captureSnapshotHTML()
         tab.tocHTML = refs.tocList.innerHTML
       }
     }
@@ -177,7 +177,7 @@
             restoreActiveTabState()
             return
           }
-          tab.renderedHTML = refs.content.innerHTML
+          tab.renderedHTML = markdownController.captureSnapshotHTML()
           tab.tocHTML = refs.tocList.innerHTML
           tab.previewDirty = false
           syncTabImageWatches(tab, imagePaths)
@@ -392,7 +392,7 @@
       setSplitMode(false)
       applySourceMode()
       const imagePaths = await render(tab.content, tab.filename, tab.path)
-      tab.renderedHTML = refs.content.innerHTML
+      tab.renderedHTML = markdownController.captureSnapshotHTML()
       tab.tocHTML = refs.tocList.innerHTML
       syncTabImageWatches(tab, imagePaths)
       renderTabBar()
@@ -503,7 +503,7 @@
       // reliably fires for an externally-edited document.
       markdownController.clearImageCache()
       const imagePaths = await render(content, tab.filename, tab.path)
-      tab.renderedHTML = refs.content.innerHTML
+      tab.renderedHTML = markdownController.captureSnapshotHTML()
       tab.tocHTML = refs.tocList.innerHTML
       tab.previewDirty = false
       syncTabImageWatches(tab, imagePaths)
@@ -545,7 +545,7 @@
         }
         const refs = getRefs()
         const imagePaths = await render(tab.content, tab.filename, tab.path)
-        tab.renderedHTML = refs.content.innerHTML
+        tab.renderedHTML = markdownController.captureSnapshotHTML()
         tab.tocHTML = refs.tocList.innerHTML
         tab.previewDirty = false
         syncTabImageWatches(tab, imagePaths)
