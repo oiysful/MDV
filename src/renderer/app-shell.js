@@ -45,7 +45,7 @@
     }
   }
 
-  function createAppShellController({ documentRef, windowRef, api, getRefs, themeController, markdownController, getExplorerRoot, revealInFinder, clearExplorerRoot, showAppContextMenu, hideAppContextMenu, runSearch, searchNext, searchPrev, handleFileOpened, handleFileChanged, handleRendererCommand }) {
+  function createAppShellController({ documentRef, windowRef, api, getRefs, pathUtils, themeController, markdownController, getExplorerRoot, revealInFinder, clearExplorerRoot, showAppContextMenu, hideAppContextMenu, runSearch, searchNext, searchPrev, getActiveTab, openLocalFile, handleFileOpened, handleFileChanged, handleRendererCommand }) {
     function initializeUi({ applyTheme, sidebarOpen, activeTab, syncExplorerHeader, updateToolbarActions, updateEntryAffordance, maybeShowWelcomeGuide, applyWrapMode }) {
       const refs = getRefs()
       applyTheme()
@@ -83,6 +83,27 @@
       }
     }
 
+    async function openLocalLink(href) {
+      // Resolve relative hrefs against the active tab's directory. A relative link in
+      // an unsaved (path-less) document has no base to resolve against.
+      const docPath = getActiveTab ? getActiveTab()?.path || null : null
+      const resolved = pathUtils.resolveLocalPath(href, docPath)
+      if (!resolved) {
+        alert('링크 열기 실패: 문서를 저장한 뒤에 상대 경로 링크를 열 수 있습니다.')
+        return
+      }
+      const res = JSON.parse(await api.openLocalPath(resolved))
+      if (res.error) {
+        alert(`링크 열기 실패: ${res.error}`)
+        return
+      }
+      // Markdown targets come back as file content (main can't open a tab itself); the
+      // renderer opens them as a new tab. Non-markdown files were handed to the OS.
+      if (res.kind === 'markdown' && openLocalFile) {
+        await openLocalFile({ content: res.content, filename: res.filename, path: res.path })
+      }
+    }
+
     function bindContentLinkHandler() {
       getRefs().content.addEventListener('click', async event => {
         const link = event.target.closest('a[href]')
@@ -90,8 +111,15 @@
         const href = link.getAttribute('href')
         if (!href || href.startsWith('#')) return
         event.preventDefault()
-        const res = JSON.parse(await api.openExternalUrl(href))
-        if (res.error) alert(`링크 열기 실패: ${res.error}`)
+        // A scheme (http(s), mailto:, //protocol-relative, ...) stays on the external-URL
+        // path, which only allows http(s) and rejects the rest. A schemeless href is a
+        // local file path and takes the new local-open path instead.
+        if (pathUtils.isExternalUrl(href)) {
+          const res = JSON.parse(await api.openExternalUrl(href))
+          if (res.error) alert(`링크 열기 실패: ${res.error}`)
+          return
+        }
+        await openLocalLink(href)
       })
     }
 

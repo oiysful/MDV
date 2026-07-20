@@ -1,7 +1,7 @@
 const test = require('node:test')
 const assert = require('node:assert/strict')
 
-const { isExternalUrl, resolveLocalImageCandidates, pathToFileUrl } = require('../../src/renderer/path-utils.js')
+const { isExternalUrl, resolveLocalImageCandidates, resolveLocalPath, pathToFileUrl } = require('../../src/renderer/path-utils.js')
 
 // Convenience for the single-reading cases: most srcs resolve to exactly one path.
 const resolveOne = (src, docPath) => resolveLocalImageCandidates(src, docPath)[0] ?? null
@@ -74,6 +74,44 @@ test('handles filenames containing a bare percent', () => {
   // decodeURIComponent threw on the lone %, so these images were silently dropped.
   assert.equal(resolveOne('50%.png', '/Users/test/docs/basic.md'), '/Users/test/docs/50%.png')
   assert.equal(resolveOne('a b%c.png', '/Users/test/docs/basic.md'), '/Users/test/docs/a b%c.png')
+})
+
+test('resolveLocalPath resolves a link relative to the document directory', () => {
+  const doc = '/Users/test/docs/notes/basic.md'
+  assert.equal(resolveLocalPath('./foo.md', doc), '/Users/test/docs/notes/foo.md')
+  assert.equal(resolveLocalPath('foo.md', doc), '/Users/test/docs/notes/foo.md')
+  assert.equal(resolveLocalPath('../bar/baz.png', doc), '/Users/test/docs/bar/baz.png')
+})
+
+test('resolveLocalPath reads a leading slash as a genuine absolute path', () => {
+  // Unlike images, a link has one intended target, so no document-root-relative fallback.
+  assert.equal(
+    resolveLocalPath('/Users/test/pics/shot.png', '/Users/test/docs/notes/basic.md'),
+    '/Users/test/pics/shot.png',
+  )
+  assert.equal(resolveLocalPath('/absolute/target.md', null), '/absolute/target.md')
+})
+
+test('resolveLocalPath returns null when a relative link has no base document', () => {
+  assert.equal(resolveLocalPath('./foo.md', null), null)
+  assert.equal(resolveLocalPath('../bar/baz.png', ''), null)
+  assert.equal(resolveLocalPath('images/foo.png', undefined), null)
+})
+
+test('resolveLocalPath returns null for external URLs and in-page anchors', () => {
+  const doc = '/Users/test/docs/notes/basic.md'
+  assert.equal(resolveLocalPath('https://example.com/page', doc), null)
+  assert.equal(resolveLocalPath('mailto:test@example.com', doc), null)
+  assert.equal(resolveLocalPath('//cdn.example.com/lib.js', doc), null)
+  assert.equal(resolveLocalPath('#section', doc), null)
+  assert.equal(resolveLocalPath('', doc), null)
+})
+
+test('resolveLocalPath preserves spaces and reserved characters', () => {
+  assert.equal(
+    resolveLocalPath('../my notes/a#b.md', '/Users/test/docs/notes/basic.md'),
+    '/Users/test/docs/my notes/a#b.md',
+  )
 })
 
 test('pathToFileUrl encodes each path segment', () => {

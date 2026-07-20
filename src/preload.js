@@ -10,6 +10,7 @@ contextBridge.exposeInMainWorld('api', {
   exportPdf:       (n)    => ipcRenderer.invoke('export-pdf', n),
   newWindow:       (p)    => ipcRenderer.invoke('new-window', p),
   openExternalUrl: (u)    => ipcRenderer.invoke('open-external-url', u),
+  openLocalPath:   (p)    => ipcRenderer.invoke('open-local-path', p),
   revealInFinder:  (p)    => ipcRenderer.invoke('reveal-in-finder', p),
   getMarkdownDefaultAppStatus: () => ipcRenderer.invoke('get-markdown-default-app-status'),
   readImageDataUrl:(p)    => ipcRenderer.invoke('read-image-data-url', p),

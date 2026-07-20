@@ -266,6 +266,37 @@ ipcMain.handle('open-external-url', async (_, url) => {
   }
 })
 
+// Opens a link that points at a local file. `open-external-url`'s ^https?:// whitelist
+// stays intact for web links; this is the separate path for schemeless (relative/absolute)
+// targets the renderer resolves to an absolute filesystem path. Markdown files are read
+// and returned (same shape as read-file) so the renderer can open them as a new tab —
+// main cannot call the renderer's createTab directly. Everything else is handed to the OS
+// default app via shell.openPath. A missing target gets a distinct "not found" error so it
+// is never confused with the "not allowed" scheme rejection above.
+ipcMain.handle('open-local-path', async (_, targetPath) => {
+  try {
+    if (!targetPath) {
+      return JSON.stringify({ ok: false, error: '경로가 없습니다.' })
+    }
+    let stat
+    try {
+      stat = await fs.promises.stat(targetPath)
+    } catch {
+      return JSON.stringify({ ok: false, error: `파일을 찾을 수 없습니다: ${targetPath}` })
+    }
+    const ext = path.extname(targetPath).toLowerCase()
+    if (stat.isFile() && MARKDOWN_EXTENSIONS.includes(ext)) {
+      const content = await fs.promises.readFile(targetPath, 'utf-8')
+      return JSON.stringify({ ok: true, kind: 'markdown', content, filename: path.basename(targetPath), path: targetPath })
+    }
+    const openError = await shell.openPath(targetPath)
+    if (openError) return JSON.stringify({ ok: false, error: openError })
+    return JSON.stringify({ ok: true, kind: 'external' })
+  } catch (e) {
+    return JSON.stringify({ ok: false, error: e.message })
+  }
+})
+
 ipcMain.handle('reveal-in-finder', async (_, targetPath) => {
   try {
     if (!targetPath) {

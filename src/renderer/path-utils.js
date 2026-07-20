@@ -41,10 +41,31 @@
     }
   }
 
+  // Resolve a clicked link's href to a single absolute filesystem path so the main
+  // process can just stat/read it. Unlike images (resolveLocalImageCandidates), a
+  // link has one intended target, so a leading `/` is read as a genuine absolute
+  // path — no document-root-relative fallback. Returns null for anything that is not
+  // a resolvable local path: external URLs, in-page anchors, or a relative link in an
+  // unsaved (path-less) document, which the caller surfaces as a clear message.
+  function resolveLocalPath(target, docPath) {
+    if (!target || isExternalUrl(target) || target.startsWith('#')) return null
+    try {
+      if (target.startsWith('/')) {
+        return decodeURIComponent(pathToFileUrl(escapeBarePercent(target)).slice('file://'.length))
+      }
+      if (!docPath) return null
+      const baseDir = docPath.replace(/[^/]+$/, '')
+      return toFsPath(target, baseDir)
+    } catch {
+      return null
+    }
+  }
+
 
   const api = {
     isExternalUrl,
     resolveLocalImageCandidates,
+    resolveLocalPath,
     pathToFileUrl,
   }
 

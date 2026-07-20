@@ -77,6 +77,20 @@ async function stubSaveDialog(electronApp, filePath) {
   }, { filePath })
 }
 
+// Replaces shell.openExternal in the main process (same object main.js destructured)
+// so a link-click test can assert the URL was handed off without launching a real
+// browser. Records every URL in a main-process global the test can read back.
+async function stubOpenExternal(electronApp) {
+  await electronApp.evaluate(({ shell }) => {
+    globalThis.__openExternalCalls = []
+    shell.openExternal = async (url) => { globalThis.__openExternalCalls.push(url) }
+  })
+}
+
+async function getOpenExternalCalls(electronApp) {
+  return electronApp.evaluate(() => globalThis.__openExternalCalls ?? [])
+}
+
 async function createTempMarkdown(sourcePath, name) {
   const tempDir = await fs.mkdtemp(path.join(os.tmpdir(), 'mdv-smoke-'))
   const targetPath = path.join(tempDir, name)
@@ -1842,6 +1856,112 @@ test('welcome guide is a non-blocking dialog: no focus trap, and ESC closes it b
     await page.waitForFunction(() => document.getElementById('search-bar').style.display === 'none')
   } finally {
     await closeApp(electronApp)
+  }
+})
+
+test('clicking a local markdown link opens the target as a new tab', async () => {
+  const tempDir = await fs.mkdtemp(path.join(os.tmpdir(), 'mdv-smoke-links-'))
+  const sourcePath = path.join(tempDir, 'source.md')
+  const relTargetPath = path.join(tempDir, 'target-rel.md')
+  const absTargetPath = path.join(tempDir, 'target-abs.md')
+  await fs.writeFile(relTargetPath, '# Relative Target\n\nOpened via relative link.\n', 'utf-8')
+  await fs.writeFile(absTargetPath, '# Absolute Target\n\nOpened via absolute link.\n', 'utf-8')
+  await fs.writeFile(
+    sourcePath,
+    `# Source Doc\n\n[open relative](./target-rel.md)\n\n[open absolute](${absTargetPath})\n`,
+    'utf-8',
+  )
+
+  const { electronApp, page } = await launchApp()
+  try {
+    await page.waitForSelector('#empty')
+    await stubOpenDialog(electronApp, [sourcePath])
+    await emitRendererCommand(electronApp, 'openFile')
+    await page.waitForFunction(() => document.title === 'source')
+
+    // Relative link resolves against the active tab's directory and opens a new tab.
+    await page.locator('#content a', { hasText: 'open relative' }).click()
+    await page.waitForFunction(() => {
+      const active = document.querySelector('#tab-list .file-tab.active .file-tab-name')
+      return document.querySelectorAll('#tab-list .file-tab').length === 2 && active && active.textContent.includes('target-rel.md')
+    })
+    assert.match(await page.textContent('#content'), /Opened via relative link\./)
+
+    // Back on the source tab, an absolute-path link opens its target too.
+    await page.locator('#tab-list .file-tab', { hasText: 'source.md' }).click()
+    await page.waitForFunction(() => document.title === 'source')
+    await page.locator('#content a', { hasText: 'open absolute' }).click()
+    await page.waitForFunction(() => {
+      const active = document.querySelector('#tab-list .file-tab.active .file-tab-name')
+      return document.querySelectorAll('#tab-list .file-tab').length === 3 && active && active.textContent.includes('target-abs.md')
+    })
+    assert.match(await page.textContent('#content'), /Opened via absolute link\./)
+  } finally {
+    await closeApp(electronApp)
+    await fs.rm(tempDir, { recursive: true, force: true })
+  }
+})
+
+test('clicking a link to a missing local file shows a not-found error, not "not allowed"', async () => {
+  const tempDir = await fs.mkdtemp(path.join(os.tmpdir(), 'mdv-smoke-links-'))
+  const sourcePath = path.join(tempDir, 'source.md')
+  await fs.writeFile(sourcePath, '# Source Doc\n\n[open missing](./does-not-exist.md)\n', 'utf-8')
+
+  const { electronApp, page } = await launchApp()
+  try {
+    await page.waitForSelector('#empty')
+    await stubOpenDialog(electronApp, [sourcePath])
+    await emitRendererCommand(electronApp, 'openFile')
+    await page.waitForFunction(() => document.title === 'source')
+
+    let dialogMessage = null
+    page.on('dialog', async dialog => {
+      dialogMessage = dialog.message()
+      await dialog.dismiss()
+    })
+
+    await page.locator('#content a', { hasText: 'open missing' }).click()
+    await page.waitForFunction(() => document.querySelectorAll('#tab-list .file-tab').length === 1)
+
+    assert.ok(dialogMessage, 'a link-failure alert should have been shown')
+    assert.match(dialogMessage, /파일을 찾을 수 없습니다/)
+    assert.doesNotMatch(dialogMessage, /허용되지 않은 링크입니다/)
+    // No tab was opened for the missing target.
+    assert.equal(await page.locator('#tab-list .file-tab').count(), 1)
+  } finally {
+    await closeApp(electronApp)
+    await fs.rm(tempDir, { recursive: true, force: true })
+  }
+})
+
+test('clicking an https link still opens externally without opening a tab', async () => {
+  const tempDir = await fs.mkdtemp(path.join(os.tmpdir(), 'mdv-smoke-links-'))
+  const sourcePath = path.join(tempDir, 'source.md')
+  await fs.writeFile(sourcePath, '# Source Doc\n\n[visit web](https://example.com/page)\n', 'utf-8')
+
+  const { electronApp, page } = await launchApp()
+  try {
+    await page.waitForSelector('#empty')
+    await stubOpenExternal(electronApp)
+    await stubOpenDialog(electronApp, [sourcePath])
+    await emitRendererCommand(electronApp, 'openFile')
+    await page.waitForFunction(() => document.title === 'source')
+
+    await page.locator('#content a', { hasText: 'visit web' }).click()
+
+    let calls = []
+    const startedAt = Date.now()
+    while (Date.now() - startedAt < 5000) {
+      calls = await getOpenExternalCalls(electronApp)
+      if (calls.length > 0) break
+      await new Promise(resolve => setTimeout(resolve, 100))
+    }
+    assert.deepEqual(calls, ['https://example.com/page'])
+    // The external link must not have spawned a document tab.
+    assert.equal(await page.locator('#tab-list .file-tab').count(), 1)
+  } finally {
+    await closeApp(electronApp)
+    await fs.rm(tempDir, { recursive: true, force: true })
   }
 })
 
