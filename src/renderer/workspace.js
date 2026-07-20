@@ -75,6 +75,8 @@
     openNewWindow,
     reportDirtyState,
     closeSearch,
+    addRecentDocument,
+    onTabsChanged,
   }) {
     let tabs = []
     let activeTabId = null
@@ -130,6 +132,12 @@
 
     function getTabCount() {
       return tabs.length
+    }
+
+    // Ordered, minimal view of the open tabs for session persistence — just id + path,
+    // so the app layer can build the on-disk session shape without reaching into tab state.
+    function getSessionTabs() {
+      return tabs.map(tab => ({ id: tab.id, path: tab.path }))
     }
 
     function saveCurrentTabState() {
@@ -312,6 +320,9 @@
       updateEntryAffordance()
       maybeShowWelcomeGuide()
       syncDirtyState()
+      // Single chokepoint for tab open/close/switch/reorder — the app-level handler
+      // debounces the actual push to main, so re-firing on every render is cheap.
+      onTabsChanged?.()
     }
 
     function onTabDragStart(event) {
@@ -360,6 +371,9 @@
     }
 
     async function createTab(data) {
+      // Every open of a real file (new tab or re-focusing an existing one) is a recent-document
+      // access. New unsaved files (path: null) are not — they have nothing to reopen from.
+      if (data.path) addRecentDocument?.(data.path)
       if (data.path) {
         const existing = findTabByPath(data.path)
         if (existing) {
@@ -615,6 +629,7 @@
       findTabByPath,
       getActiveTab,
       getTabCount,
+      getSessionTabs,
       restoreActiveTabState,
       handleExternalFileChange,
       updateActiveTabDirtyFromEditor,

@@ -17,7 +17,7 @@
     return showFullPath ? root : root.split('/').pop() || root
   }
 
-  function createExplorerController({ getRefs, api, load, switchToExplorerTab, showAppContextMenu, revealInFinder }) {
+  function createExplorerController({ getRefs, api, load, switchToExplorerTab, showAppContextMenu, revealInFinder, onExplorerRootChanged }) {
     let currentExplorerRoot = null
     let explorerShowFullPath = false
     let treeKeyboardBound = false
@@ -153,6 +153,7 @@
       explorerShowFullPath = false
       refs.explorerTree.innerHTML = EXPLORER_EMPTY_HTML
       syncExplorerHeader()
+      onExplorerRootChanged?.()
     }
 
     function toggleExplorerPathInfo() {
@@ -176,8 +177,20 @@
       currentExplorerRoot = res.path
       explorerShowFullPath = false
       syncExplorerHeader()
+      onExplorerRootChanged?.()
       switchToExplorerTab()
       await loadDir(res.path, getRefs().explorerTree, 0)
+    }
+
+    // Session restore path: set the root and repaint the tree without switching the sidebar
+    // tab or re-notifying the session (this is restoring, not a user-initiated change). If the
+    // folder is gone, loadDir surfaces list-directory's error hint via the existing path.
+    async function restoreRoot(root) {
+      if (!root) return
+      currentExplorerRoot = root
+      explorerShowFullPath = false
+      syncExplorerHeader()
+      await loadDir(root, getRefs().explorerTree, 0)
     }
 
     async function loadDir(path, container, depth) {
@@ -281,6 +294,7 @@
       toggleExplorerPathInfo,
       revealCurrentExplorerRoot,
       getCurrentExplorerRoot,
+      restoreRoot,
     }
   }
 

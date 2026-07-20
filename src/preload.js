@@ -17,10 +17,13 @@ contextBridge.exposeInMainWorld('api', {
   watchFile:       (p)    => ipcRenderer.invoke('watch-file', p),
   unwatchFile:     (p)    => ipcRenderer.invoke('unwatch-file', p),
   setDirtyState:   (isDirty) => ipcRenderer.send('set-dirty-state', isDirty),
+  saveSessionState:(state) => ipcRenderer.send('session-state-changed', state),
+  addRecentDocument:(p)   => ipcRenderer.invoke('add-recent-document', p),
   getPathForFile:  (file) => webUtils.getPathForFile(file),
 
   onFileChanged: (cb) => ipcRenderer.on('file-changed', (_, data) => cb(data)),
   onFileOpened:  (cb) => ipcRenderer.on('file-opened',  (_, path) => cb(path)),
+  onRestoreSession:(cb) => ipcRenderer.on('restore-session', (_, data) => cb(data)),
   onRendererCommand:(cb) => ipcRenderer.on('renderer-command', (_, command) => cb(command)),
   onThemeChanged:(cb) => ipcRenderer.on('theme-changed', (_, dark) => cb(dark)),
 })

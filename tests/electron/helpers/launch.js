@@ -1,3 +1,5 @@
+const fs = require('node:fs')
+const os = require('node:os')
 const path = require('node:path')
 const { _electron: electron } = require('playwright')
 
@@ -5,12 +7,22 @@ const electronBinary = require('electron')
 
 const ROOT = path.resolve(__dirname, '../../..')
 
-async function launchApp() {
+// Every launch gets an isolated userData dir (via MDV_USER_DATA_DIR, which main.js honours)
+// so the suite never reads stale state from — or writes session.json into — the real user's
+// profile. Pass an explicit `userDataDir` to share one across a quit+relaunch session test;
+// launchApp then leaves cleanup to the caller (closeApp only removes dirs it created).
+async function launchApp(options = {}) {
+  const ownsUserDataDir = !options.userDataDir
+  const userDataDir = options.userDataDir || fs.mkdtempSync(path.join(os.tmpdir(), 'mdv-userdata-'))
+
   const electronApp = await electron.launch({
     executablePath: electronBinary,
     args: ['.'],
     cwd: ROOT,
+    env: { ...process.env, MDV_USER_DATA_DIR: userDataDir },
   })
+  electronApp.__userDataDir = userDataDir
+  electronApp.__ownsUserDataDir = ownsUserDataDir
 
   const page = await electronApp.firstWindow()
   page.setDefaultTimeout(15000)
@@ -18,7 +30,7 @@ async function launchApp() {
     return Boolean(window.api && document.documentElement.dataset.rendererReady === 'true')
   })
 
-  return { electronApp, page }
+  return { electronApp, page, userDataDir }
 }
 
 // Answers the unsaved-changes dialog that main.js raises on window close.
@@ -45,6 +57,11 @@ async function getCloseDialogCalls(electronApp) {
 async function closeApp(electronApp) {
   await stubCloseDialog(electronApp, 0)
   await electronApp.close()
+  // Only remove a userData dir this helper created — a caller-owned dir is being reused
+  // across a relaunch and must survive until that test tears it down itself.
+  if (electronApp.__ownsUserDataDir && electronApp.__userDataDir) {
+    fs.rmSync(electronApp.__userDataDir, { recursive: true, force: true })
+  }
 }
 
 module.exports = {

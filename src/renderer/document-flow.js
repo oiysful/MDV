@@ -85,6 +85,9 @@
       tab.savedContent = tab.content
       tab.dirty = false
       document.title = globalScope.MDVWorkspace.stripMarkdownExtension(tab.filename)
+      // A save that assigns/keeps a path is the second place (besides opening) a file
+      // becomes a recent document — covers first save of a new file and "save as".
+      if (nextPath) api.addRecentDocument?.(nextPath)
       getWorkspaceController().renderTabBar()
       if (previousPath !== nextPath) {
         unwatchPath(previousPath)

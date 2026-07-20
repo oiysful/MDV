@@ -8,6 +8,11 @@ let runtimeController
 let rendererCommands
 let splitRenderTimer = null
 let splitRenderVersion = 0
+let sessionSaveTimer = null
+
+// Tab switches/closes fire fast; debouncing keeps rapid activity from hammering the IPC
+// bridge. Main only writes to disk at close/quit, so this just keeps its mirror fresh.
+const SESSION_SAVE_DEBOUNCE_MS = 350
 
 const state = {
   md: '',
@@ -166,6 +171,8 @@ document.addEventListener('DOMContentLoaded', () => {
     openNewWindow: path => window.api.newWindow(path),
     reportDirtyState: hasDirty => window.api.setDirtyState?.(hasDirty),
     closeSearch: () => runtimeController.closeSearch(),
+    addRecentDocument: path => window.api.addRecentDocument?.(path),
+    onTabsChanged: () => notifySessionState(),
   })
 
   explorerController = window.MDVExplorer.createExplorerController({
@@ -175,6 +182,7 @@ document.addEventListener('DOMContentLoaded', () => {
     switchToExplorerTab: () => runtimeController.switchTab('explorer'),
     showAppContextMenu: (x, y, items) => runtimeController.showAppContextMenu(x, y, items),
     revealInFinder: path => runtimeController.revealInFinder(path),
+    onExplorerRootChanged: () => notifySessionState(),
   })
 
   editorController.bindEditorEvents()
@@ -193,6 +201,7 @@ document.addEventListener('DOMContentLoaded', () => {
   appShellController.registerIpcHandlers()
   appShellController.bindUiEvents(rendererCommands)
   runtimeController.bindGlobalEvents()
+  window.api.onRestoreSession?.(payload => { void restoreSession(payload) })
   void runtimeController.checkMarkdownDefaultAppStatus()
   document.documentElement.dataset.rendererReady = 'true'
 })
@@ -315,4 +324,54 @@ async function runRendererCommand(commandName) {
   const command = rendererCommands?.[commandName]
   if (!command) return
   await command()
+}
+
+// Gathers the persistable session across controllers (tab paths + active index + explorer
+// root) into the minimal on-disk shape. Main guards against ever writing an empty one.
+function collectSessionState() {
+  const tabs = workspaceController ? workspaceController.getSessionTabs() : []
+  const activeTabId = workspaceController ? (workspaceController.getActiveTab()?.id ?? null) : null
+  const explorerRoot = explorerController ? explorerController.getCurrentExplorerRoot() : null
+  return window.MDVSessionState.buildSessionState(tabs, activeTabId, explorerRoot)
+}
+
+function notifySessionState() {
+  window.clearTimeout(sessionSaveTimer)
+  sessionSaveTimer = window.setTimeout(() => {
+    window.api.saveSessionState?.(collectSessionState())
+  }, SESSION_SAVE_DEBOUNCE_MS)
+}
+
+// Startup-only restore, driven by main's `restore-session` push. Reopens each saved path
+// exactly like a normal file-open; files that fail to read (moved/deleted) are skipped
+// silently — no alert per missing file. A single toast summarizes the skipped count.
+async function restoreSession(payload) {
+  if (!payload) return
+  const savedPaths = Array.isArray(payload.tabs) ? payload.tabs : []
+  const created = []
+  for (const filePath of savedPaths) {
+    try {
+      const data = JSON.parse(await window.api.readFile(filePath))
+      if (data.error) continue
+      const tab = await documentFlowController.load(data)
+      if (tab) created.push(tab)
+    } catch {
+      // Unreadable/moved file — skip it, don't interrupt the rest of the restore.
+    }
+  }
+
+  if (created.length) {
+    // activeIndex points into the saved paths; if that exact tab survived, re-activate it,
+    // otherwise fall back to the last tab createTab already left active.
+    const activePath = savedPaths[payload.activeIndex]
+    const target = created.find(tab => tab.path === activePath)
+    if (target) workspaceController.switchToTab(target.id)
+  }
+
+  const skipped = savedPaths.length - created.length
+  if (skipped > 0) runtimeController.showToast(`${skipped}개 파일을 열 수 없어 건너뛰었습니다`)
+
+  if (payload.explorerRoot) {
+    await explorerController.restoreRoot(payload.explorerRoot)
+  }
 }

@@ -4,13 +4,63 @@ const fs   = require('fs')
 const os = require('os')
 const { pathToFileURL } = require('url')
 const chokidar = require('chokidar')
+const { isEmptySession } = require('./renderer/session-state')
+
+// Tests point this at a throwaway directory so the suite never reads or clobbers the
+// real user's session.json. Must run before app 'ready', which module-load time satisfies.
+if (process.env.MDV_USER_DATA_DIR) {
+  app.setPath('userData', process.env.MDV_USER_DATA_DIR)
+}
 
 const watchers = new Map() // path → { watcher: chokidar.FSWatcher, subscribers: Set<WebContents> }
 const dirtyState = new Map() // BrowserWindow.id → boolean (미저장 변경 존재 여부)
+const sessionState = new Map() // BrowserWindow.id → { tabs, activeIndex, explorerRoot } (렌더러가 통지한 최신 상태)
+let lastFocusedWindowId = null
 const MARKDOWN_EXTENSIONS = ['.md', '.markdown']
 
+// ── Session persistence ──────────────────────────────────────────
+function getSessionFilePath() {
+  return path.join(app.getPath('userData'), 'session.json')
+}
+
+function readSavedSession() {
+  try {
+    const parsed = JSON.parse(fs.readFileSync(getSessionFilePath(), 'utf-8'))
+    if (!parsed || typeof parsed !== 'object') return null
+    const tabs = Array.isArray(parsed.tabs) ? parsed.tabs.filter(p => typeof p === 'string') : []
+    const explorerRoot = typeof parsed.explorerRoot === 'string' ? parsed.explorerRoot : null
+    const activeIndex = Number.isInteger(parsed.activeIndex) ? parsed.activeIndex : 0
+    const session = { tabs, activeIndex, explorerRoot }
+    return isEmptySession(session) ? null : session
+  } catch {
+    return null
+  }
+}
+
+function writeSession(session) {
+  if (isEmptySession(session)) return // 빈 세션은 절대 기록하지 않는다 — 저장된 세션을 지우지 않도록.
+  try {
+    fs.writeFileSync(getSessionFilePath(), JSON.stringify(session), 'utf-8')
+  } catch {
+    // 세션 저장 실패는 조용히 무시 — 사용자 작업을 막을 이유가 없다.
+  }
+}
+
+// v1 model: persist the last-focused window's state. If that window is a blank Cmd+N
+// window (empty), fall back to any other non-empty window so opening/closing a blank
+// window never wipes a real session.
+function persistSession() {
+  let state = sessionState.get(lastFocusedWindowId)
+  if (isEmptySession(state)) {
+    for (const candidate of sessionState.values()) {
+      if (!isEmptySession(candidate)) { state = candidate; break }
+    }
+  }
+  writeSession(state)
+}
+
 // ── Window factory ──────────────────────────────────────────────
-function createWindow(filePath = null) {
+function createWindow(filePath = null, restoredSession = null) {
   const win = new BrowserWindow({
     width: 1280,
     height: 800,
@@ -40,31 +90,48 @@ function createWindow(filePath = null) {
     if (url !== win.webContents.getURL()) event.preventDefault()
   })
 
+  // did-finish-load fires on every load (including page.reload()), so restore is gated
+  // behind a one-shot flag — otherwise a reload would resurrect tabs closed since launch.
+  let sessionRestored = false
   win.webContents.on('did-finish-load', () => {
     win.webContents.send('theme-changed', nativeTheme.shouldUseDarkColors)
     if (filePath) {
       sendFile(win, filePath)
+    } else if (restoredSession && !sessionRestored) {
+      sessionRestored = true
+      win.webContents.send('restore-session', restoredSession)
     }
   })
+
+  lastFocusedWindowId = win.id
+  win.on('focus', () => { lastFocusedWindowId = win.id })
 
   // 미저장 변경이 있으면 창을 닫기 전에 확인. 동기 다이얼로그를 쓰고
   // '닫기'를 고르면 preventDefault 하지 않아, ⌘Q 종료 루프가 다음 창으로
   // 자연스럽게 이어진다('취소'만 종료를 중단).
   win.on('close', (event) => {
-    if (!dirtyState.get(win.id)) return
-    const choice = dialog.showMessageBoxSync(win, {
-      type: 'warning',
-      buttons: ['닫기', '취소'],
-      defaultId: 1,
-      cancelId: 1,
-      message: '저장하지 않은 변경이 있습니다.',
-      detail: '변경 내용을 저장하지 않고 창을 닫으시겠습니까?',
-    })
-    if (choice === 1) event.preventDefault()
+    if (dirtyState.get(win.id)) {
+      const choice = dialog.showMessageBoxSync(win, {
+        type: 'warning',
+        buttons: ['닫기', '취소'],
+        defaultId: 1,
+        cancelId: 1,
+        message: '저장하지 않은 변경이 있습니다.',
+        detail: '변경 내용을 저장하지 않고 창을 닫으시겠습니까?',
+      })
+      if (choice === 1) {
+        event.preventDefault()
+        return
+      }
+    }
+    // Window close fires reliably (including under the test harness); before-quit is the
+    // backstop for a quit that doesn't route through a window close.
+    persistSession()
   })
 
   win.on('closed', () => {
     dirtyState.delete(win.id)
+    sessionState.delete(win.id)
   })
 
   return win
@@ -134,7 +201,11 @@ app.on('open-file', (event, filePath) => {
 
 app.whenReady().then(() => {
   buildMenu()
-  createWindow(pendingFilePath)
+  // An OS file-open (double-click) launch has a clear intent — restore is skipped so an
+  // old session doesn't pile on top of the file the user asked to open. Restore is only
+  // ever handed to this first startup window, never to Cmd+N / activate / new-window.
+  const restoredSession = pendingFilePath ? null : readSavedSession()
+  createWindow(pendingFilePath, restoredSession)
   pendingFilePath = null
 
   nativeTheme.on('updated', () => {
@@ -142,6 +213,10 @@ app.whenReady().then(() => {
       w.webContents.send('theme-changed', nativeTheme.shouldUseDarkColors)
     })
   })
+})
+
+app.on('before-quit', () => {
+  persistSession()
 })
 
 app.on('window-all-closed', () => {
@@ -440,6 +515,17 @@ ipcMain.handle('unwatch-file', async (event, filePath) => {
 ipcMain.on('set-dirty-state', (event, isDirty) => {
   const win = BrowserWindow.fromWebContents(event.sender)
   if (win) dirtyState.set(win.id, !!isDirty)
+})
+
+// The renderer pushes its latest session shape here (debounced on its side). Main only
+// mirrors it in memory per window; the actual disk write happens at close/quit.
+ipcMain.on('session-state-changed', (event, state) => {
+  const win = BrowserWindow.fromWebContents(event.sender)
+  if (win) sessionState.set(win.id, state)
+})
+
+ipcMain.handle('add-recent-document', (_, filePath) => {
+  if (filePath) app.addRecentDocument(filePath)
 })
 
 // ── Menu ─────────────────────────────────────────────────────────
