@@ -2022,3 +2022,71 @@ test('holding Cmd flags the body and reveals shortcut badges, clearing on keyup 
     await closeApp(electronApp)
   }
 })
+
+test('active tab scrolls into view when switched to a tab off-screen in #tab-list', async () => {
+  const { electronApp, page } = await launchApp()
+
+  try {
+    await page.waitForSelector('#empty')
+
+    // Enough untitled tabs to overflow #tab-list's fixed-width scroll container.
+    const TAB_COUNT = 15
+    for (let i = 0; i < TAB_COUNT; i++) {
+      await clickApplicationMenuItem(electronApp, '파일', '새 파일')
+    }
+    await page.waitForFunction(count => document.querySelectorAll('#tab-list .file-tab').length === count, TAB_COUNT)
+
+    const isFirstTabOutOfView = () => page.evaluate(() => {
+      const list = document.getElementById('tab-list')
+      const first = list.querySelector('.file-tab')
+      const listRect = list.getBoundingClientRect()
+      const tabRect = first.getBoundingClientRect()
+      return tabRect.left < listRect.left || tabRect.right > listRect.right
+    })
+    assert.equal(await isFirstTabOutOfView(), true, 'expected tabs to overflow #tab-list for this test to be meaningful')
+
+    // Walk back to the first (now off-screen) tab via the same command path the
+    // ⌘⇧[ accelerator drives (src/main.js#buildMenu -> switchToPrevTab).
+    for (let i = 0; i < TAB_COUNT - 1; i++) {
+      await emitRendererCommand(electronApp, 'switchToPrevTab')
+    }
+    await page.waitForFunction(() => {
+      const active = document.querySelector('#tab-list .file-tab.active .file-tab-name')
+      return active && active.textContent.includes('untitled.md') && !active.textContent.includes('untitled-')
+    })
+
+    const isActiveTabVisible = await page.evaluate(() => {
+      const list = document.getElementById('tab-list')
+      const active = list.querySelector('.file-tab.active')
+      const listRect = list.getBoundingClientRect()
+      const tabRect = active.getBoundingClientRect()
+      return tabRect.left >= listRect.left - 1 && tabRect.right <= listRect.right + 1
+    })
+    assert.equal(isActiveTabVisible, true)
+  } finally {
+    await closeApp(electronApp)
+  }
+})
+
+test('clicking an already-visible tab does not scroll #tab-list', async () => {
+  const { electronApp, page } = await launchApp()
+
+  try {
+    await page.waitForSelector('#empty')
+    await clickApplicationMenuItem(electronApp, '파일', '새 파일')
+    await page.waitForFunction(() => document.querySelectorAll('#tab-list .file-tab').length === 1)
+    await clickApplicationMenuItem(electronApp, '파일', '새 파일')
+    await page.waitForFunction(() => document.querySelectorAll('#tab-list .file-tab').length === 2)
+
+    const scrollLeftBefore = await page.evaluate(() => document.getElementById('tab-list').scrollLeft)
+    await page.locator('#tab-list .file-tab').first().click()
+    await page.waitForFunction(() => {
+      const active = document.querySelector('#tab-list .file-tab.active .file-tab-name')
+      return active && active.textContent.includes('untitled.md') && !active.textContent.includes('untitled-')
+    })
+    const scrollLeftAfter = await page.evaluate(() => document.getElementById('tab-list').scrollLeft)
+    assert.equal(scrollLeftAfter, scrollLeftBefore)
+  } finally {
+    await closeApp(electronApp)
+  }
+})

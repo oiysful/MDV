@@ -203,6 +203,7 @@
       const list = refs.tabList
       refs.tabStrip.classList.toggle('hidden', tabs.length === 0)
       list.innerHTML = ''
+      let activeEl = null
       tabs.forEach(tab => {
         const el = document.createElement('div')
         el.className = 'file-tab' + (tab.id === activeTabId ? ' active' : '') + (tab.conflictPending ? ' has-conflict' : '')
@@ -245,7 +246,11 @@
         el.addEventListener('drop', onTabDrop)
         el.addEventListener('dragend', onTabDragEnd)
         list.appendChild(el)
+        if (tab.id === activeTabId) activeEl = el
       })
+      // Sole chokepoint for tab-active DOM state (see docs/plans/07-tab-scroll-into-view.md) —
+      // scrolling here covers keyboard shortcuts, clicks, close/reorder, and restore alike.
+      activeEl?.scrollIntoView({ block: 'nearest', inline: 'nearest' })
       updateToolbarActions()
       updateEntryAffordance()
       maybeShowWelcomeGuide()
