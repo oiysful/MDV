@@ -23,7 +23,7 @@ Main stack: Electron main/preload + split renderer HTML/CSS/JS modules.
 | IPC contract | `src/main.js`, `src/preload.js` | Main handlers must stay mirrored in preload bridge |
 | Renderer UI / styling / state | `src/renderer/index.html`, `src/renderer/*.js` | HTML/CSS shell plus split renderer modules |
 | Packaging | `package.json#build` | `electron-builder` config lives inline |
-| Distribution artifact | `dist/` | `MDV.app` + macOS `.dmg` output after build |
+| Distribution artifact | `dist/` | `MDV.app` + macOS `.zip` output after build (switched from `.dmg` 2026-07-20) |
 | App icon | `assets/icon.icns` | macOS build asset |
 
 ## CODE MAP
@@ -41,15 +41,20 @@ Main stack: Electron main/preload + split renderer HTML/CSS/JS modules.
 | `shell-actions.js` | `src/renderer/shell-actions.js` | Add-menu, welcome-guide entry actions, drag/drop handling |
 | `theme.js` | `src/renderer/theme.js` | Theme controller and stylesheet switching |
 | `path-utils.js` | `src/renderer/path-utils.js` | Pure path/link helpers |
-| `markdown.js` | `src/renderer/markdown.js` | Markdown render pipeline, stats, TOC |
+| `markdown.js` | `src/renderer/markdown.js` | Markdown render pipeline, stats, TOC, snapshot capture/rehydration |
 | `search.js` | `src/renderer/search.js` | In-document search controller |
 | `onboarding.js` | `src/renderer/onboarding.js` | First-launch guidance and entry affordance logic |
+| `workspace.js` | `src/renderer/workspace.js` | Tab state, dirty tracking, tab bar rendering, session-tab reporting |
+| `editor.js` | `src/renderer/editor.js` | Source/split mode toggling, split-view sidebar force-hide |
+| `explorer.js` | `src/renderer/explorer.js` | Explorer tree, keyboard nav, session-root restore |
+| `roving.js` | `src/renderer/roving.js` | Shared roving-tabindex index math (tab bar + explorer tree) |
+| `session-state.js` | `src/renderer/session-state.js` | Pure session-shape builder + empty-session guard |
 
 ## CONVENTIONS
 - CommonJS everywhere; no TypeScript, bundler, or framework layer.
 - Electron security posture is explicit: `contextIsolation: true`, `nodeIntegration: false`.
 - Renderer must access privileged functionality through `window.api` only.
-- Main process returns JSON-encoded payloads from IPC handlers instead of raw objects.
+- IPC payloads are plain objects/arrays passed via contextBridge's structured clone — no `JSON.stringify`/`JSON.parse` wrapping (cleaned up 2026-07-20; `file-changed` was always the reference pattern, the rest now match it).
 - UI copy is mixed Korean + English; menu labels and visible controls are Korean-heavy.
 - Packaging config is kept inside `package.json`, not a separate builder file.
 - Electron runtime belongs in `devDependencies` for distributable builds with `electron-builder`.
@@ -62,6 +67,9 @@ Main stack: Electron main/preload + split renderer HTML/CSS/JS modules.
 - Do not relax `read-image-data-url` back to serving any extension: the image path comes from untrusted markdown, and an unrestricted read is an arbitrary-file-read primitive (`![](../../.ssh/id_rsa)`).
 - Do not drop the `will-navigate` / `setWindowOpenHandler` guards in `createWindow`: the renderer holds `window.api`, so any remote page loaded into that frame would inherit the bridge.
 - Do not treat a watcher `change` event as external without checking it against `savedContent` — the app's own save echoes back through `chokidar` and prompting on it discards the user's in-flight typing.
+- Do not capture `tab.renderedHTML` via `refs.content.innerHTML` directly; use `markdownController.captureSnapshotHTML()` — the raw `innerHTML` bakes every embedded image's full base64 payload into the tab's own copy, on top of the already-shared `imageDataUrlCache`.
+- Do not persist an empty session (0 tabs and no explorer root) — `session-state.js#isEmptySession` guards every write in `main.js`; a blank `Cmd+N` window closing must never silently wipe a real saved session.
+- Do not add a new `splitMode` mutation site outside `editor.js#setSplitMode` — it is the sole chokepoint that also force-closes/restores the sidebar; a second mutation path would bypass that.
 
 ## UNIQUE STYLES
 - `src/renderer/index.html` remains the shell, but renderer logic is now progressively split into plain browser scripts under `src/renderer/`.
@@ -76,6 +84,9 @@ Main stack: Electron main/preload + split renderer HTML/CSS/JS modules.
 - Toolbar now includes save/print actions with dirty-state save enablement and transient save toast feedback.
 - First launch emphasizes the top-right open entry point and shows a dismissible onboarding guide for opening files/folders and setting default app behavior manually.
 - Test-first refactoring now uses Electron smoke tests plus small unit tests to guard renderer extractions.
+- Tab bar (`role="tablist"`) and explorer tree (`role="tree"`) use roving tabindex with manual activation (arrows move focus only; Enter/Space performs the action) — shared index math lives in `roving.js`, not duplicated per widget.
+- Session state (open tab paths, active index, explorer root) persists to `userData/session.json` via the main process, not `localStorage` — every window loads the same `file://index.html`, so `localStorage` is shared across windows and can't be used for per-window session data.
+- `app.addRecentDocument` is called from exactly two renderer points: `workspace.js#createTab` (path-bearing tabs) and `document-flow.js#updateTabAfterSave` (save/save-as assigning a path) — not from the pre-save conflict-check `readFile` call.
 
 ## COMMANDS
 ```bash
@@ -83,22 +94,28 @@ npm start
 npm run build
 ```
 
-### Test tiers — run the cheap tier constantly, the expensive tier once
+### Test tiers — run the cheap tiers constantly, the expensive tier once
 ```bash
 npm run test:unit                   # 0.9s  — after every edit. Always run it whole.
+npm run test:controller             # ~0.5s — after every edit that touches controller wiring (workspace/editor/search/explorer)
 E2E="split view" npm run test:e2e   # ~2-18s — while iterating on one Electron-covered behavior
-npm run test:electron               # 43s   — once, before declaring done or committing
+npm run test:electron               # ~60-90s — once, before declaring done or committing
 ```
 `test:e2e` filters `smoke.test.js` by test name (`--test-name-pattern`). With `E2E` unset it
-falls back to the full suite, so it is never silently a no-op.
+falls back to the full suite, so it is never silently a no-op. `test:controller`
+(`tests/controller/*.test.js`) sits between unit and Electron: it drives 2-3 real controller
+factories together over jsdom to catch cross-controller wiring regressions (e.g. a callback
+that stops being called) that pure-helper unit tests can't see and that would otherwise only
+surface in the much slower Electron suite.
 
 ## NOTES
-- `tests/electron/smoke.test.js` covers real Electron boot/open/save/watch/explorer/shell/theme flows and asserts removed renderer command globals/inline handlers.
+- `tests/electron/smoke.test.js` covers real Electron boot/open/save/watch/explorer/shell/theme/session-restore/keyboard-nav flows and asserts removed renderer command globals/inline handlers.
+- `tests/controller/*.test.js` drive real controller factories (not stubs) together over jsdom, wired via `tests/controller/helpers/harness.js`, to catch cross-controller callback wiring regressions.
 - `tests/unit/*.test.js` cover extracted pure helpers and generated command markup.
-- The Electron suite costs ~43s because `tests/electron/helpers/launch.js` boots a fresh app per test (23 boots at ~2s). Do not run it after every edit — use `test:e2e` with a name pattern while iterating, and the full suite once before finishing.
-- Do NOT build a changed-file-to-test mapper for the unit suite: all 39 unit tests run in 0.9s, so subsetting saves nothing and the mapping would rot on every rename. The cost is entirely Electron boots.
-- No repo-local CI workflow found.
+- The Electron suite boots a fresh app per test via `tests/electron/helpers/launch.js` (each launch now gets an isolated `MDV_USER_DATA_DIR` so the suite never touches a real user profile / session.json). Do not run it after every edit — use `test:e2e` with a name pattern while iterating, and the full suite once before finishing.
+- Do NOT build a changed-file-to-test mapper for the unit suite: unit tests run in under a second, so subsetting saves nothing and the mapping would rot on every rename. The cost is entirely Electron boots.
+- `.github/workflows/release.yml` builds and attaches release artifacts on `v*` tag push (macOS runner, unsigned `.zip` + `SHA256SUMS`) — see README's Distribution Notes for the `GITHUB_TOKEN` requirement (none; it's the default Actions token, no repo secret to configure).
 - Current error-level diagnostics are clean for the recent renderer command refactor; remaining warnings are mostly style-oriented.
 - Repo is tiny by file count, but renderer complexity is concentrated in `src/renderer/index.html`.
-- Local macOS packaging currently works and emits `dist/MDV-1.0.0-arm64.dmg`, but notarization is still not configured.
+- Local macOS packaging emits `dist/MDV-1.0.0-arm64-mac.zip` (switched from `.dmg` 2026-07-20); notarization is still not configured.
 - Local Sisyphus planning files are intentionally ignored and should not be treated as tracked project documentation.

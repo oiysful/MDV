@@ -22,7 +22,7 @@ src/
 | Add native capability | `main.js` + `preload.js` | Add IPC handler first, then expose it |
 | Change file watching | `main.js` watcher map, `renderer/document-flow.js`, `renderer/workspace.js` | Main owns chokidar; renderer swaps the active watch when tabs/documents change |
 | Menu / shortcuts | `main.js#buildMenu`, `renderer/app.js#createRendererCommands` | Main sends `renderer-command` IPC events to named renderer commands |
-| Open/save flows | `main.js` dialog handlers + renderer save/open functions | IPC payloads are JSON strings |
+| Open/save flows | `main.js` dialog handlers + renderer save/open functions | IPC payloads are plain objects (structured clone), not JSON strings |
 | Finder / external shell actions | `main.js` shell handlers + `preload.js` bridge | Keep renderer unprivileged |
 | First-launch experience | `renderer/index.html` onboarding helpers + toolbar open entry | Renderer-only visual guidance; no native default-app mutation |
 | Renderer refactor entry | `renderer/app.js` + sibling helper/controller files | Prefer extracting low-risk logic here before touching HTML shell |
@@ -30,9 +30,9 @@ src/
 
 ## CONVENTIONS
 - Process boundary matters here more than folder count.
-- `main.js` owns filesystem, dialogs, and watcher lifecycle.
+- `main.js` owns filesystem, dialogs, watcher lifecycle, and session persistence (`userData/session.json`, guarded against ever writing an empty session by `renderer/session-state.js#isEmptySession`).
 - `preload.js` is a thin mirror; keep names aligned with `ipcMain.handle(...)` channels.
-- Renderer-facing events use `file-opened`, `file-changed`, `theme-changed`, and `renderer-command`.
+- Renderer-facing events use `file-opened`, `file-changed`, `theme-changed`, `renderer-command`, and `restore-session`.
 - BrowserWindow uses `preload.js` via `webPreferences.preload`; keep that path valid.
 - Shell integrations like browser-open or Finder-reveal belong in main via `shell`, never direct renderer access.
 - Renderer helper/controller files are plain browser scripts loaded by `index.html`; avoid Node-only assumptions there.

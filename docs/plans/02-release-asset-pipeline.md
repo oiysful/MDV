@@ -1,7 +1,7 @@
 # 02. `*-release.sh` 스크립트의 "Assets을 찾을 수 없음" 실패 조사 및 수정
 
 ## 상태
-계획 (미착수)
+완료 (CI 파이프라인만, 2026-07-20, 커밋 `fef6133`) — `.github/workflows/release.yml` 신설은 완료. **기존 v1.0.1 릴리즈 수동 복구는 저장소 쓰기 권한이 필요한 실제 배포 행위라 범위 밖으로 남겨둠**, 별도 사용자 승인 하에 진행 필요. 상세는 [`../plans/README.md`](./README.md#구현-요약-2026-07-20) 참고.
 
 ## 문제
 `npm run install:release` / `update:release`가 아래 오류로 실패한다.

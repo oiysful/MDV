@@ -16,7 +16,9 @@ Renderer now uses an HTML/CSS shell plus multiple plain browser scripts; `app.js
 | Search | `search.js` | In-document search controller |
 | Theme | `theme.js` | Auto/light/dark cycle and hljs stylesheet switching |
 | Onboarding / empty state | `onboarding.js`, `app-runtime.js` | First-launch guide, entry affordance, toast, empty-state actions |
-| Pure helpers | `path-utils.js` | URL/path helpers usable from tests |
+| Pure helpers | `path-utils.js`, `roving.js`, `session-state.js` | URL/path helpers, roving-tabindex index math, session-shape/empty-session guard — all usable from tests |
+| Keyboard accessibility | `roving.js` (shared math) + `workspace.js` (tab bar) + `explorer.js` (tree) | Roving tabindex, manual activation (arrows move focus only, Enter/Space acts) |
+| Session restore | `app.js#collectSessionState`/`restoreSession`, `session-state.js` | Debounced push to main on tab/explorer-root change; restore only on first-window startup |
 
 ## CONVENTIONS
 - Markup/CSS still live in `index.html`, but JS is now being split into plain browser scripts loaded in order.
@@ -26,7 +28,7 @@ Renderer now uses an HTML/CSS shell plus multiple plain browser scripts; `app.js
 - Markdown preview is rendered with `marked`; code blocks are highlighted with `highlight.js`.
 - Local images in markdown are rewritten to data URLs before render.
 - Global custom context menu UI is renderer-managed via `#app-context-menu` rather than native menus.
-- First-launch onboarding state is renderer-managed and persisted in localStorage.
+- First-launch onboarding state (guide dismissal, theme) is renderer-managed and persisted in `localStorage` — but open tabs / explorer root / active-tab session state is NOT (every window loads the same `file://index.html`, so `localStorage` is shared across windows); that goes through `window.api.saveSessionState` to the main process instead.
 
 ## ANTI-PATTERNS
 - Do not add direct filesystem assumptions; use `window.api.readFile`, `listDirectory`, `saveFile`, etc.
@@ -35,6 +37,9 @@ Renderer now uses an HTML/CSS shell plus multiple plain browser scripts; `app.js
 - Do not loosen CSP or add new external assets without updating the meta CSP allowlist.
 - Do not add shell/Finder/browser actions directly in the renderer; route through preload/main bridges.
 - Do not reintroduce inline `onclick`/drag-drop attributes or `Object.assign(window, ...)` command aliases.
+- Do not capture `tab.renderedHTML` via raw `refs.content.innerHTML`; use `markdownController.captureSnapshotHTML()`, which strips embedded images' base64 and keeps only `data-mdv-local-path` for synchronous rehydration from `imageDataUrlCache` on restore.
+- Do not add a second `splitMode` mutation site; `editor.js#setSplitMode` is the sole chokepoint (interactive toggle and tab-restore both funnel through it) that also force-closes/restores the sidebar.
+- Do not give the tab bar or explorer tree per-item keydown listeners; both use one delegated listener on the persistent container (survives `innerHTML` rebuilds) plus roving tabindex from `roving.js`.
 
 ## UNIQUE STYLES
 - Design language mimics Claude app styling with warm light theme, dark counterpart, glassy toolbar/sidebar, and compact pills.
@@ -52,4 +57,4 @@ Renderer now uses an HTML/CSS shell plus multiple plain browser scripts; `app.js
 - Recent command-surface changes have clean error-level diagnostics; remaining diagnostics are mostly style/accessibility warnings.
 - If work grows beyond a focused patch, consider splitting renderer logic before adding major new UI features.
 - Print mode has custom CSS overrides; pagination fixes live in the `@media print` block.
-- Smoke coverage lives in `tests/electron/smoke.test.js`; pure helper coverage currently lives in `tests/unit/*.test.js`.
+- Smoke coverage lives in `tests/electron/smoke.test.js`; pure helper coverage currently lives in `tests/unit/*.test.js`; cross-controller wiring coverage (real controller factories over jsdom, no Electron boot) lives in `tests/controller/*.test.js`.
