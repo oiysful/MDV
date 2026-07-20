@@ -754,6 +754,94 @@ test('toggleSource switches between preview and editor and re-renders preview on
   }
 })
 
+test('entering split view force-closes the sidebar, disables its toggle, and restores it on exit', async () => {
+  const { electronApp, page } = await launchApp()
+
+  try {
+    await page.waitForSelector('#empty')
+    await stubOpenDialog(electronApp, [BASIC_MD])
+    await emitRendererCommand(electronApp, 'openFile')
+    await page.waitForFunction(() => document.title === 'basic')
+
+    const sidebarState = () => page.evaluate(() => ({
+      closed: document.getElementById('sidebar').classList.contains('closed'),
+      toggleDisabled: document.getElementById('btn-sidebar').disabled,
+    }))
+
+    assert.deepEqual(await sidebarState(), { closed: false, toggleDisabled: false })
+
+    await emitRendererCommand(electronApp, 'toggleSplitView')
+    await page.waitForFunction(() => document.getElementById('scroll-area').classList.contains('split-mode'))
+    assert.deepEqual(await sidebarState(), { closed: true, toggleDisabled: true })
+
+    // The disabled toggle button must actually refuse clicks, not just look disabled.
+    await page.locator('#btn-sidebar').click({ force: true })
+    assert.deepEqual(await sidebarState(), { closed: true, toggleDisabled: true })
+
+    await emitRendererCommand(electronApp, 'toggleSplitView')
+    await page.waitForFunction(() => !document.getElementById('scroll-area').classList.contains('split-mode'))
+    assert.deepEqual(await sidebarState(), { closed: false, toggleDisabled: false })
+  } finally {
+    await closeApp(electronApp)
+  }
+})
+
+test('split view leaves an already-closed sidebar closed on exit instead of force-opening it', async () => {
+  const { electronApp, page } = await launchApp()
+
+  try {
+    await page.waitForSelector('#empty')
+    await stubOpenDialog(electronApp, [BASIC_MD])
+    await emitRendererCommand(electronApp, 'openFile')
+    await page.waitForFunction(() => document.title === 'basic')
+
+    await emitRendererCommand(electronApp, 'toggleSidebar')
+    await page.waitForFunction(() => document.getElementById('sidebar').classList.contains('closed'))
+
+    await emitRendererCommand(electronApp, 'toggleSplitView')
+    await page.waitForFunction(() => document.getElementById('scroll-area').classList.contains('split-mode'))
+    assert.equal(await page.evaluate(() => document.getElementById('sidebar').classList.contains('closed')), true)
+
+    await emitRendererCommand(electronApp, 'toggleSplitView')
+    await page.waitForFunction(() => !document.getElementById('scroll-area').classList.contains('split-mode'))
+    assert.equal(await page.evaluate(() => document.getElementById('sidebar').classList.contains('closed')), true)
+  } finally {
+    await closeApp(electronApp)
+  }
+})
+
+test('switching to a tab restored in split mode force-closes the sidebar; switching back restores it', async () => {
+  const { electronApp, page } = await launchApp()
+
+  try {
+    await page.waitForSelector('#empty')
+    await stubOpenDialog(electronApp, [BASIC_MD, ROOT_MD])
+    await emitRendererCommand(electronApp, 'openFile')
+    await page.waitForFunction(() => document.querySelectorAll('#tab-list .file-tab').length === 2)
+    await page.waitForFunction(() => document.title === 'root')
+
+    // The active (second) tab enters split mode with the sidebar open beforehand.
+    await emitRendererCommand(electronApp, 'toggleSplitView')
+    await page.waitForFunction(() => document.getElementById('scroll-area').classList.contains('split-mode'))
+    assert.equal(await page.evaluate(() => document.getElementById('sidebar').classList.contains('closed')), true)
+
+    // Switching to the first (non-split) tab is a tab-restore exit from split mode --
+    // not a toggleSplitView call -- and must still restore the sidebar.
+    await page.locator('#tab-list .file-tab').first().click()
+    await page.waitForFunction(() => document.title === 'basic')
+    assert.equal(await page.evaluate(() => document.getElementById('sidebar').classList.contains('closed')), false)
+
+    // Switching back to the split tab is a tab-restore entry into split mode and must
+    // force the sidebar closed again, exactly like the interactive toggle does.
+    await page.locator('#tab-list .file-tab').nth(1).click()
+    await page.waitForFunction(() => document.title === 'root')
+    assert.equal(await page.evaluate(() => document.getElementById('sidebar').classList.contains('closed')), true)
+    assert.equal(await page.evaluate(() => document.getElementById('btn-sidebar').disabled), true)
+  } finally {
+    await closeApp(electronApp)
+  }
+})
+
 test('split view shows editor and preview together, live-renders edits, and saves editor content', async () => {
   const { path: tempMarkdown, cleanup } = await createTempMarkdown(BASIC_MD, 'split-save.md')
   const { electronApp, page } = await launchApp()

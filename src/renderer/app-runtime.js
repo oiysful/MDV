@@ -177,10 +177,17 @@
       getWorkspaceController().switchToPrevTab()
     }
 
+    // Combines the state update with the DOM class toggle, so callers outside this
+    // controller (e.g. editor.js forcing the sidebar closed on split-view entry) get
+    // the same effect toggleSidebar produces, not just a state flag with no visible change.
+    function applySidebarOpen(nextOpen) {
+      const open = Boolean(nextOpen)
+      setSidebarOpen(open)
+      getRefs().sidebar.classList.toggle('closed', !open)
+    }
+
     function toggleSidebar() {
-      const nextOpen = !getSidebarOpen()
-      setSidebarOpen(nextOpen)
-      getRefs().sidebar.classList.toggle('closed', !nextOpen)
+      applySidebarOpen(!getSidebarOpen())
     }
 
     function goTop() {
@@ -411,6 +418,7 @@
       switchToNextTab,
       switchToPrevTab,
       toggleSidebar,
+      setSidebarOpen: applySidebarOpen,
       goTop,
       printDoc,
       exportPdf,

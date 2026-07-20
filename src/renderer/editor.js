@@ -56,6 +56,16 @@
     }
   }
 
+  // Pure decision for docs/plans/05-force-hide-sidebar-in-split-view.md: split view always
+  // forces the sidebar closed, and restores it to whatever it was right before forcing --
+  // not unconditionally reopened, so a sidebar that was already closed stays closed on exit.
+  function computeSidebarOpenForSplitChange({ enteringSplit, currentSidebarOpen, sidebarOpenBeforeSplit }) {
+    if (enteringSplit) {
+      return { nextSidebarOpen: false, nextMemo: currentSidebarOpen }
+    }
+    return { nextSidebarOpen: sidebarOpenBeforeSplit === true, nextMemo: null }
+  }
+
   function getModeButtonState(sourceMode) {
     if (sourceMode) {
       return {
@@ -89,11 +99,14 @@
 
   const WRAP_STORAGE_KEY = 'mdv-editor-wrap'
 
-  function createEditorController({ getRefs, getMarkdown, setMarkdown, getActiveTab, rerenderTabBar, syncTabImageWatches, onSourceInput, render, closeSearch, storage }) {
+  function createEditorController({ getRefs, getMarkdown, setMarkdown, getActiveTab, rerenderTabBar, syncTabImageWatches, onSourceInput, render, closeSearch, storage, getSidebarOpen, setSidebarOpen }) {
     let sourceMode = false
     let splitMode = false
     let syncingSplitScroll = false
     let wrapMode = storage.getItem(WRAP_STORAGE_KEY) === '1'
+    // Sidebar visibility to restore when leaving split mode -- null means "wasn't forced
+    // closed by us" (either not in split mode, or it was already closed on entry).
+    let sidebarOpenBeforeSplit = null
 
     function getSourceMode() {
       return sourceMode
@@ -107,8 +120,23 @@
       return splitMode
     }
 
+    // Sole chokepoint for splitMode changes (interactive toggle and tab-restore both funnel
+    // here) so the sidebar force-close/restore in docs/plans/05-force-hide-sidebar-in-split-view.md
+    // can't be missed at one call site the way a past regression missed a render() call site.
     function setSplitMode(nextValue) {
-      splitMode = Boolean(nextValue)
+      const next = Boolean(nextValue)
+      if (next === splitMode) return
+      splitMode = next
+      const refs = getRefs()
+      if (refs?.btnSidebar) refs.btnSidebar.disabled = splitMode
+      if (!getSidebarOpen || !setSidebarOpen) return
+      const { nextSidebarOpen, nextMemo } = computeSidebarOpenForSplitChange({
+        enteringSplit: splitMode,
+        currentSidebarOpen: getSidebarOpen(),
+        sidebarOpenBeforeSplit,
+      })
+      setSidebarOpen(nextSidebarOpen)
+      sidebarOpenBeforeSplit = nextMemo
     }
 
     function getEditorValue() {
@@ -232,7 +260,7 @@
 
       if (splitMode) {
         const edited = getEditorValue()
-        splitMode = false
+        setSplitMode(false)
         sourceMode = true
         setMarkdown(edited)
         tab.content = edited
@@ -273,7 +301,7 @@
         rerenderTabBar()
         const imagePaths = await render(edited, tab.filename || '', tab.path || null)
         syncTabImageWatches(tab, imagePaths)
-        splitMode = false
+        setSplitMode(false)
         sourceMode = false
         applySourceMode()
         return
@@ -289,7 +317,7 @@
         syncTabImageWatches(tab, imagePaths)
       }
 
-      splitMode = true
+      setSplitMode(true)
       sourceMode = false
       applySourceMode()
     }
@@ -300,7 +328,7 @@
 
     function openInSourceMode() {
       sourceMode = true
-      splitMode = false
+      setSplitMode(false)
       applySourceMode()
       focusEditor()
     }
@@ -425,6 +453,7 @@
     applySourceModeToRefs,
     computeListContinuation,
     computeInlineMarkerToggle,
+    computeSidebarOpenForSplitChange,
   }
 
   globalScope.MDVEditor = api

@@ -118,6 +118,8 @@ document.addEventListener('DOMContentLoaded', () => {
     render,
     closeSearch: () => runtimeController.closeSearch(),
     storage: localStorage,
+    getSidebarOpen: () => state.sidebarOpen,
+    setSidebarOpen: value => runtimeController.setSidebarOpen(value),
   })
 
   appShellController = window.MDVAppShell.createAppShellController({

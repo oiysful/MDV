@@ -7,6 +7,7 @@ const {
   applySourceModeToRefs,
   computeListContinuation,
   computeInlineMarkerToggle,
+  computeSidebarOpenForSplitChange,
 } = require('../../src/renderer/editor.js')
 
 function createClassList() {
@@ -199,4 +200,40 @@ test('computeInlineMarkerToggle works with the single-character italic marker', 
   const text = 'a *word* b'
   const result = computeInlineMarkerToggle(text, 3, 7, '*')
   assert.deepEqual(result, { removeStart: 2, removeEnd: 8, insertText: 'word' })
+})
+
+test('computeSidebarOpenForSplitChange force-closes the sidebar and remembers it was open', () => {
+  const result = computeSidebarOpenForSplitChange({
+    enteringSplit: true,
+    currentSidebarOpen: true,
+    sidebarOpenBeforeSplit: null,
+  })
+  assert.deepEqual(result, { nextSidebarOpen: false, nextMemo: true })
+})
+
+test('computeSidebarOpenForSplitChange force-closes and remembers an already-closed sidebar as closed', () => {
+  const result = computeSidebarOpenForSplitChange({
+    enteringSplit: true,
+    currentSidebarOpen: false,
+    sidebarOpenBeforeSplit: null,
+  })
+  assert.deepEqual(result, { nextSidebarOpen: false, nextMemo: false })
+})
+
+test('computeSidebarOpenForSplitChange restores the sidebar to open on exit if it was open before split', () => {
+  const result = computeSidebarOpenForSplitChange({
+    enteringSplit: false,
+    currentSidebarOpen: false,
+    sidebarOpenBeforeSplit: true,
+  })
+  assert.deepEqual(result, { nextSidebarOpen: true, nextMemo: null })
+})
+
+test('computeSidebarOpenForSplitChange leaves the sidebar closed on exit if it was already closed before split', () => {
+  const result = computeSidebarOpenForSplitChange({
+    enteringSplit: false,
+    currentSidebarOpen: false,
+    sidebarOpenBeforeSplit: false,
+  })
+  assert.deepEqual(result, { nextSidebarOpen: false, nextMemo: null })
 })

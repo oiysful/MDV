@@ -9,6 +9,7 @@
       stats: documentRef.getElementById('stats'),
       sidebar: documentRef.getElementById('sidebar'),
       sidebarTabs: documentRef.getElementById('sidebar-tabs'),
+      btnSidebar: documentRef.getElementById('btn-sidebar'),
       tabStrip: documentRef.getElementById('tab-strip'),
       tabList: documentRef.getElementById('tab-list'),
       appContextMenu: documentRef.getElementById('app-context-menu'),
