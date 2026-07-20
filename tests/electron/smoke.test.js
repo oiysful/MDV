@@ -1978,3 +1978,47 @@ test('toast announces status changes to assistive tech', async () => {
     await closeApp(electronApp)
   }
 })
+
+test('holding Cmd flags the body and reveals shortcut badges, clearing on keyup and window blur', async () => {
+  const { electronApp, page } = await launchApp()
+
+  try {
+    await page.waitForSelector('#empty')
+
+    // btn-search is visible + enabled in the empty state, so its ::after box renders.
+    const badgeContent = () => page.evaluate(() => {
+      const search = document.getElementById('btn-search')
+      return getComputedStyle(search, '::after').content
+    })
+    const bodyHeld = () => page.evaluate(() => document.body.classList.contains('cmd-held'))
+
+    // No badge before Cmd is held.
+    assert.equal(await bodyHeld(), false)
+    assert.equal(await badgeContent(), 'none')
+
+    // keydown with metaKey true adds the class and surfaces the badge string.
+    await page.evaluate(() => {
+      document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Meta', metaKey: true, bubbles: true }))
+    })
+    assert.equal(await bodyHeld(), true)
+    assert.equal(await badgeContent(), '"⌘F"')
+
+    // keyup once Cmd is no longer held removes the class.
+    await page.evaluate(() => {
+      document.dispatchEvent(new KeyboardEvent('keyup', { key: 'Meta', metaKey: false, bubbles: true }))
+    })
+    assert.equal(await bodyHeld(), false)
+    assert.equal(await badgeContent(), 'none')
+
+    // Re-hold, then blur the window (Cmd+Tab away never delivers keyup) — must still clear.
+    await page.evaluate(() => {
+      document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Meta', metaKey: true, bubbles: true }))
+    })
+    assert.equal(await bodyHeld(), true)
+    await page.evaluate(() => window.dispatchEvent(new Event('blur')))
+    assert.equal(await bodyHeld(), false)
+    assert.equal(await badgeContent(), 'none')
+  } finally {
+    await closeApp(electronApp)
+  }
+})

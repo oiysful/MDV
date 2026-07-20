@@ -370,6 +370,21 @@
         hideAddMenu()
         hideAppContextMenu()
       })
+
+      // While Cmd is held, flag the body so buttons with a real system accelerator
+      // (src/main.js#buildMenu) reveal their shortcut badge immediately (no hover).
+      const setCmdHeld = held => {
+        documentRef.body.classList.toggle('cmd-held', held)
+      }
+      documentRef.addEventListener('keydown', event => {
+        if (event.metaKey) setCmdHeld(true)
+      })
+      documentRef.addEventListener('keyup', event => {
+        if (!event.metaKey) setCmdHeld(false)
+      })
+      // Cmd+Tab to another app never delivers keyup to this window, so blur is the
+      // only reliable way to keep the badge from getting stuck on.
+      windowRef.addEventListener('blur', () => setCmdHeld(false))
     }
 
     return {
