@@ -351,7 +351,7 @@ async function restoreSession(payload) {
   const created = []
   for (const filePath of savedPaths) {
     try {
-      const data = JSON.parse(await window.api.readFile(filePath))
+      const data = await window.api.readFile(filePath)
       if (data.error) continue
       const tab = await documentFlowController.load(data)
       if (tab) created.push(tab)

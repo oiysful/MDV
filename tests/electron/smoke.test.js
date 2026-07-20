@@ -63,7 +63,7 @@ async function stubDefaultAppStatusDelay(electronApp, delayMs) {
     ipcMain.removeHandler('get-markdown-default-app-status')
     ipcMain.handle('get-markdown-default-app-status', async () => {
       await new Promise(resolve => setTimeout(resolve, ms))
-      return JSON.stringify({ ok: true, registered: false, needsAction: true, appPath: '/Applications/MDV.app', defaultHandlers: [] })
+      return { ok: true, registered: false, needsAction: true, appPath: '/Applications/MDV.app', defaultHandlers: [] }
     })
   }, delayMs)
 }
@@ -125,7 +125,7 @@ async function emitFileChanged(electronApp, payload) {
 async function emitFileOpened(electronApp, payload) {
   await electronApp.evaluate(async ({ BrowserWindow }, nextPayload) => {
     const win = BrowserWindow.getAllWindows()[0]
-    win.webContents.send('file-opened', JSON.stringify(nextPayload))
+    win.webContents.send('file-opened', nextPayload)
   }, payload)
 }
 

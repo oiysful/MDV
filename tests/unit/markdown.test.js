@@ -91,7 +91,7 @@ function makeSnapshotHarness() {
   const api = {
     readImageDataUrl: async localPath => {
       readCalls += 1
-      return JSON.stringify({ ok: true, data_url: IMAGE_DATA_URL })
+      return { ok: true, data_url: IMAGE_DATA_URL }
     },
   }
   const controller = createMarkdownController({

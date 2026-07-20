@@ -75,7 +75,7 @@
         await api.newWindow(row.dataset.path)
         return
       }
-      const data = JSON.parse(await api.readFile(row.dataset.path))
+      const data = await api.readFile(row.dataset.path)
       await load(data)
       setActiveTreeItem(getRefs().explorerTree, row.closest('.tree-item'))
     }
@@ -172,7 +172,7 @@
     }
 
     async function openFolder() {
-      const res = JSON.parse(await api.openFolderDialog())
+      const res = await api.openFolderDialog()
       if (res.cancelled || res.error) return
       currentExplorerRoot = res.path
       explorerShowFullPath = false
@@ -202,7 +202,7 @@
         ? document.activeElement.dataset.path
         : null
       container.innerHTML = '<div class="tree-hint">로드 중…</div>'
-      const res = JSON.parse(await api.listDirectory(path))
+      const res = await api.listDirectory(path)
       container.innerHTML = ''
       if (res.error) {
         container.innerHTML = `<div class="tree-hint">${res.error}</div>`

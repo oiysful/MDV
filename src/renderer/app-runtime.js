@@ -93,13 +93,13 @@
 
     async function revealInFinder(targetPath) {
       if (!targetPath) return
-      const res = JSON.parse(await api.revealInFinder(targetPath))
+      const res = await api.revealInFinder(targetPath)
       if (res.error) alert(`Finder 표시 실패: ${res.error}`)
     }
 
     async function checkMarkdownDefaultAppStatus() {
       if (!api.getMarkdownDefaultAppStatus) return
-      const status = JSON.parse(await api.getMarkdownDefaultAppStatus())
+      const status = await api.getMarkdownDefaultAppStatus()
       onboardingController.updateDefaultAppGuide(status)
     }
 
@@ -204,7 +204,7 @@
       if (!tab) return
       if (ensurePreviewRendered) await ensurePreviewRendered()
       const suggestedName = `${(tab.filename || 'untitled.md').replace(/\.(md|markdown)$/i, '')}.pdf`
-      const res = JSON.parse(await api.exportPdf(suggestedName))
+      const res = await api.exportPdf(suggestedName)
       if (res.error) {
         alert(`PDF 내보내기 실패: ${res.error}`)
         return

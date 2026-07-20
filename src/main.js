@@ -141,9 +141,9 @@ async function sendFile(win, filePath) {
   try {
     const content  = await fs.promises.readFile(filePath, 'utf-8')
     const filename = path.basename(filePath)
-    if (!win.isDestroyed()) win.webContents.send('file-opened', JSON.stringify({ content, filename, path: filePath }))
+    if (!win.isDestroyed()) win.webContents.send('file-opened', { content, filename, path: filePath })
   } catch (e) {
-    if (!win.isDestroyed()) win.webContents.send('file-opened', JSON.stringify({ error: e.message }))
+    if (!win.isDestroyed()) win.webContents.send('file-opened', { error: e.message })
   }
 }
 
@@ -232,11 +232,11 @@ ipcMain.handle('read-file', async (_, filePath) => {
   try {
     const content  = await fs.promises.readFile(filePath, 'utf-8')
     const filename = path.basename(filePath)
-    return JSON.stringify({ content, filename, path: filePath })
+    return { content, filename, path: filePath }
   } catch (e) {
     // 저장 전 충돌 검사가 "삭제됨"(ENOENT)과 "읽을 수 없음"(EACCES 등)을
     // 구분해야 하므로 코드도 함께 넘긴다.
-    return JSON.stringify({ error: e.message, code: e.code })
+    return { error: e.message, code: e.code }
   }
 })
 
@@ -246,7 +246,7 @@ ipcMain.handle('open-file-dialog', async (event) => {
     properties: ['openFile', 'multiSelections'],
     filters: [{ name: 'Markdown', extensions: ['md', 'markdown'] }],
   })
-  if (result.canceled) return JSON.stringify({ cancelled: true })
+  if (result.canceled) return { cancelled: true }
   const files = await Promise.all(result.filePaths.map(async fp => {
     try {
       return { content: await fs.promises.readFile(fp, 'utf-8'), filename: path.basename(fp), path: fp }
@@ -254,7 +254,7 @@ ipcMain.handle('open-file-dialog', async (event) => {
       return { error: e.message }
     }
   }))
-  return JSON.stringify({ files })
+  return { files }
 })
 
 ipcMain.handle('open-folder-dialog', async (event) => {
@@ -262,8 +262,8 @@ ipcMain.handle('open-folder-dialog', async (event) => {
   const result = await dialog.showOpenDialog(win, {
     properties: ['openDirectory'],
   })
-  if (result.canceled) return JSON.stringify({ cancelled: true })
-  return JSON.stringify({ path: result.filePaths[0] })
+  if (result.canceled) return { cancelled: true }
+  return { path: result.filePaths[0] }
 })
 
 ipcMain.handle('list-directory', async (_, dirPath) => {
@@ -277,18 +277,18 @@ ipcMain.handle('list-directory', async (_, dirPath) => {
     ;[...dirs, ...files].forEach(e => {
       result.push({ name: e.name, path: path.join(dirPath, e.name), type: e.isDirectory() ? 'dir' : 'file' })
     })
-    return JSON.stringify({ entries: result })
+    return { entries: result }
   } catch (e) {
-    return JSON.stringify({ error: e.message })
+    return { error: e.message }
   }
 })
 
 ipcMain.handle('save-file', async (_, filePath, content) => {
   try {
     await fs.promises.writeFile(filePath, content, 'utf-8')
-    return JSON.stringify({ ok: true, filename: path.basename(filePath) })
+    return { ok: true, filename: path.basename(filePath) }
   } catch (e) {
-    return JSON.stringify({ error: e.message })
+    return { error: e.message }
   }
 })
 
@@ -298,20 +298,20 @@ ipcMain.handle('save-file-dialog', async (event, suggestedName) => {
     defaultPath: suggestedName || 'untitled.md',
     filters: [{ name: 'Markdown', extensions: ['md', 'markdown'] }],
   })
-  if (result.canceled) return JSON.stringify({ cancelled: true })
-  return JSON.stringify({ path: result.filePath })
+  if (result.canceled) return { cancelled: true }
+  return { path: result.filePath }
 })
 
 ipcMain.handle('export-pdf', async (event, suggestedName) => {
   const win = BrowserWindow.fromWebContents(event.sender)
-  if (!win) return JSON.stringify({ ok: false, error: '활성 창을 찾을 수 없습니다.' })
+  if (!win) return { ok: false, error: '활성 창을 찾을 수 없습니다.' }
 
   try {
     const result = await dialog.showSaveDialog(win, {
       defaultPath: suggestedName || 'untitled.pdf',
       filters: [{ name: 'PDF', extensions: ['pdf'] }],
     })
-    if (result.canceled || !result.filePath) return JSON.stringify({ cancelled: true })
+    if (result.canceled || !result.filePath) return { cancelled: true }
 
     const data = await win.webContents.printToPDF({
       printBackground: true,
@@ -319,9 +319,9 @@ ipcMain.handle('export-pdf', async (event, suggestedName) => {
       generateTaggedPDF: true,
     })
     await fs.promises.writeFile(result.filePath, data)
-    return JSON.stringify({ ok: true, path: result.filePath, filename: path.basename(result.filePath) })
+    return { ok: true, path: result.filePath, filename: path.basename(result.filePath) }
   } catch (e) {
-    return JSON.stringify({ ok: false, error: e.message })
+    return { ok: false, error: e.message }
   }
 })
 
@@ -332,12 +332,12 @@ ipcMain.handle('new-window', async (_, filePath) => {
 ipcMain.handle('open-external-url', async (_, url) => {
   try {
     if (!/^https?:\/\//i.test(url)) {
-      return JSON.stringify({ ok: false, error: '허용되지 않은 링크입니다.' })
+      return { ok: false, error: '허용되지 않은 링크입니다.' }
     }
     await shell.openExternal(url)
-    return JSON.stringify({ ok: true })
+    return { ok: true }
   } catch (e) {
-    return JSON.stringify({ ok: false, error: e.message })
+    return { ok: false, error: e.message }
   }
 })
 
@@ -351,36 +351,36 @@ ipcMain.handle('open-external-url', async (_, url) => {
 ipcMain.handle('open-local-path', async (_, targetPath) => {
   try {
     if (!targetPath) {
-      return JSON.stringify({ ok: false, error: '경로가 없습니다.' })
+      return { ok: false, error: '경로가 없습니다.' }
     }
     let stat
     try {
       stat = await fs.promises.stat(targetPath)
     } catch {
-      return JSON.stringify({ ok: false, error: `파일을 찾을 수 없습니다: ${targetPath}` })
+      return { ok: false, error: `파일을 찾을 수 없습니다: ${targetPath}` }
     }
     const ext = path.extname(targetPath).toLowerCase()
     if (stat.isFile() && MARKDOWN_EXTENSIONS.includes(ext)) {
       const content = await fs.promises.readFile(targetPath, 'utf-8')
-      return JSON.stringify({ ok: true, kind: 'markdown', content, filename: path.basename(targetPath), path: targetPath })
+      return { ok: true, kind: 'markdown', content, filename: path.basename(targetPath), path: targetPath }
     }
     const openError = await shell.openPath(targetPath)
-    if (openError) return JSON.stringify({ ok: false, error: openError })
-    return JSON.stringify({ ok: true, kind: 'external' })
+    if (openError) return { ok: false, error: openError }
+    return { ok: true, kind: 'external' }
   } catch (e) {
-    return JSON.stringify({ ok: false, error: e.message })
+    return { ok: false, error: e.message }
   }
 })
 
 ipcMain.handle('reveal-in-finder', async (_, targetPath) => {
   try {
     if (!targetPath) {
-      return JSON.stringify({ ok: false, error: '경로가 없습니다.' })
+      return { ok: false, error: '경로가 없습니다.' }
     }
     shell.showItemInFolder(targetPath)
-    return JSON.stringify({ ok: true })
+    return { ok: true }
   } catch (e) {
-    return JSON.stringify({ ok: false, error: e.message })
+    return { ok: false, error: e.message }
   }
 })
 
@@ -388,7 +388,7 @@ ipcMain.handle('get-markdown-default-app-status', async () => {
   const appPath = getComparableAppPath(app.getPath('exe'))
   try {
     const { handlers, registered } = await getDefaultMarkdownHandlers()
-    return JSON.stringify({
+    return {
       ok: true,
       registered,
       needsAction: !registered,
@@ -402,9 +402,9 @@ ipcMain.handle('get-markdown-default-app-status', async () => {
       defaultHandlers: handlers,
       associationConfigured: true,
       reason: registered ? 'current-app-is-default-handler' : 'default-handler-is-different-app',
-    })
+    }
   } catch (e) {
-    return JSON.stringify({
+    return {
       ok: false,
       registered: false,
       needsAction: true,
@@ -419,7 +419,7 @@ ipcMain.handle('get-markdown-default-app-status', async () => {
       associationConfigured: true,
       reason: 'file-extension-default-apps-require-os-settings',
       error: e.message,
-    })
+    }
   }
 })
 
@@ -442,12 +442,12 @@ ipcMain.handle('read-image-data-url', async (_, filePath) => {
     const ext  = path.extname(filePath).slice(1).toLowerCase()
     const mime = IMAGE_MIME_TYPES[ext]
     if (!mime) {
-      return JSON.stringify({ ok: false, error: `Unsupported image type: .${ext || '(none)'}` })
+      return { ok: false, error: `Unsupported image type: .${ext || '(none)'}` }
     }
     const data = await fs.promises.readFile(filePath)
-    return JSON.stringify({ ok: true, data_url: `data:${mime};base64,${data.toString('base64')}` })
+    return { ok: true, data_url: `data:${mime};base64,${data.toString('base64')}` }
   } catch (e) {
-    return JSON.stringify({ ok: false, error: e.message })
+    return { ok: false, error: e.message }
   }
 })
 

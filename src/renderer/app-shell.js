@@ -67,8 +67,8 @@
         }
       })
 
-      api.onFileOpened(async jsonStr => {
-        await handleFileOpened(jsonStr)
+      api.onFileOpened(async payload => {
+        await handleFileOpened(payload)
       })
 
       api.onFileChanged(async ({ path, content, event }) => {
@@ -93,7 +93,7 @@
         alert('링크 열기 실패: 문서를 저장한 뒤에 상대 경로 링크를 열 수 있습니다.')
         return
       }
-      const res = JSON.parse(await api.openLocalPath(resolved))
+      const res = await api.openLocalPath(resolved)
       if (res.error) {
         alert(`링크 열기 실패: ${res.error}`)
         return
@@ -116,7 +116,7 @@
         // path, which only allows http(s) and rejects the rest. A schemeless href is a
         // local file path and takes the new local-open path instead.
         if (pathUtils.isExternalUrl(href)) {
-          const res = JSON.parse(await api.openExternalUrl(href))
+          const res = await api.openExternalUrl(href)
           if (res.error) alert(`링크 열기 실패: ${res.error}`)
           return
         }

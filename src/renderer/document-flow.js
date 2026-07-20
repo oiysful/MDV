@@ -68,7 +68,7 @@
 
     async function openFile() {
       try {
-        const data = JSON.parse(await api.openFileDialog())
+        const data = await api.openFileDialog()
         const targets = getLoadTargetsFromOpenResult(data)
         for (const target of targets) {
           await load(target)
@@ -119,7 +119,7 @@
         return
       }
 
-      const diskResult = JSON.parse(await api.readFile(tab.path))
+      const diskResult = await api.readFile(tab.path)
       const conflict = detectSaveConflict(diskResult, tab.savedContent)
       const prompt = SAVE_CONFLICT_PROMPTS[conflict]
       if (prompt) {
@@ -127,7 +127,7 @@
         if (!overwrite) return
       }
 
-      const res = JSON.parse(await api.saveFile(tab.path, tab.content))
+      const res = await api.saveFile(tab.path, tab.content)
       if (res.error) {
         alertError('저장 실패: ' + res.error)
         return
@@ -149,10 +149,10 @@
         setMarkdown,
       })
 
-      const dlg = JSON.parse(await api.saveFileDialog(tab.filename))
+      const dlg = await api.saveFileDialog(tab.filename)
       if (dlg.cancelled || dlg.error) return
 
-      const res = JSON.parse(await api.saveFile(dlg.path, tab.content))
+      const res = await api.saveFile(dlg.path, tab.content)
       if (res.error) {
         alertError('저장 실패: ' + res.error)
         return
@@ -160,9 +160,8 @@
       updateTabAfterSave(tab, dlg.path, res.filename)
     }
 
-    async function handleFileOpened(jsonStr) {
-      const data = JSON.parse(jsonStr)
-      await load(data)
+    async function handleFileOpened(payload) {
+      await load(payload)
     }
 
     async function handleFileChanged({ path, content, event }) {

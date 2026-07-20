@@ -92,7 +92,7 @@
           for (const localPath of candidates) {
             let dataUrl = imageDataUrlCache.get(localPath)
             if (!dataUrl) {
-              const res = JSON.parse(await api.readImageDataUrl(localPath))
+              const res = await api.readImageDataUrl(localPath)
               if (!res.ok || !res.data_url) continue
               dataUrl = res.data_url
               cacheImageDataUrl(localPath, dataUrl)
@@ -198,7 +198,7 @@
         }
         void (async () => {
           try {
-            const res = JSON.parse(await api.readImageDataUrl(localPath))
+            const res = await api.readImageDataUrl(localPath)
             if (!res.ok || !res.data_url) return
             // Warm the shared cache regardless of whether this tab is still active,
             // so the next hydrate of any tab embedding this path hits synchronously.
