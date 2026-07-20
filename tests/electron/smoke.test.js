@@ -2090,3 +2090,149 @@ test('clicking an already-visible tab does not scroll #tab-list', async () => {
     await closeApp(electronApp)
   }
 })
+
+// Presses Tab (up to `max` times) until the focused element matches `selector`,
+// proving the widget is reachable by keyboard without assuming toolbar tab order.
+async function tabUntilFocused(page, selector, max = 60) {
+  await page.evaluate(() => document.activeElement && document.activeElement.blur())
+  for (let i = 0; i < max; i++) {
+    if (await page.evaluate(sel => Boolean(document.activeElement?.matches(sel)), selector)) return true
+    await page.keyboard.press('Tab')
+  }
+  return page.evaluate(sel => Boolean(document.activeElement?.matches(sel)), selector)
+}
+
+test('keyboard: Tab reaches the tab bar, arrows move focus only, Enter switches (manual activation)', async () => {
+  const { electronApp, page } = await launchApp()
+
+  try {
+    await page.waitForSelector('#empty')
+    await stubOpenDialog(electronApp, [BASIC_MD])
+    await emitRendererCommand(electronApp, 'openFile')
+    await page.waitForFunction(() => document.querySelectorAll('#tab-list .file-tab').length === 1)
+
+    await stubOpenDialog(electronApp, [ROOT_MD])
+    await emitRendererCommand(electronApp, 'openFile')
+    await page.waitForFunction(() => {
+      const active = document.querySelector('#tab-list .file-tab.active .file-tab-name')
+      return document.querySelectorAll('#tab-list .file-tab').length === 2 && active && active.textContent.includes('root.md')
+    })
+
+    // Keep the blocking default-app guide from trapping focus during the Tab walk.
+    await emitRendererCommand(electronApp, 'dismissDefaultAppGuide')
+
+    const reached = await tabUntilFocused(page, '#tab-list .file-tab')
+    assert.equal(reached, true, 'Tab should land inside the tablist')
+
+    // Tab lands on the roving (active) tab. Record the pre-arrow state.
+    const before = await page.evaluate(() => ({
+      title: document.title,
+      active: document.querySelector('#tab-list .file-tab.active')?.getAttribute('aria-label'),
+      focused: document.activeElement?.getAttribute('aria-label'),
+    }))
+    assert.equal(before.focused, 'root.md')
+
+    // ArrowLeft: focus moves to the other tab, but nothing is activated.
+    await page.keyboard.press('ArrowLeft')
+    const afterArrow = await page.evaluate(() => ({
+      title: document.title,
+      active: document.querySelector('#tab-list .file-tab.active')?.getAttribute('aria-label'),
+      selectedTrue: document.querySelector('#tab-list [aria-selected="true"]')?.getAttribute('aria-label'),
+      focused: document.activeElement?.getAttribute('aria-label'),
+    }))
+    assert.equal(afterArrow.title, before.title, 'arrow move must not switch the active document')
+    assert.equal(afterArrow.active, before.active, 'active tab must be unchanged by arrow move')
+    assert.equal(afterArrow.selectedTrue, before.active, 'aria-selected must not follow focus')
+    assert.equal(afterArrow.focused, 'basic.md', 'focus should have moved to the other tab')
+
+    // Enter activates the focused tab.
+    await page.keyboard.press('Enter')
+    await page.waitForFunction(() => {
+      const active = document.querySelector('#tab-list .file-tab.active .file-tab-name')
+      return document.title === 'basic' && active && active.textContent.includes('basic.md')
+    })
+  } finally {
+    await closeApp(electronApp)
+  }
+})
+
+test('keyboard: explorer tree is navigable and opens files without a mouse', async () => {
+  const { electronApp, page } = await launchApp()
+
+  try {
+    await page.waitForSelector('#empty')
+    await stubOpenDialog(electronApp, [EXPLORER_DIR])
+    await emitRendererCommand(electronApp, 'openFolder')
+    await page.waitForFunction(() => document.getElementById('explorer-tree').textContent.includes('root.md'))
+    await emitRendererCommand(electronApp, 'dismissDefaultAppGuide')
+
+    // Roving tabindex: exactly one visible row is Tab-reachable.
+    assert.equal(await page.locator('#explorer-tree .tree-row[tabindex="0"]').count(), 1)
+
+    const reached = await tabUntilFocused(page, '#explorer-tree .tree-row')
+    assert.equal(reached, true, 'Tab should land inside the tree')
+
+    // ArrowDown moves focus to another visible row.
+    const firstText = await page.evaluate(() => document.activeElement?.textContent)
+    await page.keyboard.press('ArrowDown')
+    const secondText = await page.evaluate(() => document.activeElement?.textContent)
+    assert.notEqual(secondText, firstText, 'ArrowDown should move focus to a different row')
+    assert.equal(await page.evaluate(() => Boolean(document.activeElement?.matches('.tree-row'))), true)
+
+    // ArrowRight on the nested folder expands it and moves focus into the first child.
+    await page.locator('#explorer-tree .tree-row').filter({ hasText: 'nested' }).evaluate(el => el.focus())
+    await page.keyboard.press('ArrowRight')
+    await page.waitForFunction(() => {
+      const focused = document.activeElement
+      return document.getElementById('explorer-tree').textContent.includes('child.md')
+        && focused && focused.matches('.tree-row') && focused.textContent.includes('child.md')
+    })
+
+    // Enter on the focused file row opens it.
+    await page.keyboard.press('Enter')
+    await page.waitForFunction(() => {
+      const active = document.querySelector('#tab-list .file-tab.active .file-tab-name')
+      return document.title === 'child' && active && active.textContent.includes('child.md')
+    })
+  } finally {
+    await closeApp(electronApp)
+  }
+})
+
+test('mouse: tab and explorer click paths still work after the keyboard refactor', async () => {
+  const { electronApp, page } = await launchApp()
+
+  try {
+    await page.waitForSelector('#empty')
+
+    // Tabs: clicking a background tab still switches to it.
+    await stubOpenDialog(electronApp, [BASIC_MD])
+    await emitRendererCommand(electronApp, 'openFile')
+    await page.waitForFunction(() => document.querySelectorAll('#tab-list .file-tab').length === 1)
+    await stubOpenDialog(electronApp, [ROOT_MD])
+    await emitRendererCommand(electronApp, 'openFile')
+    await page.waitForFunction(() => document.querySelectorAll('#tab-list .file-tab').length === 2)
+
+    await page.locator('#tab-list .file-tab').filter({ hasText: 'basic.md' }).click()
+    await page.waitForFunction(() => {
+      const active = document.querySelector('#tab-list .file-tab.active .file-tab-name')
+      return document.title === 'basic' && active && active.textContent.includes('basic.md')
+    })
+
+    // Explorer: clicking a folder expands it and clicking a file opens it.
+    await stubOpenDialog(electronApp, [EXPLORER_DIR])
+    await emitRendererCommand(electronApp, 'openFolder')
+    await page.waitForFunction(() => document.getElementById('explorer-tree').textContent.includes('root.md'))
+
+    await page.locator('#explorer-tree .tree-row').filter({ hasText: 'nested' }).click()
+    await page.waitForFunction(() => document.getElementById('explorer-tree').textContent.includes('child.md'))
+
+    await page.locator('#explorer-tree .tree-row').filter({ hasText: 'child.md' }).click()
+    await page.waitForFunction(() => {
+      const active = document.querySelector('#tab-list .file-tab.active .file-tab-name')
+      return document.title === 'child' && active && active.textContent.includes('child.md')
+    })
+  } finally {
+    await closeApp(electronApp)
+  }
+})

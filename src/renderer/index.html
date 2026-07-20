@@ -501,6 +501,11 @@ mark.search-hl.current {
 .file-tab.drag-before { box-shadow: inset 2px 0 0 var(--brand); }
 .file-tab.drag-after  { box-shadow: inset -2px 0 0 var(--brand); }
 .file-tab.has-conflict .file-tab-name { color: var(--danger); }
+.file-tab:focus-visible {
+  outline: none;
+  border-color: color-mix(in srgb, var(--brand) 55%, transparent);
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--brand) 40%, transparent);
+}
 
 #panel-toc { overflow-y: auto; flex: 1; padding: 6px 0 var(--sp-xl); }
 #panel-toc::-webkit-scrollbar { width: 6px; background: transparent; }
@@ -562,6 +567,11 @@ mark.search-hl.current {
   color: var(--text-muted); transition: background .1s, color .1s;
 }
 .tree-row:hover { background: var(--hover); color: var(--text); }
+.tree-row:focus-visible {
+  outline: none;
+  color: var(--text);
+  box-shadow: inset 0 0 0 2px color-mix(in srgb, var(--brand) 45%, transparent);
+}
 .tree-item.active > .tree-row { background: var(--brand-light); color: var(--brand); }
 .tree-dir > .tree-row { color: var(--text); font-weight: 500; }
 .tree-arrow { font-size: 8px; width: 10px; flex-shrink: 0; color: var(--text-dimmed); transition: transform .1s; }
@@ -1455,7 +1465,7 @@ kbd {
             </button>
           </span>
         </div>
-        <div id="explorer-tree">
+        <div id="explorer-tree" role="tree" aria-label="파일 탐색기">
           <div class="tree-hint">좌측 상단 <strong>+</strong> 버튼으로<br>폴더를 열어 탐색하세요.</div>
         </div>
       </div>
@@ -1464,7 +1474,7 @@ kbd {
 
   <div id="main-pane">
     <div id="tab-strip" class="hidden">
-      <div id="tab-list"></div>
+      <div id="tab-list" role="tablist" aria-label="열린 파일 탭"></div>
     </div>
 
     <div id="scroll-area">
@@ -1501,6 +1511,7 @@ kbd {
 <script src="./search.js"></script>
 <script src="./document-flow.js"></script>
 <script src="./editor.js"></script>
+<script src="./roving.js"></script>
 <script src="./explorer.js"></script>
 <script src="./workspace.js"></script>
 <script src="./context-menu.js"></script>

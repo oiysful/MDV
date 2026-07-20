@@ -82,6 +82,8 @@
     let draggedTabId = null
     let restoreRenderVersion = 0
     let lastReportedDirty = false
+    let tabKeyboardBound = false
+    const { getRovingIndex } = globalScope.MDVRoving
 
     function syncDirtyState() {
       const hasDirty = computeAggregateDirty(tabs)
@@ -198,9 +200,56 @@
       renderTabBar()
     }
 
+    // Roving-tabindex focus move within the tablist: only one tab is Tab-reachable
+    // (tabindex="0"); the rest are -1 and reached with arrow keys. Focus follows the 0.
+    function focusTabElement(el) {
+      const list = getRefs().tabList
+      list.querySelectorAll('.file-tab').forEach(tabEl => { tabEl.tabIndex = -1 })
+      el.tabIndex = 0
+      el.focus()
+    }
+
+    // Manual activation (ARIA APG): arrows move focus only, never switch tabs — switching
+    // reloads/restores tab state (see switchToTab), too costly to fire on every arrow press.
+    // Enter/Space perform the real switch. One delegated listener on the persistent #tab-list
+    // container survives every renderTabBar() innerHTML rebuild.
+    function bindTabKeyboard(list) {
+      if (tabKeyboardBound) return
+      tabKeyboardBound = true
+      list.addEventListener('keydown', event => {
+        // Let the real close <button> keep its native Enter/Space and stay Tab-reachable.
+        if (event.target.closest('.file-tab-close')) return
+        const current = event.target.closest('.file-tab')
+        if (!current) return
+        const tabEls = Array.from(list.querySelectorAll('.file-tab'))
+        const index = tabEls.indexOf(current)
+        if (index === -1) return
+        if (event.key === 'ArrowRight' || event.key === 'ArrowLeft') {
+          event.preventDefault()
+          const step = event.key === 'ArrowRight' ? 1 : -1
+          focusTabElement(tabEls[getRovingIndex(index, step, tabEls.length)])
+        } else if (event.key === 'Home') {
+          event.preventDefault()
+          focusTabElement(tabEls[0])
+        } else if (event.key === 'End') {
+          event.preventDefault()
+          focusTabElement(tabEls[tabEls.length - 1])
+        } else if (event.key === 'Enter' || event.key === ' ') {
+          event.preventDefault()
+          switchToTab(Number(current.dataset.tabId))
+        }
+      })
+    }
+
     function renderTabBar() {
       const refs = getRefs()
       const list = refs.tabList
+      bindTabKeyboard(list)
+      // Preserve keyboard focus across the full innerHTML rebuild, but only if a tab was the
+      // focused element — never yank focus out of the editor during dirty-state re-renders.
+      const focusedTabId = document.activeElement?.classList?.contains('file-tab')
+        ? Number(document.activeElement.dataset.tabId)
+        : null
       refs.tabStrip.classList.toggle('hidden', tabs.length === 0)
       list.innerHTML = ''
       let activeEl = null
@@ -209,6 +258,10 @@
         el.className = 'file-tab' + (tab.id === activeTabId ? ' active' : '') + (tab.conflictPending ? ' has-conflict' : '')
         el.dataset.tabId = tab.id
         el.draggable = true
+        el.setAttribute('role', 'tab')
+        el.setAttribute('aria-selected', tab.id === activeTabId ? 'true' : 'false')
+        el.setAttribute('aria-label', tab.filename)
+        el.tabIndex = tab.id === activeTabId ? 0 : -1
         const name = document.createElement('span')
         name.className = 'file-tab-name'
         const marker = tab.conflictPending ? '⚠ ' : (tab.dirty ? '● ' : '')
@@ -251,6 +304,10 @@
       // Sole chokepoint for tab-active DOM state (see docs/plans/07-tab-scroll-into-view.md) —
       // scrolling here covers keyboard shortcuts, clicks, close/reorder, and restore alike.
       activeEl?.scrollIntoView({ block: 'nearest', inline: 'nearest' })
+      if (focusedTabId !== null) {
+        const restore = list.querySelector(`.file-tab[data-tab-id="${focusedTabId}"]`)
+        if (restore) focusTabElement(restore)
+      }
       updateToolbarActions()
       updateEntryAffordance()
       maybeShowWelcomeGuide()

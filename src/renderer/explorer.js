@@ -20,10 +20,122 @@
   function createExplorerController({ getRefs, api, load, switchToExplorerTab, showAppContextMenu, revealInFinder }) {
     let currentExplorerRoot = null
     let explorerShowFullPath = false
+    let treeKeyboardBound = false
+    const { getRovingIndex } = globalScope.MDVRoving
 
     function setActiveTreeItem(container, item) {
       container.closest('#layout').querySelectorAll('.tree-item.active').forEach(element => { element.classList.remove('active') })
       item.classList.add('active')
+    }
+
+    // Rows inside a collapsed (non-.open) .tree-children group are hidden, and lazily-loaded
+    // subtrees aren't in the DOM at all — so this returns exactly the rows a user can see,
+    // which is the set arrow-key navigation walks.
+    function getVisibleTreeRows() {
+      const tree = getRefs().explorerTree
+      return Array.from(tree.querySelectorAll('.tree-row')).filter(row => !row.closest('.tree-children:not(.open)'))
+    }
+
+    // Roving tabindex: exactly one row is Tab-reachable (tabindex="0"); arrows move focus and
+    // the 0 follows it. focusTreeRow moves focus now; syncTreeRoving only positions the 0
+    // (without stealing focus) after a root render.
+    function focusTreeRow(row) {
+      const tree = getRefs().explorerTree
+      tree.querySelectorAll('.tree-row').forEach(r => { r.tabIndex = -1 })
+      row.tabIndex = 0
+      row.focus()
+    }
+
+    function syncTreeRoving(preferredRow) {
+      const tree = getRefs().explorerTree
+      tree.querySelectorAll('.tree-row').forEach(r => { r.tabIndex = -1 })
+      const rows = getVisibleTreeRows()
+      const target = preferredRow && rows.includes(preferredRow) ? preferredRow : rows[0]
+      if (target) target.tabIndex = 0
+    }
+
+    // Shared open/toggle logic, DOM-driven so both the per-row click listener and the
+    // delegated keyboard handler call the same path (no mouse/keyboard duplication).
+    async function toggleFolderRow(row) {
+      const children = row.nextElementSibling
+      const arrow = row.querySelector('.tree-arrow')
+      const icon = row.querySelector('.tree-icon')
+      const isOpen = children.classList.toggle('open')
+      arrow.textContent = getFolderArrow(isOpen)
+      icon.innerHTML = isOpen ? FOLDER_OPEN_SVG : FOLDER_CLOSED_SVG
+      row.setAttribute('aria-expanded', isOpen ? 'true' : 'false')
+      if (isOpen && children.dataset.loaded !== 'true') {
+        children.dataset.loaded = 'true'
+        await loadDir(row.dataset.path, children, Number(row.dataset.depth) + 1)
+      }
+    }
+
+    async function openFileRow(row, event) {
+      if (event?.metaKey) {
+        await api.newWindow(row.dataset.path)
+        return
+      }
+      const data = JSON.parse(await api.readFile(row.dataset.path))
+      await load(data)
+      setActiveTreeItem(getRefs().explorerTree, row.closest('.tree-item'))
+    }
+
+    // One delegated keydown listener on the persistent #explorer-tree container (survives every
+    // loadDir innerHTML rebuild). ARIA APG Treeview navigation, manual activation.
+    function bindTreeKeyboard(tree) {
+      if (treeKeyboardBound) return
+      treeKeyboardBound = true
+      tree.addEventListener('keydown', async event => {
+        const row = event.target.closest('.tree-row')
+        if (!row) return
+        const rows = getVisibleTreeRows()
+        const index = rows.indexOf(row)
+        const isDir = row.parentElement.classList.contains('tree-dir')
+        const children = isDir ? row.nextElementSibling : null
+        const isOpen = isDir && children.classList.contains('open')
+
+        if (event.key === 'ArrowDown') {
+          event.preventDefault()
+          const target = rows[getRovingIndex(index, 1, rows.length)]
+          if (target) focusTreeRow(target)
+        } else if (event.key === 'ArrowUp') {
+          event.preventDefault()
+          const target = rows[getRovingIndex(index, -1, rows.length)]
+          if (target) focusTreeRow(target)
+        } else if (event.key === 'Home') {
+          event.preventDefault()
+          if (rows[0]) focusTreeRow(rows[0])
+        } else if (event.key === 'End') {
+          event.preventDefault()
+          if (rows[rows.length - 1]) focusTreeRow(rows[rows.length - 1])
+        } else if (event.key === 'ArrowRight') {
+          event.preventDefault()
+          if (isDir && !isOpen) {
+            await toggleFolderRow(row)
+            const firstChild = children.querySelector('.tree-row')
+            if (firstChild) focusTreeRow(firstChild)
+          } else {
+            const target = rows[getRovingIndex(index, 1, rows.length)]
+            if (target) focusTreeRow(target)
+          }
+        } else if (event.key === 'ArrowLeft') {
+          event.preventDefault()
+          if (isDir && isOpen) {
+            await toggleFolderRow(row)
+            focusTreeRow(row)
+          } else {
+            const group = row.parentElement.parentElement
+            if (group && group.classList.contains('tree-children')) {
+              const parentRow = group.parentElement.querySelector(':scope > .tree-row')
+              if (parentRow) focusTreeRow(parentRow)
+            }
+          }
+        } else if (event.key === 'Enter' || event.key === ' ') {
+          event.preventDefault()
+          if (isDir) await toggleFolderRow(row)
+          else await openFileRow(row, event)
+        }
+      })
     }
 
     function syncExplorerHeader() {
@@ -69,6 +181,13 @@
     }
 
     async function loadDir(path, container, depth) {
+      const isRoot = depth === 0
+      bindTreeKeyboard(getRefs().explorerTree)
+      // Only restore focus on a full root re-render, and only if a tree row was the focused
+      // element — never yank focus away from the editor on an unrelated rebuild.
+      const focusedPath = isRoot && document.activeElement?.classList?.contains('tree-row')
+        ? document.activeElement.dataset.path
+        : null
       container.innerHTML = '<div class="tree-hint">로드 중…</div>'
       const res = JSON.parse(await api.listDirectory(path))
       container.innerHTML = ''
@@ -81,6 +200,11 @@
         return
       }
       res.entries.forEach(entry => { renderTreeEntry(entry, container, depth) })
+      if (isRoot) {
+        const restore = focusedPath ? getVisibleTreeRows().find(r => r.dataset.path === focusedPath) : null
+        if (restore) focusTreeRow(restore)
+        else syncTreeRoving()
+      }
     }
 
     function renderTreeEntry(entry, container, depth) {
@@ -89,8 +213,15 @@
       const row = document.createElement('div')
       row.className = 'tree-row'
       row.style.paddingLeft = getTreeRowPadding(depth)
+      row.setAttribute('role', 'treeitem')
+      row.setAttribute('aria-level', String(depth + 1))
+      row.tabIndex = -1
+      row.dataset.path = entry.path
+      row.dataset.depth = depth
 
       if (entry.type === 'dir') {
+        row.setAttribute('aria-expanded', 'false')
+
         const arrow = document.createElement('span')
         arrow.className = 'tree-arrow'
         arrow.textContent = getFolderArrow(false)
@@ -107,17 +238,9 @@
 
         const children = document.createElement('div')
         children.className = 'tree-children'
-        let loaded = false
+        children.setAttribute('role', 'group')
 
-        row.addEventListener('click', async () => {
-          const isOpen = children.classList.toggle('open')
-          arrow.textContent = getFolderArrow(isOpen)
-          icon.innerHTML = isOpen ? FOLDER_OPEN_SVG : FOLDER_CLOSED_SVG
-          if (isOpen && !loaded) {
-            loaded = true
-            await loadDir(entry.path, children, depth + 1)
-          }
-        })
+        row.addEventListener('click', () => toggleFolderRow(row))
 
         row.addEventListener('contextmenu', event => {
           if (!currentExplorerRoot) return
@@ -141,16 +264,7 @@
         name.textContent = entry.name
         row.append(icon, name)
 
-        row.addEventListener('click', async event => {
-          if (event.metaKey) {
-            await api.newWindow(entry.path)
-            return
-          }
-
-          const data = JSON.parse(await api.readFile(entry.path))
-          await load(data)
-          setActiveTreeItem(container, item)
-        })
+        row.addEventListener('click', event => openFileRow(row, event))
 
         item.appendChild(row)
       }
