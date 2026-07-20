@@ -12,7 +12,8 @@
     "update:release": "bash scripts/update-release.sh",
     "test:electron": "node --test tests/electron/smoke.test.js",
     "test:e2e": "node --test --test-name-pattern=\"${E2E:-.}\" tests/electron/smoke.test.js",
-    "test:unit": "node --test tests/unit/*.test.js"
+    "test:unit": "node --test tests/unit/*.test.js",
+    "test:controller": "node --test tests/controller/*.test.js"
   },
   "keywords": [],
   "author": "",
