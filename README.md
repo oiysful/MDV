@@ -196,6 +196,8 @@ Run the desktop app locally:
 npm start
 ```
 
+Branching, PR, and CI conventions are in [CONTRIBUTING.md](CONTRIBUTING.md); the release process is in [RELEASING.md](RELEASING.md).
+
 ## Build a distributable app
 
 Create a packaged macOS build:
