@@ -8,7 +8,7 @@
 // The stub wiring below mirrors the real wiring in src/renderer/app.js (lines ~25-183).
 // Each test file cites the specific app.js:<line> it copies a callback signature from, so
 // the harness can't silently diverge from production wiring (the "regression of the
-// regression" risk called out in docs/plans/11-controller-level-tests.md).
+// regression" risk called out in docs/plans/done/2026-07-20/11-controller-level-tests.md).
 //
 // Generalizes the small precedent in tests/unit/search.test.js:6-23
 // (createSearchController driven directly on a jsdom DOM).
@@ -54,7 +54,7 @@ function createDom() {
   global.getComputedStyle = dom.window.getComputedStyle.bind(dom.window)
   global.NodeFilter = dom.window.NodeFilter
   global.requestAnimationFrame = () => {}
-  // jsdom doesn't implement scrollIntoView (see docs/plans/07-tab-scroll-into-view.md's
+  // jsdom doesn't implement scrollIntoView (see docs/plans/done/2026-07-20/07-tab-scroll-into-view.md's
   // own test-plan note); renderTabBar() calls it unconditionally after every render.
   if (!dom.window.Element.prototype.scrollIntoView) {
     dom.window.Element.prototype.scrollIntoView = () => {}

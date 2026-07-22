@@ -62,7 +62,7 @@ function renderTabBar() {
   2. 첫 번째 탭을 활성화한 뒤 `page.keyboard.press('Meta+Shift+]')`(또는 플랫폼별 accelerator, 기존 테스트의 단축키 트리거 방식을 따름)를 필요한 횟수만큼 실행해 화면 밖에 있는 마지막 탭까지 이동.
   3. `document.querySelector('#tab-list .file-tab.active')`의 `getBoundingClientRect()`가 `#tab-list`의 뷰포트 범위(`scrollLeft` ~ `scrollLeft + clientWidth`) 안에 들어오는지, 혹은 `#tab-list.scrollLeft`가 이동 전후로 변했는지 검증.
   4. 회귀 방지로 "이미 보이는 탭을 클릭했을 때 `scrollLeft`가 변하지 않는다"는 케이스도 함께 추가해 `inline: 'nearest'` 선택이 의도대로 동작하는지 확인.
-- `npm run test:unit`과 `npm run test:electron`을 모두 통과해야 완료로 간주한다(`docs/plans/README.md`의 기존 관례).
+- `npm run test:unit`과 `npm run test:electron`을 모두 통과해야 완료로 간주한다(`docs/plans/done/2026-07-20/README.md`의 기존 관례).
 
 ## 리스크 / 미결정 사항
 - `behavior: 'smooth'` vs 기본(즉시) — 위에서 즉시 이동을 제안했지만 UX상 스무스가 더 낫다고 판단되면 한 줄만 바꾸면 되는 사소한 결정이라 구현 시점에 재논의 가능.

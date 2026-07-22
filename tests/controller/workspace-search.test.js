@@ -1,6 +1,6 @@
 // Controller-level test: switching/closing/opening tabs closes an open search.
 //
-// Regression (docs/plans/README.md "2026-07-16 재검토 결과" #3 / plan §근거 3):
+// Regression (docs/plans/done/2026-07-20/README.md "2026-07-16 재검토 결과" #3 / plan §근거 3):
 // workspace.js calls closeSearch?.() on tab switch (workspace.js:345), tab close
 // (workspace.js:358) and file open (workspace.js:382, 396). In the real app that callback
 // is wired app.js:163 -> app-runtime.js:283 -> searchController.closeSearch(). If any of

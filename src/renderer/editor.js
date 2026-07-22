@@ -56,7 +56,7 @@
     }
   }
 
-  // Pure decision for docs/plans/05-force-hide-sidebar-in-split-view.md: split view always
+  // Pure decision for docs/plans/done/2026-07-20/05-force-hide-sidebar-in-split-view.md: split view always
   // forces the sidebar closed, and restores it to whatever it was right before forcing --
   // not unconditionally reopened, so a sidebar that was already closed stays closed on exit.
   function computeSidebarOpenForSplitChange({ enteringSplit, currentSidebarOpen, sidebarOpenBeforeSplit }) {
@@ -121,7 +121,7 @@
     }
 
     // Sole chokepoint for splitMode changes (interactive toggle and tab-restore both funnel
-    // here) so the sidebar force-close/restore in docs/plans/05-force-hide-sidebar-in-split-view.md
+    // here) so the sidebar force-close/restore in docs/plans/done/2026-07-20/05-force-hide-sidebar-in-split-view.md
     // can't be missed at one call site the way a past regression missed a render() call site.
     function setSplitMode(nextValue) {
       const next = Boolean(nextValue)

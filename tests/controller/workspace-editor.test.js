@@ -1,6 +1,6 @@
 // Controller-level test: image-watcher wiring between editor and workspace.
 //
-// Regression (docs/plans/README.md "2026-07-16 재검토 결과" #4, cause 1):
+// Regression (docs/plans/done/2026-07-20/README.md "2026-07-16 재검토 결과" #4, cause 1):
 // editor.js#toggleSource()/#toggleSplitView() dropped the imagePaths returned by render()
 // and never called workspaceController.syncTabImageWatches(), so images first seen after a
 // source->preview switch were left unwatched. The pure helpers all pass while this wiring

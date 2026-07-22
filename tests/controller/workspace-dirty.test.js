@@ -1,6 +1,6 @@
 // Controller-level test: source-mode edits invalidate the cached preview.
 //
-// Regression (docs/plans/README.md "2026-07-16 재검토 결과" #4, cause 2):
+// Regression (docs/plans/done/2026-07-20/README.md "2026-07-16 재검토 결과" #4, cause 2):
 // workspace.js#saveCurrentTabState only set tab.previewDirty when splitMode was on, so a
 // pure source-mode edit (e.g. deleting an image line) was snapshotted as stale renderedHTML
 // and served again on tab switch. The shouldMarkPreviewDirty helper is unit-tested in

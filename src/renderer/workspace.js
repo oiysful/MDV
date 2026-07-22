@@ -309,7 +309,7 @@
         list.appendChild(el)
         if (tab.id === activeTabId) activeEl = el
       })
-      // Sole chokepoint for tab-active DOM state (see docs/plans/07-tab-scroll-into-view.md) —
+      // Sole chokepoint for tab-active DOM state (see docs/plans/done/2026-07-20/07-tab-scroll-into-view.md) —
       // scrolling here covers keyboard shortcuts, clicks, close/reorder, and restore alike.
       activeEl?.scrollIntoView({ block: 'nearest', inline: 'nearest' })
       if (focusedTabId !== null) {
