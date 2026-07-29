@@ -205,7 +205,12 @@
       const res = await api.listDirectory(path)
       container.innerHTML = ''
       if (res.error) {
-        container.innerHTML = `<div class="tree-hint">${res.error}</div>`
+        // The error string carries OS text and the directory name, i.e. untrusted input —
+        // it is the one hint that isn't a static literal, so it goes in as text, never HTML.
+        const hint = document.createElement('div')
+        hint.className = 'tree-hint'
+        hint.textContent = res.error
+        container.appendChild(hint)
         return
       }
       if (!res.entries.length) {
