@@ -91,6 +91,24 @@ async function getOpenExternalCalls(electronApp) {
   return electronApp.evaluate(() => globalThis.__openExternalCalls ?? [])
 }
 
+// Same trick as stubOpenExternal, for the two sinks open-local-path can reach: a test can
+// then assert *which* one a given target was routed to without the OS launching anything.
+async function stubShellTargets(electronApp) {
+  await electronApp.evaluate(({ shell }) => {
+    globalThis.__openPathCalls = []
+    globalThis.__showItemCalls = []
+    shell.openPath = async (target) => { globalThis.__openPathCalls.push(target); return '' }
+    shell.showItemInFolder = (target) => { globalThis.__showItemCalls.push(target) }
+  })
+}
+
+async function getShellTargetCalls(electronApp) {
+  return electronApp.evaluate(() => ({
+    openPath: globalThis.__openPathCalls ?? [],
+    showItem: globalThis.__showItemCalls ?? [],
+  }))
+}
+
 async function createTempMarkdown(sourcePath, name) {
   const tempDir = await fs.mkdtemp(path.join(os.tmpdir(), 'mdv-smoke-'))
   const targetPath = path.join(tempDir, name)
@@ -2577,5 +2595,72 @@ test('opening a file and saving-as both register the path as a recent document',
   } finally {
     await closeApp(electronApp)
     await cleanup()
+  }
+})
+
+// HIGH-1 in docs/plans/06-security-hardening-audit-2026-07-22.md: a link in an untrusted
+// markdown document used to reach shell.openPath for *any* extension, so one click on
+// [Setup](./setup.command) ran local code. Only the document/image/office allowlist may be
+// opened; everything else — executables, unknown types, directories (macOS .app bundles are
+// directories), and symlinks whose real target is outside the list — is revealed in Finder.
+test('open-local-path opens only allowlisted file types and reveals everything else', async () => {
+  const tempDir = await fs.mkdtemp(path.join(os.tmpdir(), 'mdv-openlocal-'))
+  const allowed = path.join(tempDir, 'report.pdf')
+  const executable = path.join(tempDir, 'setup.command')
+  const unknown = path.join(tempDir, 'archive.zip')
+  const subdir = path.join(tempDir, 'attachments')
+  const disguised = path.join(tempDir, 'notes.pdf') // symlink → setup.command
+  await fs.writeFile(allowed, '%PDF-1.4\n')
+  await fs.writeFile(executable, '#!/bin/sh\necho pwned\n')
+  await fs.writeFile(unknown, 'zip')
+  await fs.mkdir(subdir)
+  await fs.symlink(executable, disguised)
+
+  const { electronApp, page } = await launchApp()
+
+  try {
+    await page.waitForSelector('#empty')
+    await stubShellTargets(electronApp)
+
+    const openLocal = target => page.evaluate(p => window.api.openLocalPath(p), target)
+
+    const allowedRes = await openLocal(allowed)
+    assert.equal(allowedRes.kind, 'external', 'an allowlisted .pdf is handed to the OS')
+
+    for (const [target, label] of [[executable, '.command'], [unknown, '.zip'], [subdir, 'directory'], [disguised, 'symlinked .command']]) {
+      const res = await openLocal(target)
+      assert.equal(res.kind, 'revealed', `${label} must be revealed, not opened`)
+    }
+
+    const calls = await getShellTargetCalls(electronApp)
+    assert.deepEqual(calls.openPath, [allowed], `only the .pdf may reach openPath, got ${JSON.stringify(calls.openPath)}`)
+    assert.deepEqual(calls.showItem, [executable, unknown, subdir, disguised])
+  } finally {
+    await closeApp(electronApp)
+    await fs.rm(tempDir, { recursive: true, force: true })
+  }
+})
+
+// LOW-4: window.open() targets bypass the content link handler, so the window-open handler
+// needs the same ^https?:// whitelist as open-external-url — a file:/// or custom-scheme
+// target must be dropped, not handed to the OS.
+test('setWindowOpenHandler forwards only http(s) targets to the OS', async () => {
+  const { electronApp, page } = await launchApp()
+
+  try {
+    await page.waitForSelector('#empty')
+    await stubOpenExternal(electronApp)
+
+    await page.evaluate(() => {
+      window.open('https://example.com/ok', '_blank')
+      window.open('file:///etc/passwd', '_blank')
+      window.open('mdv-evil://payload', '_blank')
+    })
+    await page.waitForTimeout(200)
+
+    const urls = await getOpenExternalCalls(electronApp)
+    assert.deepEqual(urls, ['https://example.com/ok'], `only http(s) may be forwarded, got ${JSON.stringify(urls)}`)
+  } finally {
+    await closeApp(electronApp)
   }
 })
