@@ -125,6 +125,7 @@ document.addEventListener('DOMContentLoaded', () => {
     storage: localStorage,
     getSidebarOpen: () => state.sidebarOpen,
     setSidebarOpen: value => runtimeController.setSidebarOpen(value),
+    markdownController,
   })
 
   appShellController = window.MDVAppShell.createAppShellController({

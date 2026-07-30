@@ -120,7 +120,7 @@
 
   const WRAP_STORAGE_KEY = 'mdv-editor-wrap'
 
-  function createEditorController({ getRefs, getMarkdown, setMarkdown, getActiveTab, rerenderTabBar, syncTabImageWatches, onSourceInput, render, closeSearch, storage, getSidebarOpen, setSidebarOpen }) {
+  function createEditorController({ getRefs, getMarkdown, setMarkdown, getActiveTab, rerenderTabBar, syncTabImageWatches, onSourceInput, render, closeSearch, storage, getSidebarOpen, setSidebarOpen, markdownController }) {
     let sourceMode = false
     let splitMode = false
     // The pane we last wrote to programmatically; its next scroll event is the echo of that
@@ -156,13 +156,27 @@
       const refs = getRefs()
       if (refs?.btnSidebar) refs.btnSidebar.disabled = splitMode
       if (!getSidebarOpen || !setSidebarOpen) return
+      const wasSidebarOpen = getSidebarOpen()
       const { nextSidebarOpen, nextMemo } = computeSidebarOpenForSplitChange({
         enteringSplit: splitMode,
-        currentSidebarOpen: getSidebarOpen(),
+        currentSidebarOpen: wasSidebarOpen,
         sidebarOpenBeforeSplit,
       })
       setSidebarOpen(nextSidebarOpen)
       sidebarOpenBeforeSplit = nextMemo
+      // #sidebar's width transition (index.html, .25s) reflows #content's available width
+      // over that whole span, not instantly -- refreshHeadingOffsets() in applySourceMode
+      // (called right after this returns) runs before the transition starts moving, so its
+      // read is stale until the transition actually finishes. Recompute once more then.
+      if (nextSidebarOpen !== wasSidebarOpen && refs?.sidebar) {
+        const sidebarEl = refs.sidebar
+        const onSidebarTransitionEnd = event => {
+          if (event.target !== sidebarEl || event.propertyName !== 'width') return
+          sidebarEl.removeEventListener('transitionend', onSidebarTransitionEnd)
+          markdownController?.refreshHeadingOffsets()
+        }
+        sidebarEl.addEventListener('transitionend', onSidebarTransitionEnd)
+      }
     }
 
     function getEditorValue() {
@@ -277,6 +291,12 @@
         updateLineNumbers,
         autoResizeEditor,
       })
+      // Heading offsets are cached relative to #scroll-area's layout, but split mode
+      // reflows #content to a different width (and source mode hides it, collapsing
+      // offsetTop to 0) — every caller of applySourceMode (toggleSource, toggleSplitView,
+      // restoreTabState) changes that layout, so recompute here once the mode classes
+      // applySourceModeToRefs just applied have taken effect.
+      markdownController?.refreshHeadingOffsets()
     }
 
     async function toggleSource() {

@@ -2221,10 +2221,29 @@ test('TOC scrollspy keeps updating from the #content pane while split view is op
     await emitRendererCommand(electronApp, 'openFile')
     await page.waitForFunction(() => document.title === 'toc-split')
 
+    // Entering split view force-closes #sidebar, whose width transition (index.html, .25s)
+    // keeps reflowing #content's available width for the whole span -- wait for it to
+    // finish (same event the production refreshHeadingOffsets() re-run listens for) before
+    // reading layout, same as a real user would before scrolling.
+    await page.evaluate(() => {
+      window.__mdvSidebarTransitionDone = false
+      const sidebar = document.getElementById('sidebar')
+      const onEnd = event => {
+        if (event.propertyName !== 'width') return
+        sidebar.removeEventListener('transitionend', onEnd)
+        window.__mdvSidebarTransitionDone = true
+      }
+      sidebar.addEventListener('transitionend', onEnd)
+    })
     await emitRendererCommand(electronApp, 'toggleSplitView')
     await page.waitForFunction(() => document.getElementById('scroll-area').classList.contains('split-mode'))
+    await page.waitForFunction(() => window.__mdvSidebarTransitionDone === true)
 
-    await page.evaluate(() => window.dispatchEvent(new Event('resize')))
+    // No synthetic resize here (unlike the normal-mode test above): entering split view
+    // reflows #content to a different width, so toggleSplitView's own applySourceMode()
+    // must recompute cachedHeadings itself (via markdownController.refreshHeadingOffsets(),
+    // re-run once more on the sidebar's transitionend) -- a resize event would recompute it
+    // for us and mask a regression in that wiring.
     const expectedHref = await page.evaluate(() => {
       const content = document.getElementById('content')
       const scrollArea = document.getElementById('scroll-area')
