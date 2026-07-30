@@ -2143,6 +2143,108 @@ test('clicking an https link still opens externally without opening a tab', asyn
   }
 })
 
+// docs/plans/02-toc-scrollspy-offset-bias.md: cachedHeadings.top used to be cached
+// relative to document.body while the scrollspy comparison used #scroll-area-relative
+// scrollTop, so the active highlight always lagged the true scroll position -- most
+// visibly, clicking a TOC item left the *previous* item highlighted instead of the one
+// just clicked. jsdom's offsetTop is always 0, so this can only be verified against a
+// real layout engine here, not in the unit suite.
+test('TOC scrollspy activates the clicked heading itself, and tracks the heading nearest the top while scrolling', async () => {
+  const tempDir = await fs.mkdtemp(path.join(os.tmpdir(), 'mdv-smoke-toc-'))
+  const docPath = path.join(tempDir, 'toc.md')
+  const sections = Array.from({ length: 12 }, (_, i) => `## Section ${i + 1}\n\n${'Paragraph text for scroll height. '.repeat(40)}`).join('\n\n')
+  await fs.writeFile(docPath, `# TOC Doc\n\n${sections}\n`, 'utf-8')
+
+  const { electronApp, page } = await launchApp()
+  try {
+    await page.waitForSelector('#empty')
+    await stubOpenDialog(electronApp, [docPath])
+    await emitRendererCommand(electronApp, 'openFile')
+    await page.waitForFunction(() => document.title === 'toc')
+
+    // The TOC sidebar tab is active by default (index.html #sidebar-tabs data-active="toc").
+    await page.waitForFunction(() => document.querySelectorAll('#toc-list a').length === 13)
+
+    // Click a mid-list item (not the first, so a "stuck on the previous item" regression
+    // is actually observable) and confirm the clicked item itself ends up active.
+    const targetLink = page.locator('#toc-list a').nth(6) // Section 6
+    const targetHref = await targetLink.getAttribute('href')
+    assert.match(targetHref, /^#h\d+$/)
+    await targetLink.click()
+    await page.waitForFunction(
+      href => document.querySelector('#toc-list a.active')?.getAttribute('href') === href,
+      targetHref,
+    )
+    assert.equal(await page.locator('#toc-list a.active').getAttribute('href'), targetHref)
+
+    // Programmatic scroll, independent of the click/scrollIntoView path: jump just past
+    // a later heading's cached top and confirm the highlight follows it, not the one before.
+    // A synthetic resize forces refreshHeadingOffsets() to recompute cachedHeadings from
+    // the current live layout right before reading it here, so this isn't racing whatever
+    // reflow (font swap, async highlight.js pass) may have shifted offsets since buildToc()
+    // ran at open time.
+    await page.evaluate(() => window.dispatchEvent(new Event('resize')))
+    const expectedHref = await page.evaluate(() => {
+      const heading = document.querySelectorAll('#content h2')[8] // Section 9
+      const scrollArea = document.getElementById('scroll-area')
+      // +15: past the fixed formula's -24px lead (so the fixed code activates this
+      // heading), but inside the old buggy formula's ~43px "still shows the previous
+      // item" window (verified empirically against the pre-fix code) -- this margin
+      // genuinely exercises the offset fix rather than just landing deep inside the
+      // section where both formulas would agree.
+      scrollArea.scrollTop = heading.offsetTop - scrollArea.offsetTop + 15
+      return `#${heading.id}`
+    })
+    await page.waitForFunction(
+      href => document.querySelector('#toc-list a.active')?.getAttribute('href') === href,
+      expectedHref,
+    )
+  } finally {
+    await closeApp(electronApp)
+    await fs.rm(tempDir, { recursive: true, force: true })
+  }
+})
+
+// Cause B from the same plan doc: in split view #scroll-area itself stops scrolling
+// (overflow: hidden), so scrollspy needs a listener on #content, the pane that actually
+// scrolls there -- otherwise the TOC highlight never updates while split view is open.
+test('TOC scrollspy keeps updating from the #content pane while split view is open', async () => {
+  const tempDir = await fs.mkdtemp(path.join(os.tmpdir(), 'mdv-smoke-toc-'))
+  const docPath = path.join(tempDir, 'toc-split.md')
+  const sections = Array.from({ length: 12 }, (_, i) => `## Section ${i + 1}\n\n${'Paragraph text for scroll height. '.repeat(40)}`).join('\n\n')
+  await fs.writeFile(docPath, `# TOC Split Doc\n\n${sections}\n`, 'utf-8')
+
+  const { electronApp, page } = await launchApp()
+  try {
+    await page.waitForSelector('#empty')
+    await stubOpenDialog(electronApp, [docPath])
+    await emitRendererCommand(electronApp, 'openFile')
+    await page.waitForFunction(() => document.title === 'toc-split')
+
+    await emitRendererCommand(electronApp, 'toggleSplitView')
+    await page.waitForFunction(() => document.getElementById('scroll-area').classList.contains('split-mode'))
+
+    await page.evaluate(() => window.dispatchEvent(new Event('resize')))
+    const expectedHref = await page.evaluate(() => {
+      const content = document.getElementById('content')
+      const scrollArea = document.getElementById('scroll-area')
+      const heading = content.querySelectorAll('h2')[8] // Section 9
+      // cachedHeadings.top is anchored to #scroll-area.offsetTop regardless of mode (see
+      // markdown.js buildToc), so the target uses that same base even though #content is
+      // the element actually being scrolled here.
+      content.scrollTop = heading.offsetTop - scrollArea.offsetTop + 15
+      return `#${heading.id}`
+    })
+    await page.waitForFunction(
+      href => document.querySelector('#toc-list a.active')?.getAttribute('href') === href,
+      expectedHref,
+    )
+  } finally {
+    await closeApp(electronApp)
+    await fs.rm(tempDir, { recursive: true, force: true })
+  }
+})
+
 test('toast announces status changes to assistive tech', async () => {
   const { electronApp, page } = await launchApp()
 

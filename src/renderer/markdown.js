@@ -144,7 +144,11 @@
         li.appendChild(anchor)
         list.appendChild(li)
       })
-      cachedHeadings = Array.from(headings).map(heading => ({ el: heading, id: heading.id, top: heading.offsetTop }))
+      // top is cached relative to #scroll-area, the container refreshTocActive's
+      // scrollTop argument is measured against — not offsetTop's own document.body
+      // reference frame. Both are currently unpositioned (static), so this
+      // subtraction is a valid coordinate-frame conversion; see plan doc #2.
+      cachedHeadings = Array.from(headings).map(heading => ({ el: heading, id: heading.id, top: heading.offsetTop - refs.scrollArea.offsetTop }))
       cachedTocLinks = Array.from(list.querySelectorAll('a')).map(anchor => ({ el: anchor, href: anchor.getAttribute('href') }))
       prevTocLink = null
       prevTocHref = ''
@@ -223,7 +227,7 @@
       refs.tocList.innerHTML = tocNode || ''
       rehydrateSnapshotImages()
       updateStats(text)
-      cachedHeadings = Array.from(refs.content.querySelectorAll('h1,h2,h3')).map(heading => ({ el: heading, id: heading.id, top: heading.offsetTop }))
+      cachedHeadings = Array.from(refs.content.querySelectorAll('h1,h2,h3')).map(heading => ({ el: heading, id: heading.id, top: heading.offsetTop - refs.scrollArea.offsetTop }))
       cachedTocLinks = Array.from(refs.tocList.querySelectorAll('a')).map(anchor => ({ el: anchor, href: anchor.getAttribute('href') }))
       prevTocLink = null
       prevTocHref = ''
@@ -248,7 +252,7 @@
       let current = -1
       while (lo <= hi) {
         const mid = (lo + hi) >> 1
-        if (cachedHeadings[mid].top - 80 <= scrollTop) {
+        if (cachedHeadings[mid].top - 24 <= scrollTop) {
           current = mid
           lo = mid + 1
         } else {
@@ -266,8 +270,9 @@
     }
 
     function refreshHeadingOffsets() {
+      const refs = getRefs()
       cachedHeadings.forEach(heading => {
-        heading.top = heading.el.offsetTop
+        heading.top = heading.el.offsetTop - refs.scrollArea.offsetTop
       })
     }
 

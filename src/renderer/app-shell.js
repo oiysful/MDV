@@ -172,14 +172,32 @@
       const scrollArea = refs.scrollArea
       let scrollTicking = false
 
-      scrollArea.addEventListener('scroll', () => {
+      // Reads container.scrollTop inside the rAF callback (not at call time), so a burst
+      // of scroll events collapses to the *freshest* position by the time it fires.
+      const scheduleTocRefresh = (container, extra) => {
         if (scrollTicking) return
         scrollTicking = true
         windowRef.requestAnimationFrame(() => {
           scrollTicking = false
-          refs.goTop.classList.toggle('on', scrollArea.scrollTop > 300)
-          markdownController.refreshTocActive(scrollArea.scrollTop)
+          if (extra) extra()
+          markdownController.refreshTocActive(container.scrollTop)
         })
+      }
+
+      scrollArea.addEventListener('scroll', () => {
+        scheduleTocRefresh(scrollArea, () => {
+          refs.goTop.classList.toggle('on', scrollArea.scrollTop > 300)
+        })
+      })
+
+      // In split view #scroll-area itself stops scrolling (index.html gives it
+      // overflow: hidden there) -- #content becomes its own independent scroll
+      // container instead (#scroll-area.split-mode #content). Without this,
+      // scrolling the preview pane in split view never refreshed the TOC
+      // highlight. In normal (non-split) mode #content has no overflow of its
+      // own, so this listener simply never fires.
+      refs.content.addEventListener('scroll', () => {
+        scheduleTocRefresh(refs.content)
       })
 
       windowRef.addEventListener('resize', () => {
