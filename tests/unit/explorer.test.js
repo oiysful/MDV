@@ -114,3 +114,43 @@ test('setActiveFilePath clears the highlight for a null path or a path not in th
   controller.setActiveFilePath('/docs/not-in-tree.md')
   assert.equal(tree.querySelectorAll('.tree-item.active').length, 0, 'an unmatched path clears rather than leaving a stale highlight')
 })
+
+// Code-review follow-up on docs/plans/01-explorer-active-tab-sync.md: the active path is
+// remembered even while its row is hidden inside a collapsed folder (v1 scope: no auto-expand,
+// see the plan's own risk note), but expanding that folder later should light the row up
+// immediately rather than waiting for an unrelated root re-render.
+test('expanding a folder that reveals the active tab highlights it without a root re-render', async () => {
+  const dom = new JSDOM('<div id="layout"><div id="explorer-tree"></div></div>')
+  global.document = dom.window.document
+  const tree = dom.window.document.getElementById('explorer-tree')
+  const listDirectory = async targetPath => {
+    if (targetPath === '/docs') {
+      return { entries: [{ type: 'dir', name: 'sub', path: '/docs/sub' }] }
+    }
+    if (targetPath === '/docs/sub') {
+      return { entries: [{ type: 'file', name: 'nested.md', path: '/docs/sub/nested.md' }] }
+    }
+    throw new Error(`unexpected listDirectory(${targetPath})`)
+  }
+  const controller = createExplorerController({
+    getRefs: () => ({ explorerTree: tree }),
+    api: { listDirectory },
+    load: () => {},
+    switchToExplorerTab: () => {},
+    showAppContextMenu: () => {},
+    revealInFinder: () => {},
+    onExplorerRootChanged: () => {},
+  })
+
+  await controller.loadDir('/docs', tree, 0)
+  controller.setActiveFilePath('/docs/sub/nested.md')
+  assert.equal(tree.querySelectorAll('.tree-item.active').length, 0, 'not visible yet: collapsed, v1 does not auto-expand')
+
+  const folderRow = tree.querySelector('.tree-row[data-path="/docs/sub"]')
+  folderRow.dispatchEvent(new dom.window.MouseEvent('click', { bubbles: true }))
+  await new Promise(resolve => setImmediate(resolve))
+
+  const active = tree.querySelectorAll('.tree-item.active')
+  assert.equal(active.length, 1, 'the newly-revealed row lights up without a separate setActiveFilePath call')
+  assert.equal(active[0].querySelector('.tree-row').dataset.path, '/docs/sub/nested.md')
+})

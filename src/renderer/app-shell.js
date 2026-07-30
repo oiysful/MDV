@@ -2,9 +2,12 @@
   // Splits a link href on its first `#` into a file-path part and a fragment part.
   // Used to strip URL fragments (`#heading`) off local link hrefs before they reach
   // resolveLocalPath, which otherwise treats the whole href — fragment included — as
-  // part of the file path. Always deterministic: the first `#` wins, so a filename
-  // that itself contains a literal `#` (e.g. `a#b.md`) with no trailing anchor is
-  // unaffected (fragment comes back empty only when there's no `#` at all).
+  // part of the file path. First-`#` is a deterministic policy, not a lossless one: a
+  // filename that itself contains a literal `#` with no anchor (`a#b.md`) still splits at
+  // that `#` (path: `a`, fragment: `b.md`), which breaks opening it as a local link. This
+  // is a known, accepted limitation (see the "리스크" section of
+  // docs/plans/05-local-link-anchor-fragment.md) — v1 scopes the fix to ordinary anchor
+  // links and leaves literal-`#` filenames unresolved rather than trying to disambiguate.
   function splitHrefFragment(href) {
     const hashIndex = href.indexOf('#')
     if (hashIndex === -1) return { path: href, fragment: '' }

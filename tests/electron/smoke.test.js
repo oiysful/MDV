@@ -2080,6 +2080,47 @@ test('clicking a local markdown link with a #anchor fragment still opens the tar
   }
 })
 
+// Code-review follow-up on docs/plans/05-local-link-anchor-fragment.md: splitHrefFragment's
+// first-`#` policy is deterministic but not lossless -- a filename that itself contains a
+// literal `#` with no trailing anchor now fails to open, because the `#` is read as an anchor
+// separator regardless of intent. This is a known, accepted limitation (see the plan's own
+// risk note), not a silent regression, so this test documents and pins that failure mode
+// rather than trying to fix it.
+test('clicking a local link whose filename contains a literal # fails to open (known limitation)', async () => {
+  const tempDir = await fs.mkdtemp(path.join(os.tmpdir(), 'mdv-smoke-links-hash-'))
+  const sourcePath = path.join(tempDir, 'source.md')
+  const hashedPath = path.join(tempDir, 'a#b.md')
+  await fs.writeFile(hashedPath, '# Hashed Target\n\nShould not be reachable via a link.\n', 'utf-8')
+  await fs.writeFile(sourcePath, '# Source Doc\n\n[open hashed](./a#b.md)\n', 'utf-8')
+
+  const { electronApp, page } = await launchApp()
+  try {
+    await page.waitForSelector('#empty')
+    await stubOpenDialog(electronApp, [sourcePath])
+    await emitRendererCommand(electronApp, 'openFile')
+    await page.waitForFunction(() => document.title === 'source')
+
+    let dialogMessage = null
+    page.on('dialog', async dialog => {
+      dialogMessage = dialog.message()
+      await dialog.dismiss()
+    })
+
+    await page.locator('#content a', { hasText: 'open hashed' }).click()
+    await page.waitForFunction(() => document.querySelectorAll('#tab-list .file-tab').length === 1)
+
+    assert.ok(dialogMessage, 'the split-at-first-# path must fail to resolve, not silently no-op')
+    assert.match(dialogMessage, /파일을 찾을 수 없습니다/)
+    // The failure signature pins *why* it fails: split on the first `#` leaves "a" as the
+    // path (dropping "b.md" as a discarded fragment), never the real "a#b.md" target.
+    assert.match(dialogMessage, /\/a$/, `expected the resolved path to end in bare "a", got: ${dialogMessage}`)
+    assert.equal(await page.locator('#tab-list .file-tab').count(), 1, 'no tab opens for the mis-split target')
+  } finally {
+    await closeApp(electronApp)
+    await fs.rm(tempDir, { recursive: true, force: true })
+  }
+})
+
 test('clicking a link to a missing local file shows a not-found error, not "not allowed"', async () => {
   const tempDir = await fs.mkdtemp(path.join(os.tmpdir(), 'mdv-smoke-links-'))
   const sourcePath = path.join(tempDir, 'source.md')

@@ -240,8 +240,13 @@
         const restore = focusedPath ? getVisibleTreeRows().find(r => r.dataset.path === focusedPath) : null
         if (restore) focusTreeRow(restore)
         else syncTreeRoving()
-        setActiveFilePath(currentActiveFilePath)
       }
+      // Re-applied on every render, not just the root: expanding a subfolder re-renders just
+      // that subtree (isRoot false) and can newly reveal the active tab's row, which should
+      // light up immediately rather than staying dark until the next unrelated root re-render.
+      // setActiveFilePath reads from getRefs().explorerTree (the whole tree), not `container`,
+      // so it's safe to call regardless of which depth just rendered.
+      setActiveFilePath(currentActiveFilePath)
     }
 
     function renderTreeEntry(entry, container, depth) {
