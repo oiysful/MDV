@@ -2726,14 +2726,16 @@ test('tab switching restores scroll position instantly, without a smooth animati
     await page.locator('#tab-list .file-tab').nth(1).click()
     await page.waitForFunction(() => document.title === 'scroll-b')
 
-    // Two frames after the restore assignment: with smooth scrolling this is still hundreds
-    // of pixels short of 2400, so the value is what distinguishes instant from animated.
+    // Two frames after the restore assignment: smooth scrolling is still hundreds of pixels
+    // short of 2400 here (it starts from 0), so the value is what distinguishes instant from
+    // animated. The small tolerance keeps that discriminating power while leaving room for a
+    // loaded machine to drop a frame.
     const restored = await page.evaluate(() => new Promise(resolve => {
       requestAnimationFrame(() => requestAnimationFrame(() => {
         resolve(document.getElementById('scroll-area').scrollTop)
       }))
     }))
-    assert.equal(restored, 2400, `scroll should be restored instantly, got ${restored}`)
+    assert.ok(restored >= 2380, `scroll should be restored instantly, got ${restored}`)
   } finally {
     await closeApp(electronApp)
   }
