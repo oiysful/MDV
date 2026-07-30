@@ -1,7 +1,7 @@
 # 개선 작업 요청
 
 ## 상태
-요청
+5/6 완료 (PR #5, 2026-07-30 main 머지) — 상세 진행은 [`docs/plans/README.md`](./plans/README.md) 참고. 분할모드 스크롤 경계 항목만 하드닝 적용 후 원인 판별 실험 대기 중([`docs/plans/04-split-view-scroll-boundary-latch.md`](./plans/04-split-view-scroll-boundary-latch.md)).
 
 ## 목록
 - 폴더 열기로 열고 탐색기에서 여러 문서를 열었을 때, 열어둔 문서로 탭 이동 시 탐색기에서 추적되지 않음.
