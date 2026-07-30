@@ -133,9 +133,11 @@
     // Detaches the in-flight sidebar-width transition listener from setSplitMode below, if
     // one is still pending. Toggling split mode twice within the .25s transition window
     // (index.html) replaces the running transition with a new one -- the browser fires
-    // transitioncancel for the superseded transition, not transitionend, so without this the
-    // first listener would never remove itself and one would accumulate on #sidebar per
-    // rapid toggle pair.
+    // transitioncancel for the superseded transition, not transitionend, so a stale listener
+    // from the first toggle would otherwise linger until the *next* completed transition and
+    // fire an extra, redundant refreshHeadingOffsets() alongside the live one. Detaching it
+    // up front keeps each transition to exactly one recompute instead of a growing pile of
+    // harmless-but-wasteful no-ops.
     let cancelPendingSidebarTransitionListener = null
 
     function getSourceMode() {

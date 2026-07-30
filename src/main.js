@@ -353,7 +353,10 @@ ipcMain.handle('open-external-url', async (_, url) => {
 // .svg is deliberately excluded: unlike the other raster formats, it can carry an
 // embedded <script> and shell.openPath would hand it to the OS default handler (typically
 // a browser) at a file:// origin. Local SVGs already render inertly in-app as data: URIs
-// via read-image-data-url, so dropping it from this list costs no functionality.
+// via read-image-data-url, so no *embedding* functionality is lost -- but a link
+// [icon](./icon.svg) now reveals in Finder instead of opening, which is the accepted
+// tradeoff (a link handing an active-content format to an external app is exactly what
+// this allowlist exists to stop).
 const OPENABLE_EXTENSIONS = [
   '.pdf', '.txt', '.csv',
   '.png', '.jpg', '.jpeg', '.gif', '.webp',
@@ -407,6 +410,9 @@ ipcMain.handle('open-local-path', async (_, targetPath) => {
       MARKDOWN_EXTENSIONS.includes(realExt)
     ) {
       const content = await fs.promises.readFile(realPath, 'utf-8')
+      // path is deliberately the symlink (targetPath), not realPath: it becomes the tab's
+      // identity for save/reveal/watch, and those should act on what the user actually
+      // clicked. Content alone comes from the resolved target.
       return { ok: true, kind: 'markdown', content, filename: path.basename(targetPath), path: targetPath }
     }
     if (!stat.isFile() || !realPath || !isOpenableTarget(targetPath, realPath)) {

@@ -807,11 +807,13 @@ test('entering split view force-closes the sidebar, disables its toggle, and res
 // Toggling split view twice within #sidebar's .25s width transition (index.html) supersedes
 // the running transition -- Chromium fires transitioncancel for it, not transitionend. The
 // listener setSplitMode (editor.js) attaches to recompute TOC offsets once the transition
-// settles must detach on transitioncancel too, or repeated rapid toggling accumulates one
-// stale listener per pair. This doesn't crash on its own, so the regression this guards is a
-// thrown error surfacing later (a leaked listener firing markdownController.refreshHeadingOffsets
-// against a stale closure) rather than an immediate assertion failure.
-test('rapid split-view toggling does not leak sidebar-transition listeners or throw', async () => {
+// settles must detach on transitioncancel too. Note on what this test can and can't catch: a
+// stale listener here is redundant, not unbounded -- every pending listener still matches the
+// *next* completed transition's transitionend and removes itself there, so this test (which
+// checks final state and absence of thrown errors, not an exact recompute count) cannot
+// distinguish the fixed code from the pre-fix one. It's kept as a basic stability check under
+// rapid, adversarial input; the leak fix itself is pinned by code review, not by this test.
+test('rapid split-view toggling settles into a consistent state without throwing', async () => {
   const { electronApp, page } = await launchApp()
   const pageErrors = []
   page.on('pageerror', error => pageErrors.push(String(error)))
@@ -1579,6 +1581,35 @@ test('shared context menu works for tab and explorer-root surfaces', async () =>
 
     await page.locator('#app-context-menu .ctx-item').filter({ hasText: '폴더 닫기' }).click()
     await page.waitForFunction(() => document.getElementById('btn-explorer-close').classList.contains('hidden'))
+  } finally {
+    await closeApp(electronApp)
+  }
+})
+
+// Code-review follow-up on docs/plans/02-toc-scrollspy-offset-bias.md: #content became its
+// own independent scroll container in split view, so hideAppContextMenu -- previously wired
+// to #scroll-area's scroll event only -- needs the same binding on #content, or an open
+// context menu stays put while the preview pane scrolls underneath it.
+test('scrolling the split-view preview pane dismisses an open context menu', async () => {
+  const { electronApp, page } = await launchApp()
+  const longBody = Array.from({ length: 80 }, (_, i) => `## Section ${i + 1}\n\nParagraph text for scroll height.`).join('\n\n')
+
+  try {
+    await page.waitForSelector('#empty')
+    await emitFileOpened(electronApp, { content: `# Doc\n\n${longBody}\n`, filename: 'ctx-split.md', path: '/tmp/mdv-ctx-split.md' })
+    await page.waitForFunction(() => document.title === 'ctx-split')
+
+    await emitRendererCommand(electronApp, 'toggleSplitView')
+    await page.waitForFunction(() => document.getElementById('scroll-area').classList.contains('split-mode'))
+
+    await page.locator('#tab-list .file-tab.active').click({ button: 'right' })
+    await page.waitForFunction(() => {
+      const menu = document.getElementById('app-context-menu')
+      return menu && menu.style.display === 'block'
+    })
+
+    await page.evaluate(() => { document.getElementById('content').scrollTop = 400 })
+    await page.waitForFunction(() => document.getElementById('app-context-menu').style.display !== 'block')
   } finally {
     await closeApp(electronApp)
   }

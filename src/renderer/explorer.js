@@ -35,8 +35,8 @@
 
     // Tab -> explorer sync (openFileRow below already covers the explorer -> tab direction:
     // clicking a file row opens it and highlights that row immediately). Remembers the active
-    // path so it survives tree re-renders (loadDir's root branch re-applies it after every
-    // rebuild), and clears the highlight rather than reaching for it when the row isn't visible
+    // path so it survives tree re-renders (loadDir re-applies it at the end of every render,
+    // root or subtree), and clears the highlight rather than reaching for it when the row isn't visible
     // (e.g. inside a collapsed folder) — v1 deliberately doesn't auto-expand to reveal it.
     function setActiveFilePath(path) {
       currentActiveFilePath = path
@@ -211,7 +211,7 @@
       currentExplorerRoot = root
       explorerShowFullPath = false
       syncExplorerHeader()
-      // loadDir's own isRoot branch re-applies currentActiveFilePath after rendering.
+      // loadDir re-applies currentActiveFilePath at the end of every render, this one included.
       await loadDir(root, getRefs().explorerTree, 0)
     }
 
