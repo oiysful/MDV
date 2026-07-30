@@ -606,10 +606,14 @@ mark.search-hl.current {
 /* ════════════════════════════════════════
    Main scroll area
 ════════════════════════════════════════ */
+/* No scroll-behavior here: `scrollTop = n` scrolls with behavior 'auto', which follows the
+   computed scroll-behavior — so a global `smooth` animated every tab-restore assignment
+   (workspace.js#restoreTabState) across the whole distance between the two tabs. The three
+   intentionally smooth scrolls (go-top button, TOC click, search jump) pass behavior
+   explicitly and are unaffected. */
 #scroll-area {
   flex: 1; min-height: 0; overflow-y: auto;
   padding: 22px 52px 80px;
-  scroll-behavior: smooth;
 }
 #scroll-area.source-mode { padding: 0; }
 #scroll-area.split-mode {

@@ -2047,6 +2047,39 @@ test('clicking a local markdown link opens the target as a new tab', async () =>
   }
 })
 
+// docs/plans/05-local-link-anchor-fragment.md: a link with a URL fragment
+// (`./target.md#some-heading`) used to fail with "file not found" because the raw href,
+// hash included, was handed to resolveLocalPath as if it were part of the file path.
+test('clicking a local markdown link with a #anchor fragment still opens the target file', async () => {
+  const tempDir = await fs.mkdtemp(path.join(os.tmpdir(), 'mdv-smoke-links-'))
+  const sourcePath = path.join(tempDir, 'source.md')
+  const targetPath = path.join(tempDir, 'target-anchor.md')
+  await fs.writeFile(targetPath, '# Anchor Target\n\nOpened via anchored link.\n', 'utf-8')
+  await fs.writeFile(
+    sourcePath,
+    '# Source Doc\n\n[open anchored](./target-anchor.md#some-heading)\n',
+    'utf-8',
+  )
+
+  const { electronApp, page } = await launchApp()
+  try {
+    await page.waitForSelector('#empty')
+    await stubOpenDialog(electronApp, [sourcePath])
+    await emitRendererCommand(electronApp, 'openFile')
+    await page.waitForFunction(() => document.title === 'source')
+
+    await page.locator('#content a', { hasText: 'open anchored' }).click()
+    await page.waitForFunction(() => {
+      const active = document.querySelector('#tab-list .file-tab.active .file-tab-name')
+      return document.querySelectorAll('#tab-list .file-tab').length === 2 && active && active.textContent.includes('target-anchor.md')
+    })
+    assert.match(await page.textContent('#content'), /Opened via anchored link\./)
+  } finally {
+    await closeApp(electronApp)
+    await fs.rm(tempDir, { recursive: true, force: true })
+  }
+})
+
 test('clicking a link to a missing local file shows a not-found error, not "not allowed"', async () => {
   const tempDir = await fs.mkdtemp(path.join(os.tmpdir(), 'mdv-smoke-links-'))
   const sourcePath = path.join(tempDir, 'source.md')
@@ -2660,6 +2693,81 @@ test('setWindowOpenHandler forwards only http(s) targets to the OS', async () =>
 
     const urls = await getOpenExternalCalls(electronApp)
     assert.deepEqual(urls, ['https://example.com/ok'], `only http(s) may be forwarded, got ${JSON.stringify(urls)}`)
+  } finally {
+    await closeApp(electronApp)
+  }
+})
+
+// docs/plans/03-tab-switch-scroll-animation.md: `#scroll-area` carried a global
+// scroll-behavior: smooth, and `scrollTop = n` scrolls with behavior 'auto' — which follows
+// that computed value. So every tab restore animated across the full distance between the
+// two tabs' offsets. Restore must land in the same frame it is assigned.
+test('tab switching restores scroll position instantly, without a smooth animation', async () => {
+  const { electronApp, page } = await launchApp()
+  const longBody = Array.from({ length: 120 }, (_, index) => `## Section ${index + 1}\n\nParagraph ${index + 1}.`).join('\n\n')
+
+  try {
+    await page.waitForSelector('#empty')
+    await emitFileOpened(electronApp, { content: `# A\n\n${longBody}\n`, filename: 'scroll-a.md', path: '/tmp/mdv-scroll-a.md' })
+    await page.waitForFunction(() => document.title === 'scroll-a')
+    await emitFileOpened(electronApp, { content: `# B\n\n${longBody}\n`, filename: 'scroll-b.md', path: '/tmp/mdv-scroll-b.md' })
+    await page.waitForFunction(() => document.title === 'scroll-b')
+
+    // The CSS property itself: an absolute scrollTop assignment must not animate.
+    const behavior = await page.evaluate(() => getComputedStyle(document.getElementById('scroll-area')).scrollBehavior)
+    assert.equal(behavior, 'auto', '#scroll-area must not declare scroll-behavior: smooth')
+
+    // Park tab B deep in the document, then leave and come back.
+    await page.evaluate(() => { document.getElementById('scroll-area').scrollTop = 2400 })
+    await page.waitForFunction(() => document.getElementById('scroll-area').scrollTop === 2400)
+
+    await page.locator('#tab-list .file-tab').first().click()
+    await page.waitForFunction(() => document.title === 'scroll-a')
+    await page.locator('#tab-list .file-tab').nth(1).click()
+    await page.waitForFunction(() => document.title === 'scroll-b')
+
+    // Two frames after the restore assignment: with smooth scrolling this is still hundreds
+    // of pixels short of 2400, so the value is what distinguishes instant from animated.
+    const restored = await page.evaluate(() => new Promise(resolve => {
+      requestAnimationFrame(() => requestAnimationFrame(() => {
+        resolve(document.getElementById('scroll-area').scrollTop)
+      }))
+    }))
+    assert.equal(restored, 2400, `scroll should be restored instantly, got ${restored}`)
+  } finally {
+    await closeApp(electronApp)
+  }
+})
+
+// Same plan, cause B: a new tab reuses the one scroll container, so opening a document while
+// the previous tab was scrolled down used to show the new document already scrolled.
+test('opening a new document starts at the top instead of inheriting the previous scroll', async () => {
+  const { electronApp, page } = await launchApp()
+  const longBody = Array.from({ length: 120 }, (_, index) => `## Section ${index + 1}\n\nParagraph ${index + 1}.`).join('\n\n')
+
+  try {
+    await page.waitForSelector('#empty')
+    await emitFileOpened(electronApp, { content: `# First\n\n${longBody}\n`, filename: 'first.md', path: '/tmp/mdv-first.md' })
+    await page.waitForFunction(() => document.title === 'first')
+
+    await page.evaluate(() => { document.getElementById('scroll-area').scrollTop = 1800 })
+    await page.waitForFunction(() => document.getElementById('scroll-area').scrollTop === 1800)
+
+    await emitFileOpened(electronApp, { content: `# Second\n\n${longBody}\n`, filename: 'second.md', path: '/tmp/mdv-second.md' })
+    await page.waitForFunction(() => document.title === 'second')
+
+    const offsets = await page.evaluate(() => ({
+      scrollArea: document.getElementById('scroll-area').scrollTop,
+      content: document.getElementById('content').scrollTop,
+    }))
+    assert.equal(offsets.scrollArea, 0, `a new tab must open at the top, got ${offsets.scrollArea}`)
+    assert.equal(offsets.content, 0, `the preview pane must open at the top, got ${offsets.content}`)
+
+    // The tab left behind still remembers where it was — this fix must not flatten restore.
+    await page.locator('#tab-list .file-tab').first().click()
+    await page.waitForFunction(() => document.title === 'first')
+    const restored = await page.evaluate(() => document.getElementById('scroll-area').scrollTop)
+    assert.equal(restored, 1800, `the previous tab keeps its own offset, got ${restored}`)
   } finally {
     await closeApp(electronApp)
   }
