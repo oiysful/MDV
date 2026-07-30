@@ -91,6 +91,24 @@ async function getOpenExternalCalls(electronApp) {
   return electronApp.evaluate(() => globalThis.__openExternalCalls ?? [])
 }
 
+// Same trick as stubOpenExternal, for the two sinks open-local-path can reach: a test can
+// then assert *which* one a given target was routed to without the OS launching anything.
+async function stubShellTargets(electronApp) {
+  await electronApp.evaluate(({ shell }) => {
+    globalThis.__openPathCalls = []
+    globalThis.__showItemCalls = []
+    shell.openPath = async (target) => { globalThis.__openPathCalls.push(target); return '' }
+    shell.showItemInFolder = (target) => { globalThis.__showItemCalls.push(target) }
+  })
+}
+
+async function getShellTargetCalls(electronApp) {
+  return electronApp.evaluate(() => ({
+    openPath: globalThis.__openPathCalls ?? [],
+    showItem: globalThis.__showItemCalls ?? [],
+  }))
+}
+
 async function createTempMarkdown(sourcePath, name) {
   const tempDir = await fs.mkdtemp(path.join(os.tmpdir(), 'mdv-smoke-'))
   const targetPath = path.join(tempDir, name)
@@ -781,6 +799,46 @@ test('entering split view force-closes the sidebar, disables its toggle, and res
     await emitRendererCommand(electronApp, 'toggleSplitView')
     await page.waitForFunction(() => !document.getElementById('scroll-area').classList.contains('split-mode'))
     assert.deepEqual(await sidebarState(), { closed: false, toggleDisabled: false })
+  } finally {
+    await closeApp(electronApp)
+  }
+})
+
+// Toggling split view twice within #sidebar's .25s width transition (index.html) supersedes
+// the running transition -- Chromium fires transitioncancel for it, not transitionend. The
+// listener setSplitMode (editor.js) attaches to recompute TOC offsets once the transition
+// settles must detach on transitioncancel too. Note on what this test can and can't catch: a
+// stale listener here is redundant, not unbounded -- every pending listener still matches the
+// *next* completed transition's transitionend and removes itself there, so this test (which
+// checks final state and absence of thrown errors, not an exact recompute count) cannot
+// distinguish the fixed code from the pre-fix one. It's kept as a basic stability check under
+// rapid, adversarial input; the leak fix itself is pinned by code review, not by this test.
+test('rapid split-view toggling settles into a consistent state without throwing', async () => {
+  const { electronApp, page } = await launchApp()
+  const pageErrors = []
+  page.on('pageerror', error => pageErrors.push(String(error)))
+
+  try {
+    await page.waitForSelector('#empty')
+    await stubOpenDialog(electronApp, [BASIC_MD])
+    await emitRendererCommand(electronApp, 'openFile')
+    await page.waitForFunction(() => document.title === 'basic')
+
+    for (let i = 0; i < 6; i++) {
+      await emitRendererCommand(electronApp, 'toggleSplitView')
+      await page.waitForTimeout(30) // well inside the .25s sidebar transition
+    }
+
+    // Let whichever transition is still running settle, then confirm the app landed in a
+    // consistent final state rather than something corrupted by overlapping listeners.
+    await page.waitForTimeout(400)
+    const finalState = await page.evaluate(() => ({
+      splitMode: document.getElementById('scroll-area').classList.contains('split-mode'),
+      sidebarClosed: document.getElementById('sidebar').classList.contains('closed'),
+    }))
+    assert.equal(finalState.splitMode, false, '6 toggles (even count) should land back in normal mode')
+    assert.equal(finalState.sidebarClosed, false, 'the sidebar should be restored, not left forced-closed')
+    assert.deepEqual(pageErrors, [], 'no renderer error should surface from a leaked/stale listener')
   } finally {
     await closeApp(electronApp)
   }
@@ -1528,6 +1586,35 @@ test('shared context menu works for tab and explorer-root surfaces', async () =>
   }
 })
 
+// Code-review follow-up on docs/plans/done/2026-07-30/02-toc-scrollspy-offset-bias.md: #content became its
+// own independent scroll container in split view, so hideAppContextMenu -- previously wired
+// to #scroll-area's scroll event only -- needs the same binding on #content, or an open
+// context menu stays put while the preview pane scrolls underneath it.
+test('scrolling the split-view preview pane dismisses an open context menu', async () => {
+  const { electronApp, page } = await launchApp()
+  const longBody = Array.from({ length: 80 }, (_, i) => `## Section ${i + 1}\n\nParagraph text for scroll height.`).join('\n\n')
+
+  try {
+    await page.waitForSelector('#empty')
+    await emitFileOpened(electronApp, { content: `# Doc\n\n${longBody}\n`, filename: 'ctx-split.md', path: '/tmp/mdv-ctx-split.md' })
+    await page.waitForFunction(() => document.title === 'ctx-split')
+
+    await emitRendererCommand(electronApp, 'toggleSplitView')
+    await page.waitForFunction(() => document.getElementById('scroll-area').classList.contains('split-mode'))
+
+    await page.locator('#tab-list .file-tab.active').click({ button: 'right' })
+    await page.waitForFunction(() => {
+      const menu = document.getElementById('app-context-menu')
+      return menu && menu.style.display === 'block'
+    })
+
+    await page.evaluate(() => { document.getElementById('content').scrollTop = 400 })
+    await page.waitForFunction(() => document.getElementById('app-context-menu').style.display !== 'block')
+  } finally {
+    await closeApp(electronApp)
+  }
+})
+
 test('shell actions keep add-menu and drag-drop behavior working', async () => {
   const { electronApp, page } = await launchApp()
 
@@ -2029,6 +2116,80 @@ test('clicking a local markdown link opens the target as a new tab', async () =>
   }
 })
 
+// docs/plans/done/2026-07-30/05-local-link-anchor-fragment.md: a link with a URL fragment
+// (`./target.md#some-heading`) used to fail with "file not found" because the raw href,
+// hash included, was handed to resolveLocalPath as if it were part of the file path.
+test('clicking a local markdown link with a #anchor fragment still opens the target file', async () => {
+  const tempDir = await fs.mkdtemp(path.join(os.tmpdir(), 'mdv-smoke-links-'))
+  const sourcePath = path.join(tempDir, 'source.md')
+  const targetPath = path.join(tempDir, 'target-anchor.md')
+  await fs.writeFile(targetPath, '# Anchor Target\n\nOpened via anchored link.\n', 'utf-8')
+  await fs.writeFile(
+    sourcePath,
+    '# Source Doc\n\n[open anchored](./target-anchor.md#some-heading)\n',
+    'utf-8',
+  )
+
+  const { electronApp, page } = await launchApp()
+  try {
+    await page.waitForSelector('#empty')
+    await stubOpenDialog(electronApp, [sourcePath])
+    await emitRendererCommand(electronApp, 'openFile')
+    await page.waitForFunction(() => document.title === 'source')
+
+    await page.locator('#content a', { hasText: 'open anchored' }).click()
+    await page.waitForFunction(() => {
+      const active = document.querySelector('#tab-list .file-tab.active .file-tab-name')
+      return document.querySelectorAll('#tab-list .file-tab').length === 2 && active && active.textContent.includes('target-anchor.md')
+    })
+    assert.match(await page.textContent('#content'), /Opened via anchored link\./)
+  } finally {
+    await closeApp(electronApp)
+    await fs.rm(tempDir, { recursive: true, force: true })
+  }
+})
+
+// Code-review follow-up on docs/plans/done/2026-07-30/05-local-link-anchor-fragment.md: splitHrefFragment's
+// first-`#` policy is deterministic but not lossless -- a filename that itself contains a
+// literal `#` with no trailing anchor now fails to open, because the `#` is read as an anchor
+// separator regardless of intent. This is a known, accepted limitation (see the plan's own
+// risk note), not a silent regression, so this test documents and pins that failure mode
+// rather than trying to fix it.
+test('clicking a local link whose filename contains a literal # fails to open (known limitation)', async () => {
+  const tempDir = await fs.mkdtemp(path.join(os.tmpdir(), 'mdv-smoke-links-hash-'))
+  const sourcePath = path.join(tempDir, 'source.md')
+  const hashedPath = path.join(tempDir, 'a#b.md')
+  await fs.writeFile(hashedPath, '# Hashed Target\n\nShould not be reachable via a link.\n', 'utf-8')
+  await fs.writeFile(sourcePath, '# Source Doc\n\n[open hashed](./a#b.md)\n', 'utf-8')
+
+  const { electronApp, page } = await launchApp()
+  try {
+    await page.waitForSelector('#empty')
+    await stubOpenDialog(electronApp, [sourcePath])
+    await emitRendererCommand(electronApp, 'openFile')
+    await page.waitForFunction(() => document.title === 'source')
+
+    let dialogMessage = null
+    page.on('dialog', async dialog => {
+      dialogMessage = dialog.message()
+      await dialog.dismiss()
+    })
+
+    await page.locator('#content a', { hasText: 'open hashed' }).click()
+    await page.waitForFunction(() => document.querySelectorAll('#tab-list .file-tab').length === 1)
+
+    assert.ok(dialogMessage, 'the split-at-first-# path must fail to resolve, not silently no-op')
+    assert.match(dialogMessage, /파일을 찾을 수 없습니다/)
+    // The failure signature pins *why* it fails: split on the first `#` leaves "a" as the
+    // path (dropping "b.md" as a discarded fragment), never the real "a#b.md" target.
+    assert.match(dialogMessage, /\/a$/, `expected the resolved path to end in bare "a", got: ${dialogMessage}`)
+    assert.equal(await page.locator('#tab-list .file-tab').count(), 1, 'no tab opens for the mis-split target')
+  } finally {
+    await closeApp(electronApp)
+    await fs.rm(tempDir, { recursive: true, force: true })
+  }
+})
+
 test('clicking a link to a missing local file shows a not-found error, not "not allowed"', async () => {
   const tempDir = await fs.mkdtemp(path.join(os.tmpdir(), 'mdv-smoke-links-'))
   const sourcePath = path.join(tempDir, 'source.md')
@@ -2086,6 +2247,127 @@ test('clicking an https link still opens externally without opening a tab', asyn
     assert.deepEqual(calls, ['https://example.com/page'])
     // The external link must not have spawned a document tab.
     assert.equal(await page.locator('#tab-list .file-tab').count(), 1)
+  } finally {
+    await closeApp(electronApp)
+    await fs.rm(tempDir, { recursive: true, force: true })
+  }
+})
+
+// docs/plans/done/2026-07-30/02-toc-scrollspy-offset-bias.md: cachedHeadings.top used to be cached
+// relative to document.body while the scrollspy comparison used #scroll-area-relative
+// scrollTop, so the active highlight always lagged the true scroll position -- most
+// visibly, clicking a TOC item left the *previous* item highlighted instead of the one
+// just clicked. jsdom's offsetTop is always 0, so this can only be verified against a
+// real layout engine here, not in the unit suite.
+test('TOC scrollspy activates the clicked heading itself, and tracks the heading nearest the top while scrolling', async () => {
+  const tempDir = await fs.mkdtemp(path.join(os.tmpdir(), 'mdv-smoke-toc-'))
+  const docPath = path.join(tempDir, 'toc.md')
+  const sections = Array.from({ length: 12 }, (_, i) => `## Section ${i + 1}\n\n${'Paragraph text for scroll height. '.repeat(40)}`).join('\n\n')
+  await fs.writeFile(docPath, `# TOC Doc\n\n${sections}\n`, 'utf-8')
+
+  const { electronApp, page } = await launchApp()
+  try {
+    await page.waitForSelector('#empty')
+    await stubOpenDialog(electronApp, [docPath])
+    await emitRendererCommand(electronApp, 'openFile')
+    await page.waitForFunction(() => document.title === 'toc')
+
+    // The TOC sidebar tab is active by default (index.html #sidebar-tabs data-active="toc").
+    await page.waitForFunction(() => document.querySelectorAll('#toc-list a').length === 13)
+
+    // Click a mid-list item (not the first, so a "stuck on the previous item" regression
+    // is actually observable) and confirm the clicked item itself ends up active.
+    const targetLink = page.locator('#toc-list a').nth(6) // Section 6
+    const targetHref = await targetLink.getAttribute('href')
+    assert.match(targetHref, /^#h\d+$/)
+    await targetLink.click()
+    await page.waitForFunction(
+      href => document.querySelector('#toc-list a.active')?.getAttribute('href') === href,
+      targetHref,
+    )
+    assert.equal(await page.locator('#toc-list a.active').getAttribute('href'), targetHref)
+
+    // Programmatic scroll, independent of the click/scrollIntoView path: jump just past
+    // a later heading's cached top and confirm the highlight follows it, not the one before.
+    // A synthetic resize forces refreshHeadingOffsets() to recompute cachedHeadings from
+    // the current live layout right before reading it here, so this isn't racing whatever
+    // reflow (font swap, async highlight.js pass) may have shifted offsets since buildToc()
+    // ran at open time.
+    await page.evaluate(() => window.dispatchEvent(new Event('resize')))
+    const expectedHref = await page.evaluate(() => {
+      const heading = document.querySelectorAll('#content h2')[8] // Section 9
+      const scrollArea = document.getElementById('scroll-area')
+      // +15: past the fixed formula's -24px lead (so the fixed code activates this
+      // heading), but inside the old buggy formula's ~43px "still shows the previous
+      // item" window (verified empirically against the pre-fix code) -- this margin
+      // genuinely exercises the offset fix rather than just landing deep inside the
+      // section where both formulas would agree.
+      scrollArea.scrollTop = heading.offsetTop - scrollArea.offsetTop + 15
+      return `#${heading.id}`
+    })
+    await page.waitForFunction(
+      href => document.querySelector('#toc-list a.active')?.getAttribute('href') === href,
+      expectedHref,
+    )
+  } finally {
+    await closeApp(electronApp)
+    await fs.rm(tempDir, { recursive: true, force: true })
+  }
+})
+
+// Cause B from the same plan doc: in split view #scroll-area itself stops scrolling
+// (overflow: hidden), so scrollspy needs a listener on #content, the pane that actually
+// scrolls there -- otherwise the TOC highlight never updates while split view is open.
+test('TOC scrollspy keeps updating from the #content pane while split view is open', async () => {
+  const tempDir = await fs.mkdtemp(path.join(os.tmpdir(), 'mdv-smoke-toc-'))
+  const docPath = path.join(tempDir, 'toc-split.md')
+  const sections = Array.from({ length: 12 }, (_, i) => `## Section ${i + 1}\n\n${'Paragraph text for scroll height. '.repeat(40)}`).join('\n\n')
+  await fs.writeFile(docPath, `# TOC Split Doc\n\n${sections}\n`, 'utf-8')
+
+  const { electronApp, page } = await launchApp()
+  try {
+    await page.waitForSelector('#empty')
+    await stubOpenDialog(electronApp, [docPath])
+    await emitRendererCommand(electronApp, 'openFile')
+    await page.waitForFunction(() => document.title === 'toc-split')
+
+    // Entering split view force-closes #sidebar, whose width transition (index.html, .25s)
+    // keeps reflowing #content's available width for the whole span -- wait for it to
+    // finish (same event the production refreshHeadingOffsets() re-run listens for) before
+    // reading layout, same as a real user would before scrolling.
+    await page.evaluate(() => {
+      window.__mdvSidebarTransitionDone = false
+      const sidebar = document.getElementById('sidebar')
+      const onEnd = event => {
+        if (event.propertyName !== 'width') return
+        sidebar.removeEventListener('transitionend', onEnd)
+        window.__mdvSidebarTransitionDone = true
+      }
+      sidebar.addEventListener('transitionend', onEnd)
+    })
+    await emitRendererCommand(electronApp, 'toggleSplitView')
+    await page.waitForFunction(() => document.getElementById('scroll-area').classList.contains('split-mode'))
+    await page.waitForFunction(() => window.__mdvSidebarTransitionDone === true)
+
+    // No synthetic resize here (unlike the normal-mode test above): entering split view
+    // reflows #content to a different width, so toggleSplitView's own applySourceMode()
+    // must recompute cachedHeadings itself (via markdownController.refreshHeadingOffsets(),
+    // re-run once more on the sidebar's transitionend) -- a resize event would recompute it
+    // for us and mask a regression in that wiring.
+    const expectedHref = await page.evaluate(() => {
+      const content = document.getElementById('content')
+      const scrollArea = document.getElementById('scroll-area')
+      const heading = content.querySelectorAll('h2')[8] // Section 9
+      // cachedHeadings.top is anchored to #scroll-area.offsetTop regardless of mode (see
+      // markdown.js buildToc), so the target uses that same base even though #content is
+      // the element actually being scrolled here.
+      content.scrollTop = heading.offsetTop - scrollArea.offsetTop + 15
+      return `#${heading.id}`
+    })
+    await page.waitForFunction(
+      href => document.querySelector('#toc-list a.active')?.getAttribute('href') === href,
+      expectedHref,
+    )
   } finally {
     await closeApp(electronApp)
     await fs.rm(tempDir, { recursive: true, force: true })
@@ -2577,5 +2859,188 @@ test('opening a file and saving-as both register the path as a recent document',
   } finally {
     await closeApp(electronApp)
     await cleanup()
+  }
+})
+
+// HIGH-1 in docs/plans/done/2026-07-30/06-security-hardening-audit-2026-07-22.md: a link in an untrusted
+// markdown document used to reach shell.openPath for *any* extension, so one click on
+// [Setup](./setup.command) ran local code. Only the document/image/office allowlist may be
+// opened; everything else — executables, unknown types, directories (macOS .app bundles are
+// directories), and symlinks whose real target is outside the list — is revealed in Finder.
+test('open-local-path opens only allowlisted file types and reveals everything else', async () => {
+  const tempDir = await fs.mkdtemp(path.join(os.tmpdir(), 'mdv-openlocal-'))
+  const allowed = path.join(tempDir, 'report.pdf')
+  const executable = path.join(tempDir, 'setup.command')
+  const unknown = path.join(tempDir, 'archive.zip')
+  const subdir = path.join(tempDir, 'attachments')
+  const disguised = path.join(tempDir, 'notes.pdf') // symlink → setup.command
+  // Security-review follow-up: .svg is deliberately excluded from OPENABLE_EXTENSIONS
+  // (unlike the other image formats) because it can carry an embedded <script> that would
+  // run in whatever app shell.openPath hands it to. Pinned here so re-adding it to the
+  // allowlist fails a test instead of silently reopening that gap.
+  const svg = path.join(tempDir, 'icon.svg')
+  await fs.writeFile(allowed, '%PDF-1.4\n')
+  await fs.writeFile(executable, '#!/bin/sh\necho pwned\n')
+  await fs.writeFile(unknown, 'zip')
+  await fs.mkdir(subdir)
+  await fs.symlink(executable, disguised)
+  await fs.writeFile(svg, '<svg xmlns="http://www.w3.org/2000/svg"><script>alert(1)</script></svg>\n')
+
+  const { electronApp, page } = await launchApp()
+
+  try {
+    await page.waitForSelector('#empty')
+    await stubShellTargets(electronApp)
+
+    const openLocal = target => page.evaluate(p => window.api.openLocalPath(p), target)
+
+    const allowedRes = await openLocal(allowed)
+    assert.equal(allowedRes.kind, 'external', 'an allowlisted .pdf is handed to the OS')
+
+    for (const [target, label] of [[executable, '.command'], [unknown, '.zip'], [subdir, 'directory'], [disguised, 'symlinked .command'], [svg, '.svg']]) {
+      const res = await openLocal(target)
+      assert.equal(res.kind, 'revealed', `${label} must be revealed, not opened`)
+    }
+
+    // shell.openPath is now handed the realpath (check-then-use fix), which on macOS
+    // canonicalizes /var/folders/... to /private/var/folders/... — resolve the same way here.
+    const allowedRealPath = await fs.realpath(allowed)
+    const calls = await getShellTargetCalls(electronApp)
+    assert.deepEqual(calls.openPath, [allowedRealPath], `only the .pdf may reach openPath, got ${JSON.stringify(calls.openPath)}`)
+    assert.deepEqual(calls.showItem, [executable, unknown, subdir, disguised, svg])
+  } finally {
+    await closeApp(electronApp)
+    await fs.rm(tempDir, { recursive: true, force: true })
+  }
+})
+
+// Security-review follow-up on HIGH-1: the markdown branch used to check only the link's
+// own extension, so a symlink named notes.md pointing at an arbitrary non-markdown file
+// (e.g. a credential) would still be read and handed to the renderer as tab content. Both
+// the link name and its realpath must end in a markdown extension.
+test('open-local-path refuses to read a markdown-named symlink whose real target is not markdown', async () => {
+  const tempDir = await fs.mkdtemp(path.join(os.tmpdir(), 'mdv-openlocal-mdlink-'))
+  const secret = path.join(tempDir, 'secret.txt')
+  const disguised = path.join(tempDir, 'notes.md') // symlink → secret.txt
+  await fs.writeFile(secret, 'super-secret-value\n')
+  await fs.symlink(secret, disguised)
+
+  const { electronApp, page } = await launchApp()
+
+  try {
+    await page.waitForSelector('#empty')
+    await stubShellTargets(electronApp)
+
+    const res = await page.evaluate(p => window.api.openLocalPath(p), disguised)
+    assert.equal(res.kind, 'revealed', 'a .md-named symlink to a non-markdown target must be revealed, not read')
+    assert.equal(res.content, undefined, 'file content must never be returned for a rejected target')
+
+    const calls = await getShellTargetCalls(electronApp)
+    assert.deepEqual(calls.showItem, [disguised])
+    assert.deepEqual(calls.openPath, [])
+  } finally {
+    await closeApp(electronApp)
+    await fs.rm(tempDir, { recursive: true, force: true })
+  }
+})
+
+// LOW-4: window.open() targets bypass the content link handler, so the window-open handler
+// needs the same ^https?:// whitelist as open-external-url — a file:/// or custom-scheme
+// target must be dropped, not handed to the OS.
+test('setWindowOpenHandler forwards only http(s) targets to the OS', async () => {
+  const { electronApp, page } = await launchApp()
+
+  try {
+    await page.waitForSelector('#empty')
+    await stubOpenExternal(electronApp)
+
+    await page.evaluate(() => {
+      window.open('https://example.com/ok', '_blank')
+      window.open('file:///etc/passwd', '_blank')
+      window.open('mdv-evil://payload', '_blank')
+    })
+    await page.waitForTimeout(200)
+
+    const urls = await getOpenExternalCalls(electronApp)
+    assert.deepEqual(urls, ['https://example.com/ok'], `only http(s) may be forwarded, got ${JSON.stringify(urls)}`)
+  } finally {
+    await closeApp(electronApp)
+  }
+})
+
+// docs/plans/done/2026-07-30/03-tab-switch-scroll-animation.md: `#scroll-area` carried a global
+// scroll-behavior: smooth, and `scrollTop = n` scrolls with behavior 'auto' — which follows
+// that computed value. So every tab restore animated across the full distance between the
+// two tabs' offsets. Restore must land in the same frame it is assigned.
+test('tab switching restores scroll position instantly, without a smooth animation', async () => {
+  const { electronApp, page } = await launchApp()
+  const longBody = Array.from({ length: 120 }, (_, index) => `## Section ${index + 1}\n\nParagraph ${index + 1}.`).join('\n\n')
+
+  try {
+    await page.waitForSelector('#empty')
+    await emitFileOpened(electronApp, { content: `# A\n\n${longBody}\n`, filename: 'scroll-a.md', path: '/tmp/mdv-scroll-a.md' })
+    await page.waitForFunction(() => document.title === 'scroll-a')
+    await emitFileOpened(electronApp, { content: `# B\n\n${longBody}\n`, filename: 'scroll-b.md', path: '/tmp/mdv-scroll-b.md' })
+    await page.waitForFunction(() => document.title === 'scroll-b')
+
+    // The CSS property itself: an absolute scrollTop assignment must not animate.
+    const behavior = await page.evaluate(() => getComputedStyle(document.getElementById('scroll-area')).scrollBehavior)
+    assert.equal(behavior, 'auto', '#scroll-area must not declare scroll-behavior: smooth')
+
+    // Park tab B deep in the document, then leave and come back.
+    await page.evaluate(() => { document.getElementById('scroll-area').scrollTop = 2400 })
+    await page.waitForFunction(() => document.getElementById('scroll-area').scrollTop === 2400)
+
+    await page.locator('#tab-list .file-tab').first().click()
+    await page.waitForFunction(() => document.title === 'scroll-a')
+    await page.locator('#tab-list .file-tab').nth(1).click()
+    await page.waitForFunction(() => document.title === 'scroll-b')
+
+    // Two frames after the restore assignment: smooth scrolling is still hundreds of pixels
+    // short of 2400 here (it starts from 0), so the value is what distinguishes instant from
+    // animated. The small tolerance keeps that discriminating power while leaving room for a
+    // loaded machine to drop a frame.
+    const restored = await page.evaluate(() => new Promise(resolve => {
+      requestAnimationFrame(() => requestAnimationFrame(() => {
+        resolve(document.getElementById('scroll-area').scrollTop)
+      }))
+    }))
+    assert.ok(restored >= 2380, `scroll should be restored instantly, got ${restored}`)
+  } finally {
+    await closeApp(electronApp)
+  }
+})
+
+// Same plan, cause B: a new tab reuses the one scroll container, so opening a document while
+// the previous tab was scrolled down used to show the new document already scrolled.
+test('opening a new document starts at the top instead of inheriting the previous scroll', async () => {
+  const { electronApp, page } = await launchApp()
+  const longBody = Array.from({ length: 120 }, (_, index) => `## Section ${index + 1}\n\nParagraph ${index + 1}.`).join('\n\n')
+
+  try {
+    await page.waitForSelector('#empty')
+    await emitFileOpened(electronApp, { content: `# First\n\n${longBody}\n`, filename: 'first.md', path: '/tmp/mdv-first.md' })
+    await page.waitForFunction(() => document.title === 'first')
+
+    await page.evaluate(() => { document.getElementById('scroll-area').scrollTop = 1800 })
+    await page.waitForFunction(() => document.getElementById('scroll-area').scrollTop === 1800)
+
+    await emitFileOpened(electronApp, { content: `# Second\n\n${longBody}\n`, filename: 'second.md', path: '/tmp/mdv-second.md' })
+    await page.waitForFunction(() => document.title === 'second')
+
+    const offsets = await page.evaluate(() => ({
+      scrollArea: document.getElementById('scroll-area').scrollTop,
+      content: document.getElementById('content').scrollTop,
+    }))
+    assert.equal(offsets.scrollArea, 0, `a new tab must open at the top, got ${offsets.scrollArea}`)
+    assert.equal(offsets.content, 0, `the preview pane must open at the top, got ${offsets.content}`)
+
+    // The tab left behind still remembers where it was — this fix must not flatten restore.
+    await page.locator('#tab-list .file-tab').first().click()
+    await page.waitForFunction(() => document.title === 'first')
+    const restored = await page.evaluate(() => document.getElementById('scroll-area').scrollTop)
+    assert.equal(restored, 1800, `the previous tab keeps its own offset, got ${restored}`)
+  } finally {
+    await closeApp(electronApp)
   }
 })

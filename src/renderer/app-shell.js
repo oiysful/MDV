@@ -1,4 +1,19 @@
 (function (globalScope) {
+  // Splits a link href on its first `#` into a file-path part and a fragment part.
+  // Used to strip URL fragments (`#heading`) off local link hrefs before they reach
+  // resolveLocalPath, which otherwise treats the whole href — fragment included — as
+  // part of the file path. First-`#` is a deterministic policy, not a lossless one: a
+  // filename that itself contains a literal `#` with no anchor (`a#b.md`) still splits at
+  // that `#` (path: `a`, fragment: `b.md`), which breaks opening it as a local link. This
+  // is a known, accepted limitation (see the "리스크" section of
+  // docs/plans/done/2026-07-30/05-local-link-anchor-fragment.md) — v1 scopes the fix to ordinary anchor
+  // links and leaves literal-`#` filenames unresolved rather than trying to disambiguate.
+  function splitHrefFragment(href) {
+    const hashIndex = href.indexOf('#')
+    if (hashIndex === -1) return { path: href, fragment: '' }
+    return { path: href.slice(0, hashIndex), fragment: href.slice(hashIndex + 1) }
+  }
+
   function collectAppShellRefs(documentRef) {
     return {
       scrollArea: documentRef.getElementById('scroll-area'),
@@ -85,10 +100,15 @@
     }
 
     async function openLocalLink(href) {
+      // Strip a trailing URL fragment (`#heading`) before resolving — resolveLocalPath
+      // treats the whole string as a file path, so a real anchor would otherwise be
+      // read as part of the filename and fail to resolve. v1 drops the fragment; using
+      // it to scroll to a heading after opening is a follow-up (see plan doc #5).
+      const { path: targetPath } = splitHrefFragment(href)
       // Resolve relative hrefs against the active tab's directory. A relative link in
       // an unsaved (path-less) document has no base to resolve against.
       const docPath = getActiveTab ? getActiveTab()?.path || null : null
-      const resolved = pathUtils.resolveLocalPath(href, docPath)
+      const resolved = pathUtils.resolveLocalPath(targetPath, docPath)
       if (!resolved) {
         alert('링크 열기 실패: 문서를 저장한 뒤에 상대 경로 링크를 열 수 있습니다.')
         return
@@ -153,16 +173,37 @@
     function bindScrollAndResizeHandlers() {
       const refs = getRefs()
       const scrollArea = refs.scrollArea
-      let scrollTicking = false
+      // One ticking flag per container: below the 700px split-mode breakpoint (index.html)
+      // #scroll-area and #content can both be scrollable at once, and a single shared flag
+      // would let one container's rAF-pending scroll swallow the other's.
+      const tickingByContainer = new WeakMap()
+
+      // Reads container.scrollTop inside the rAF callback (not at call time), so a burst
+      // of scroll events collapses to the *freshest* position by the time it fires.
+      const scheduleTocRefresh = (container, extra) => {
+        if (tickingByContainer.get(container)) return
+        tickingByContainer.set(container, true)
+        windowRef.requestAnimationFrame(() => {
+          tickingByContainer.set(container, false)
+          if (extra) extra()
+          markdownController.refreshTocActive(container.scrollTop)
+        })
+      }
 
       scrollArea.addEventListener('scroll', () => {
-        if (scrollTicking) return
-        scrollTicking = true
-        windowRef.requestAnimationFrame(() => {
-          scrollTicking = false
+        scheduleTocRefresh(scrollArea, () => {
           refs.goTop.classList.toggle('on', scrollArea.scrollTop > 300)
-          markdownController.refreshTocActive(scrollArea.scrollTop)
         })
+      })
+
+      // In split view #scroll-area itself stops scrolling (index.html gives it
+      // overflow: hidden there) -- #content becomes its own independent scroll
+      // container instead (#scroll-area.split-mode #content). Without this,
+      // scrolling the preview pane in split view never refreshed the TOC
+      // highlight. In normal (non-split) mode #content has no overflow of its
+      // own, so this listener simply never fires.
+      refs.content.addEventListener('scroll', () => {
+        scheduleTocRefresh(refs.content)
       })
 
       windowRef.addEventListener('resize', () => {
@@ -170,6 +211,9 @@
       })
 
       scrollArea.addEventListener('scroll', hideAppContextMenu)
+      // #content is its own scroll container in split view (see above); an open context
+      // menu should dismiss on either pane scrolling, not just #scroll-area's.
+      refs.content.addEventListener('scroll', hideAppContextMenu)
     }
 
     function bindSearchEvents() {
@@ -266,6 +310,7 @@
   const api = {
     collectAppShellRefs,
     createAppShellController,
+    splitHrefFragment,
   }
 
   globalScope.MDVAppShell = api

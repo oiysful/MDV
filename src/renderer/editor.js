@@ -66,6 +66,27 @@
     return { nextSidebarOpen: sidebarOpenBeforeSplit === true, nextMemo: null }
   }
 
+  // Split-view scroll sync works in absolute ratios, never deltas — nothing accumulates.
+  // Both ratios are clamped because scrollHeight/clientHeight are rounded integers while
+  // scrollTop is fractional, so at the very bottom scrollTop/maxScroll can exceed 1 and the
+  // other pane would snap back by ~0.5px once the target clamps it (see
+  // docs/plans/04-split-view-scroll-boundary-latch.md). Module scope, so the clamp is unit
+  // testable with plain {scrollHeight, clientHeight, scrollTop} stubs.
+  function clampRatio(ratio) {
+    return Math.min(1, Math.max(0, ratio))
+  }
+
+  function getScrollRatio(element) {
+    const maxScroll = element.scrollHeight - element.clientHeight
+    if (maxScroll <= 0) return 0
+    return clampRatio(element.scrollTop / maxScroll)
+  }
+
+  function setScrollRatio(element, ratio) {
+    const maxScroll = element.scrollHeight - element.clientHeight
+    element.scrollTop = maxScroll > 0 ? maxScroll * clampRatio(ratio) : 0
+  }
+
   function getModeButtonState(sourceMode) {
     if (sourceMode) {
       return {
@@ -99,14 +120,25 @@
 
   const WRAP_STORAGE_KEY = 'mdv-editor-wrap'
 
-  function createEditorController({ getRefs, getMarkdown, setMarkdown, getActiveTab, rerenderTabBar, syncTabImageWatches, onSourceInput, render, closeSearch, storage, getSidebarOpen, setSidebarOpen }) {
+  function createEditorController({ getRefs, getMarkdown, setMarkdown, getActiveTab, rerenderTabBar, syncTabImageWatches, onSourceInput, render, closeSearch, storage, getSidebarOpen, setSidebarOpen, markdownController }) {
     let sourceMode = false
     let splitMode = false
-    let syncingSplitScroll = false
+    // The pane we last wrote to programmatically; its next scroll event is the echo of that
+    // write and is dropped once (see syncSplitScroll).
+    let echoScrollSource = null
     let wrapMode = storage.getItem(WRAP_STORAGE_KEY) === '1'
     // Sidebar visibility to restore when leaving split mode -- null means "wasn't forced
     // closed by us" (either not in split mode, or it was already closed on entry).
     let sidebarOpenBeforeSplit = null
+    // Detaches the in-flight sidebar-width transition listener from setSplitMode below, if
+    // one is still pending. Toggling split mode twice within the .25s transition window
+    // (index.html) replaces the running transition with a new one -- the browser fires
+    // transitioncancel for the superseded transition, not transitionend, so a stale listener
+    // from the first toggle would otherwise linger until the *next* completed transition and
+    // fire an extra, redundant refreshHeadingOffsets() alongside the live one. Detaching it
+    // up front keeps each transition to exactly one recompute instead of a growing pile of
+    // harmless-but-wasteful no-ops.
+    let cancelPendingSidebarTransitionListener = null
 
     function getSourceMode() {
       return sourceMode
@@ -127,16 +159,46 @@
       const next = Boolean(nextValue)
       if (next === splitMode) return
       splitMode = next
+      // A pending echo belongs to the split session that just ended; carrying it over would
+      // make the first scroll after re-entering split view get dropped as a phantom echo.
+      echoScrollSource = null
       const refs = getRefs()
       if (refs?.btnSidebar) refs.btnSidebar.disabled = splitMode
       if (!getSidebarOpen || !setSidebarOpen) return
+      const wasSidebarOpen = getSidebarOpen()
       const { nextSidebarOpen, nextMemo } = computeSidebarOpenForSplitChange({
         enteringSplit: splitMode,
-        currentSidebarOpen: getSidebarOpen(),
+        currentSidebarOpen: wasSidebarOpen,
         sidebarOpenBeforeSplit,
       })
       setSidebarOpen(nextSidebarOpen)
       sidebarOpenBeforeSplit = nextMemo
+      // A transition from a previous call is still pending (split toggled twice within
+      // .25s) -- detach it before starting a new one, rather than letting it accumulate.
+      cancelPendingSidebarTransitionListener?.()
+      cancelPendingSidebarTransitionListener = null
+      // #sidebar's width transition (index.html, .25s) reflows #content's available width
+      // over that whole span, not instantly -- refreshHeadingOffsets() in applySourceMode
+      // (called right after this returns) runs before the transition starts moving, so its
+      // read is stale until the transition actually finishes. Recompute once more then.
+      if (nextSidebarOpen !== wasSidebarOpen && refs?.sidebar) {
+        const sidebarEl = refs.sidebar
+        const onSidebarTransitionSettled = event => {
+          if (event.target !== sidebarEl || event.propertyName !== 'width') return
+          sidebarEl.removeEventListener('transitionend', onSidebarTransitionSettled)
+          sidebarEl.removeEventListener('transitioncancel', onSidebarTransitionSettled)
+          cancelPendingSidebarTransitionListener = null
+          // transitioncancel means this transition got superseded (toggled again mid-flight)
+          // -- the newer call's own listener will do the recompute once it settles.
+          if (event.type === 'transitionend') markdownController?.refreshHeadingOffsets()
+        }
+        sidebarEl.addEventListener('transitionend', onSidebarTransitionSettled)
+        sidebarEl.addEventListener('transitioncancel', onSidebarTransitionSettled)
+        cancelPendingSidebarTransitionListener = () => {
+          sidebarEl.removeEventListener('transitionend', onSidebarTransitionSettled)
+          sidebarEl.removeEventListener('transitioncancel', onSidebarTransitionSettled)
+        }
+      }
     }
 
     function getEditorValue() {
@@ -221,22 +283,23 @@
       hl.style.display = 'block'
     }
 
-    function getScrollRatio(element) {
-      const maxScroll = element.scrollHeight - element.clientHeight
-      if (maxScroll <= 0) return 0
-      return element.scrollTop / maxScroll
-    }
-
-    function setScrollRatio(element, ratio) {
-      const maxScroll = element.scrollHeight - element.clientHeight
-      element.scrollTop = maxScroll > 0 ? maxScroll * ratio : 0
-    }
-
+    // Echo suppression by target identity rather than by frame: writing scrollTop queues a
+    // scroll event on the *next* frame, but the old requestAnimationFrame flag was already
+    // cleared by then, so one echo leaked through as an A→B→A jitter. Remember which element
+    // we wrote to and drop exactly the one event it sends back.
+    //
+    // The guard is armed only when the write actually moved the element — a no-op write emits
+    // no scroll event at all, and a flag left armed would swallow the user's next real scroll
+    // on that pane instead.
     function syncSplitScroll(sourceElement, targetElement) {
-      if (!splitMode || syncingSplitScroll) return
-      syncingSplitScroll = true
+      if (!splitMode) return
+      if (echoScrollSource === sourceElement) {
+        echoScrollSource = null
+        return
+      }
+      const before = targetElement.scrollTop
       setScrollRatio(targetElement, getScrollRatio(sourceElement))
-      requestAnimationFrame(() => { syncingSplitScroll = false })
+      echoScrollSource = targetElement.scrollTop !== before ? targetElement : null
     }
 
     function applySourceMode() {
@@ -250,6 +313,12 @@
         updateLineNumbers,
         autoResizeEditor,
       })
+      // Heading offsets are cached relative to #scroll-area's layout, but split mode
+      // reflows #content to a different width (and source mode hides it, collapsing
+      // offsetTop to 0) — every caller of applySourceMode (toggleSource, toggleSplitView,
+      // restoreTabState) changes that layout, so recompute here once the mode classes
+      // applySourceModeToRefs just applied have taken effect.
+      markdownController?.refreshHeadingOffsets()
     }
 
     async function toggleSource() {
@@ -448,6 +517,8 @@
 
   const api = {
     createEditorController,
+    getScrollRatio,
+    setScrollRatio,
     buildLineNumberText,
     getModeButtonState,
     applySourceModeToRefs,

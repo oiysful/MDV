@@ -1,7 +1,17 @@
 const test = require('node:test')
 const assert = require('node:assert/strict')
+const { JSDOM } = require('jsdom')
 
-const { getTreeRowPadding, getFolderArrow, getExplorerRootLabel } = require('../../src/renderer/explorer.js')
+// explorer.js reads roving-tabindex math off globalThis.MDVRoving instead of importing it,
+// mirroring index.html's script order (see tests/controller/helpers/harness.js).
+require('../../src/renderer/roving.js')
+
+const {
+  getTreeRowPadding,
+  getFolderArrow,
+  getExplorerRootLabel,
+  createExplorerController,
+} = require('../../src/renderer/explorer.js')
 
 test('getTreeRowPadding increases indentation per depth level', () => {
   assert.equal(getTreeRowPadding(0), '12px')
@@ -18,4 +28,129 @@ test('getExplorerRootLabel switches between placeholder, basename, and full path
   assert.equal(getExplorerRootLabel(null, false), '폴더를 선택하세요')
   assert.equal(getExplorerRootLabel('/tmp/docs/project', false), 'project')
   assert.equal(getExplorerRootLabel('/tmp/docs/project', true), '/tmp/docs/project')
+})
+
+// list-directory's error carries the OS message and the directory name — untrusted input.
+// It was the only unsanitized innerHTML sink left in the renderer (MEDIUM-2 in
+// docs/plans/done/2026-07-30/06-security-hardening-audit-2026-07-22.md); it must render as text.
+function makeExplorerErrorHarness(error) {
+  const dom = new JSDOM('<div id="explorer-tree"></div>')
+  global.document = dom.window.document
+  const tree = dom.window.document.getElementById('explorer-tree')
+  const controller = createExplorerController({
+    getRefs: () => ({ explorerTree: tree }),
+    api: { listDirectory: async () => ({ error }) },
+    load: () => {},
+    switchToExplorerTab: () => {},
+    showAppContextMenu: () => {},
+    revealInFinder: () => {},
+    onExplorerRootChanged: () => {},
+  })
+  return { controller, tree }
+}
+
+test('directory listing errors render as text, never as markup', async () => {
+  const hostile = '<img src=x onerror="alert(1)">폴더를 읽을 수 없습니다'
+  const { controller, tree } = makeExplorerErrorHarness(hostile)
+
+  await controller.loadDir('/tmp/hostile<dir>', tree, 0)
+
+  const hint = tree.querySelector('.tree-hint')
+  assert.ok(hint, 'the error still renders inside a .tree-hint element')
+  assert.equal(hint.textContent, hostile)
+  assert.equal(tree.querySelector('img'), null, 'the error must not become a live element')
+  assert.ok(hint.innerHTML.includes('&lt;img'), 'the markup is escaped, not parsed')
+})
+
+// setActiveFilePath is the tab -> explorer sync direction (docs/plans/done/2026-07-30/01-explorer-active-tab-sync.md).
+// setActiveTreeItem's own #layout lookup (explorer.js:27-30) needs a real #layout ancestor.
+function makeActiveFilePathHarness(entries) {
+  const dom = new JSDOM('<div id="layout"><div id="explorer-tree"></div></div>')
+  global.document = dom.window.document
+  const tree = dom.window.document.getElementById('explorer-tree')
+  const controller = createExplorerController({
+    getRefs: () => ({ explorerTree: tree }),
+    api: { listDirectory: async () => ({ entries }) },
+    load: () => {},
+    switchToExplorerTab: () => {},
+    showAppContextMenu: () => {},
+    revealInFinder: () => {},
+    onExplorerRootChanged: () => {},
+  })
+  return { controller, tree }
+}
+
+test('setActiveFilePath activates the matching row and clears any previous active row', async () => {
+  const entries = [
+    { type: 'file', name: 'a.md', path: '/docs/a.md' },
+    { type: 'file', name: 'b.md', path: '/docs/b.md' },
+  ]
+  const { controller, tree } = makeActiveFilePathHarness(entries)
+  await controller.loadDir('/docs', tree, 0)
+
+  controller.setActiveFilePath('/docs/a.md')
+  let active = tree.querySelectorAll('.tree-item.active')
+  assert.equal(active.length, 1)
+  assert.equal(active[0].querySelector('.tree-row').dataset.path, '/docs/a.md')
+
+  controller.setActiveFilePath('/docs/b.md')
+  active = tree.querySelectorAll('.tree-item.active')
+  assert.equal(active.length, 1, 'switching path moves the highlight instead of stacking it')
+  assert.equal(active[0].querySelector('.tree-row').dataset.path, '/docs/b.md')
+})
+
+test('setActiveFilePath clears the highlight for a null path or a path not in the visible tree', async () => {
+  const entries = [{ type: 'file', name: 'a.md', path: '/docs/a.md' }]
+  const { controller, tree } = makeActiveFilePathHarness(entries)
+  await controller.loadDir('/docs', tree, 0)
+
+  controller.setActiveFilePath('/docs/a.md')
+  assert.equal(tree.querySelectorAll('.tree-item.active').length, 1)
+
+  controller.setActiveFilePath(null)
+  assert.equal(tree.querySelectorAll('.tree-item.active').length, 0)
+
+  controller.setActiveFilePath('/docs/a.md')
+  controller.setActiveFilePath('/docs/not-in-tree.md')
+  assert.equal(tree.querySelectorAll('.tree-item.active').length, 0, 'an unmatched path clears rather than leaving a stale highlight')
+})
+
+// Code-review follow-up on docs/plans/done/2026-07-30/01-explorer-active-tab-sync.md: the active path is
+// remembered even while its row is hidden inside a collapsed folder (v1 scope: no auto-expand,
+// see the plan's own risk note), but expanding that folder later should light the row up
+// immediately rather than waiting for an unrelated root re-render.
+test('expanding a folder that reveals the active tab highlights it without a root re-render', async () => {
+  const dom = new JSDOM('<div id="layout"><div id="explorer-tree"></div></div>')
+  global.document = dom.window.document
+  const tree = dom.window.document.getElementById('explorer-tree')
+  const listDirectory = async targetPath => {
+    if (targetPath === '/docs') {
+      return { entries: [{ type: 'dir', name: 'sub', path: '/docs/sub' }] }
+    }
+    if (targetPath === '/docs/sub') {
+      return { entries: [{ type: 'file', name: 'nested.md', path: '/docs/sub/nested.md' }] }
+    }
+    throw new Error(`unexpected listDirectory(${targetPath})`)
+  }
+  const controller = createExplorerController({
+    getRefs: () => ({ explorerTree: tree }),
+    api: { listDirectory },
+    load: () => {},
+    switchToExplorerTab: () => {},
+    showAppContextMenu: () => {},
+    revealInFinder: () => {},
+    onExplorerRootChanged: () => {},
+  })
+
+  await controller.loadDir('/docs', tree, 0)
+  controller.setActiveFilePath('/docs/sub/nested.md')
+  assert.equal(tree.querySelectorAll('.tree-item.active').length, 0, 'not visible yet: collapsed, v1 does not auto-expand')
+
+  const folderRow = tree.querySelector('.tree-row[data-path="/docs/sub"]')
+  folderRow.dispatchEvent(new dom.window.MouseEvent('click', { bubbles: true }))
+  await new Promise(resolve => setImmediate(resolve))
+
+  const active = tree.querySelectorAll('.tree-item.active')
+  assert.equal(active.length, 1, 'the newly-revealed row lights up without a separate setActiveFilePath call')
+  assert.equal(active[0].querySelector('.tree-row').dataset.path, '/docs/sub/nested.md')
 })

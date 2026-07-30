@@ -8,6 +8,8 @@ const {
   computeListContinuation,
   computeInlineMarkerToggle,
   computeSidebarOpenForSplitChange,
+  getScrollRatio,
+  setScrollRatio,
 } = require('../../src/renderer/editor.js')
 
 function createClassList() {
@@ -236,4 +238,59 @@ test('computeSidebarOpenForSplitChange leaves the sidebar closed on exit if it w
     sidebarOpenBeforeSplit: false,
   })
   assert.deepEqual(result, { nextSidebarOpen: false, nextMemo: null })
+})
+
+// Split-view scroll sync (docs/plans/04-split-view-scroll-boundary-latch.md). scrollHeight and
+// clientHeight are rounded integers while scrollTop is fractional, so at the very bottom the
+// raw ratio can exceed 1 — the target pane then clamps it and the source snaps back ~0.5px.
+// Both directions clamp to [0, 1]. Plain object stubs are enough: these are pure functions.
+const scrollStub = ({ scrollTop = 0, scrollHeight = 1000, clientHeight = 500 } = {}) =>
+  ({ scrollTop, scrollHeight, clientHeight })
+
+test('getScrollRatio maps scroll position onto 0..1', () => {
+  assert.equal(getScrollRatio(scrollStub({ scrollTop: 0 })), 0)
+  assert.equal(getScrollRatio(scrollStub({ scrollTop: 250 })), 0.5)
+  assert.equal(getScrollRatio(scrollStub({ scrollTop: 500 })), 1)
+})
+
+test('getScrollRatio clamps a fractional overshoot at the bottom instead of returning > 1', () => {
+  // Real Chromium case: scrollTop can read fractionally past the integer-rounded maxScroll.
+  assert.equal(getScrollRatio(scrollStub({ scrollTop: 500.4 })), 1)
+  assert.equal(getScrollRatio(scrollStub({ scrollTop: -3 })), 0)
+})
+
+test('getScrollRatio returns 0 for an unscrollable element instead of dividing by zero', () => {
+  assert.equal(getScrollRatio(scrollStub({ scrollHeight: 500, clientHeight: 500, scrollTop: 0 })), 0)
+  assert.equal(getScrollRatio(scrollStub({ scrollHeight: 400, clientHeight: 500, scrollTop: 10 })), 0)
+})
+
+test('setScrollRatio clamps the incoming ratio to the scrollable range', () => {
+  const middle = scrollStub()
+  setScrollRatio(middle, 0.5)
+  assert.equal(middle.scrollTop, 250)
+
+  const over = scrollStub()
+  setScrollRatio(over, 1.004)
+  assert.equal(over.scrollTop, 500, 'a ratio above 1 must not push scrollTop past maxScroll')
+
+  const under = scrollStub()
+  setScrollRatio(under, -0.2)
+  assert.equal(under.scrollTop, 0, 'a negative ratio must not produce a negative scrollTop')
+})
+
+test('setScrollRatio parks an unscrollable element at 0', () => {
+  const flat = scrollStub({ scrollTop: 40, scrollHeight: 500, clientHeight: 500 })
+  setScrollRatio(flat, 0.8)
+  assert.equal(flat.scrollTop, 0)
+})
+
+test('a ratio round-trip is stable at both boundaries', () => {
+  // The pair is only correct if syncing a pane already at a boundary is a no-op — that is what
+  // keeps the two panes from nudging each other back and forth at the top or bottom.
+  for (const scrollTop of [0, 500]) {
+    const source = scrollStub({ scrollTop })
+    const target = scrollStub({ scrollTop })
+    setScrollRatio(target, getScrollRatio(source))
+    assert.equal(target.scrollTop, scrollTop)
+  }
 })

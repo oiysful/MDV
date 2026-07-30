@@ -406,6 +406,13 @@
       setSplitMode(false)
       applySourceMode()
       const imagePaths = await render(tab.content, tab.filename, tab.path)
+      // A new tab reuses the same scroll container, so `scrollTop: 0` on the tab object
+      // above only initializes the model — without this the new document opens at
+      // whatever offset the previous tab left behind. Reset after render, when the
+      // container's height already reflects the new document. Per-tab restore
+      // (restoreTabState) is untouched: this applies to newly created tabs only.
+      refs.scrollArea.scrollTop = 0
+      refs.content.scrollTop = 0
       tab.renderedHTML = markdownController.captureSnapshotHTML()
       tab.tocHTML = refs.tocList.innerHTML
       syncTabImageWatches(tab, imagePaths)

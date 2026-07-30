@@ -21,11 +21,32 @@
     let currentExplorerRoot = null
     let explorerShowFullPath = false
     let treeKeyboardBound = false
+    let currentActiveFilePath = null
     const { getRovingIndex } = globalScope.MDVRoving
 
-    function setActiveTreeItem(container, item) {
+    function clearActiveTreeItems(container) {
       container.closest('#layout').querySelectorAll('.tree-item.active').forEach(element => { element.classList.remove('active') })
+    }
+
+    function setActiveTreeItem(container, item) {
+      clearActiveTreeItems(container)
       item.classList.add('active')
+    }
+
+    // Tab -> explorer sync (openFileRow below already covers the explorer -> tab direction:
+    // clicking a file row opens it and highlights that row immediately). Remembers the active
+    // path so it survives tree re-renders (loadDir re-applies it at the end of every render,
+    // root or subtree), and clears the highlight rather than reaching for it when the row isn't visible
+    // (e.g. inside a collapsed folder) — v1 deliberately doesn't auto-expand to reveal it.
+    function setActiveFilePath(path) {
+      currentActiveFilePath = path
+      const tree = getRefs().explorerTree
+      const row = path ? getVisibleTreeRows().find(r => r.dataset.path === path) : null
+      if (row) {
+        setActiveTreeItem(tree, row.closest('.tree-item'))
+      } else {
+        clearActiveTreeItems(tree)
+      }
     }
 
     // Rows inside a collapsed (non-.open) .tree-children group are hidden, and lazily-loaded
@@ -190,6 +211,7 @@
       currentExplorerRoot = root
       explorerShowFullPath = false
       syncExplorerHeader()
+      // loadDir re-applies currentActiveFilePath at the end of every render, this one included.
       await loadDir(root, getRefs().explorerTree, 0)
     }
 
@@ -205,7 +227,12 @@
       const res = await api.listDirectory(path)
       container.innerHTML = ''
       if (res.error) {
-        container.innerHTML = `<div class="tree-hint">${res.error}</div>`
+        // The error string carries OS text and the directory name, i.e. untrusted input —
+        // it is the one hint that isn't a static literal, so it goes in as text, never HTML.
+        const hint = document.createElement('div')
+        hint.className = 'tree-hint'
+        hint.textContent = res.error
+        container.appendChild(hint)
         return
       }
       if (!res.entries.length) {
@@ -218,6 +245,12 @@
         if (restore) focusTreeRow(restore)
         else syncTreeRoving()
       }
+      // Re-applied on every render, not just the root: expanding a subfolder re-renders just
+      // that subtree (isRoot false) and can newly reveal the active tab's row, which should
+      // light up immediately rather than staying dark until the next unrelated root re-render.
+      // setActiveFilePath reads from getRefs().explorerTree (the whole tree), not `container`,
+      // so it's safe to call regardless of which depth just rendered.
+      setActiveFilePath(currentActiveFilePath)
     }
 
     function renderTreeEntry(entry, container, depth) {
@@ -295,6 +328,7 @@
       revealCurrentExplorerRoot,
       getCurrentExplorerRoot,
       restoreRoot,
+      setActiveFilePath,
     }
   }
 

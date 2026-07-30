@@ -125,6 +125,7 @@ document.addEventListener('DOMContentLoaded', () => {
     storage: localStorage,
     getSidebarOpen: () => state.sidebarOpen,
     setSidebarOpen: value => runtimeController.setSidebarOpen(value),
+    markdownController,
   })
 
   appShellController = window.MDVAppShell.createAppShellController({
@@ -172,7 +173,10 @@ document.addEventListener('DOMContentLoaded', () => {
     reportDirtyState: hasDirty => window.api.setDirtyState?.(hasDirty),
     closeSearch: () => runtimeController.closeSearch(),
     addRecentDocument: path => window.api.addRecentDocument?.(path),
-    onTabsChanged: () => notifySessionState(),
+    onTabsChanged: () => {
+      notifySessionState()
+      explorerController?.setActiveFilePath(workspaceController.getActiveTab()?.path ?? null)
+    },
   })
 
   explorerController = window.MDVExplorer.createExplorerController({

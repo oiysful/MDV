@@ -75,12 +75,13 @@ const LOCAL_PATH = '/docs/assets/pic.png'
 // walks refs.content for img[src]; buildToc/updateStats need the id="content" node
 // attached and the stats elements present.
 function makeSnapshotHarness() {
-  const dom = new JSDOM('<!DOCTYPE html><body><div id="content"></div><ul id="toc"></ul><div id="stats"></div><span id="sw"></span><span id="st"></span></body>')
+  const dom = new JSDOM('<!DOCTYPE html><body><div id="scroll-area"><div id="content"></div></div><ul id="toc"></ul><div id="stats"></div><span id="sw"></span><span id="st"></span></body>')
   const prevDocument = global.document
   const prevWindow = global.window
   global.document = dom.window.document
   global.window = dom.window
   const refs = {
+    scrollArea: dom.window.document.getElementById('scroll-area'),
     content: dom.window.document.getElementById('content'),
     tocList: dom.window.document.getElementById('toc'),
     stats: dom.window.document.getElementById('stats'),

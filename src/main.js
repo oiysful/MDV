@@ -82,7 +82,11 @@ function createWindow(filePath = null, restoredSession = null) {
   // in-app link handler already routes clicks to the OS browser; these are the
   // backstops for anything that slips past it.
   win.webContents.setWindowOpenHandler(({ url }) => {
-    shell.openExternal(url).catch(() => {})
+    // Same ^https?:// whitelist as the open-external-url handler — a window.open() with a
+    // file:/// or custom-scheme target must not be handed to the OS just because it took
+    // this path instead of the IPC one. Anything else is dropped; the deny below stands
+    // either way, so nothing ever loads into a frame that holds window.api.
+    if (/^https?:\/\//i.test(url)) shell.openExternal(url).catch(() => {})
     return { action: 'deny' }
   })
 
@@ -341,13 +345,41 @@ ipcMain.handle('open-external-url', async (_, url) => {
   }
 })
 
+// Non-markdown link targets that may be handed to the OS default app: documents, images
+// and office files only. A markdown document is untrusted input, so a link like
+// [Setup](./setup.command) must never reach shell.openPath — one click would run local
+// code (macOS Gatekeeper quarantine only covers *downloaded* files, so a git clone slips
+// through). Everything outside this list is revealed in Finder instead of opened.
+// .svg is deliberately excluded: unlike the other raster formats, it can carry an
+// embedded <script> and shell.openPath would hand it to the OS default handler (typically
+// a browser) at a file:// origin. Local SVGs already render inertly in-app as data: URIs
+// via read-image-data-url, so no *embedding* functionality is lost -- but a link
+// [icon](./icon.svg) now reveals in Finder instead of opening, which is the accepted
+// tradeoff (a link handing an active-content format to an external app is exactly what
+// this allowlist exists to stop).
+const OPENABLE_EXTENSIONS = [
+  '.pdf', '.txt', '.csv',
+  '.png', '.jpg', '.jpeg', '.gif', '.webp',
+  '.docx', '.xlsx', '.pptx',
+]
+
+// stat()/extname() only see the link's own name, but shell.openPath opens whatever the
+// link resolves to — so `notes.pdf` symlinked at `setup.command` would pass a name-only
+// check. Both the link name and its realpath must be allowlisted.
+function isOpenableTarget(targetPath, realPath) {
+  const named = path.extname(targetPath).toLowerCase()
+  const real  = path.extname(realPath).toLowerCase()
+  return OPENABLE_EXTENSIONS.includes(named) && OPENABLE_EXTENSIONS.includes(real)
+}
+
 // Opens a link that points at a local file. `open-external-url`'s ^https?:// whitelist
 // stays intact for web links; this is the separate path for schemeless (relative/absolute)
 // targets the renderer resolves to an absolute filesystem path. Markdown files are read
 // and returned (same shape as read-file) so the renderer can open them as a new tab —
-// main cannot call the renderer's createTab directly. Everything else is handed to the OS
-// default app via shell.openPath. A missing target gets a distinct "not found" error so it
-// is never confused with the "not allowed" scheme rejection above.
+// main cannot call the renderer's createTab directly. Allowlisted files are handed to the
+// OS default app via shell.openPath; everything else (including directories, which on
+// macOS covers .app bundles) only gets shell.showItemInFolder. A missing target gets a
+// distinct "not found" error so it is never confused with the rejections above.
 ipcMain.handle('open-local-path', async (_, targetPath) => {
   try {
     if (!targetPath) {
@@ -359,12 +391,35 @@ ipcMain.handle('open-local-path', async (_, targetPath) => {
     } catch {
       return { ok: false, error: `파일을 찾을 수 없습니다: ${targetPath}` }
     }
+    // realpath failure (broken/looping symlink) is treated exactly like a non-allowlisted
+    // target: reveal, never open or read. Resolved before the markdown check below so a
+    // symlink named notes.md pointing at an arbitrary file (e.g. ~/.ssh/id_rsa) can't be
+    // read just because its own name ends in .md.
+    let realPath = null
+    try {
+      realPath = await fs.promises.realpath(targetPath)
+    } catch {
+      realPath = null
+    }
     const ext = path.extname(targetPath).toLowerCase()
-    if (stat.isFile() && MARKDOWN_EXTENSIONS.includes(ext)) {
-      const content = await fs.promises.readFile(targetPath, 'utf-8')
+    const realExt = realPath ? path.extname(realPath).toLowerCase() : ''
+    if (
+      stat.isFile() &&
+      realPath &&
+      MARKDOWN_EXTENSIONS.includes(ext) &&
+      MARKDOWN_EXTENSIONS.includes(realExt)
+    ) {
+      const content = await fs.promises.readFile(realPath, 'utf-8')
+      // path is deliberately the symlink (targetPath), not realPath: it becomes the tab's
+      // identity for save/reveal/watch, and those should act on what the user actually
+      // clicked. Content alone comes from the resolved target.
       return { ok: true, kind: 'markdown', content, filename: path.basename(targetPath), path: targetPath }
     }
-    const openError = await shell.openPath(targetPath)
+    if (!stat.isFile() || !realPath || !isOpenableTarget(targetPath, realPath)) {
+      shell.showItemInFolder(targetPath)
+      return { ok: true, kind: 'revealed' }
+    }
+    const openError = await shell.openPath(realPath)
     if (openError) return { ok: false, error: openError }
     return { ok: true, kind: 'external' }
   } catch (e) {
