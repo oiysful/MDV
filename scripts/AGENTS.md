@@ -3,16 +3,17 @@
 # SCRIPTS KNOWLEDGE BASE
 
 ## OVERVIEW
-Shell scripts for building and installing the distributable `MDV.app`, either from a local build or from a GitHub release. Not part of the app runtime; invoked manually via the `npm run install:*` / `update:*` scripts in the root `package.json`.
+Shell scripts for building and installing the distributable `MDV.app`, either from a local build or from a GitHub release. Most are user-facing, invoked manually via the `npm run install:*` / `update:*` scripts in the root `package.json`. `update-homebrew-tap.sh` is the one exception — it's CI-only, invoked by `.github/workflows/release.yml`, not by users.
 
 ## STRUCTURE
 ```text
 scripts/
-├── common.sh          # shared helpers: info/fail/require_cmd, app install/checksum/download logic
-├── install-local.sh   # npm install + electron-builder build + install to /Applications
-├── install-release.sh # download latest (or tagged) GitHub release asset, verify checksum, install
-├── update-local.sh    # like install-local, but requires a clean `main` tree first
-└── update-release.sh  # thin alias for install-release.sh
+├── common.sh                # shared helpers: info/fail/require_cmd, app install/checksum/download logic
+├── install-local.sh         # npm install + electron-builder build + install to /Applications
+├── install-release.sh       # download latest (or tagged) GitHub release asset, verify checksum, install
+├── update-local.sh          # like install-local, but requires a clean `main` tree first
+├── update-release.sh        # thin alias for install-release.sh
+└── update-homebrew-tap.sh   # CI-only: bumps version/sha256 in oiysful/homebrew-tap's Casks/mdv.rb and pushes
 ```
 
 ## WHERE TO LOOK
@@ -37,6 +38,7 @@ scripts/
 - Do not hardcode `oiysful/MDV`; `common.sh` already reads `MDV_REPO_OWNER`/`MDV_REPO_NAME` so forks can point installs at themselves.
 
 ## NOTES
+- `update-homebrew-tap.sh` takes `<version> <sha256>` as positional args (not sourced from `common.sh`, no `MDV_REPO_OWNER` override — it targets `HOMEBREW_TAP_REPO`, default `oiysful/homebrew-tap`). It silently exits 0 if `HOMEBREW_TAP_TOKEN` is unset, so a release without that secret still succeeds; only the tap bump is skipped. It clones the tap with the token embedded in the HTTPS URL, `sed`-replaces the `version`/`sha256` lines in `Casks/mdv.rb`, and pushes straight to `main` (no PR).
 - `update-release.sh` is just `install-release.sh` under another name — there is no behavioral difference between "install" and "update" for the release flow (both always fetch the latest/tagged asset).
 - `install-release.sh`/`update-release.sh` only work against a GitHub Release that has a built `.zip` (and ideally `SHA256SUMS`) attached. `.github/workflows/release.yml` produces these automatically on `v*` tag push; a tag pushed without that workflow having run (or one pushed before the workflow existed) has no downloadable asset and `download_latest_release_asset` will fail with "ships no MDV .dmg or .zip asset".
 - `resolve_local_build_path` depends on `electron-builder`'s per-arch output directory naming (`dist/mac`, `dist/mac-arm64`, `dist/mac-universal`, ...); if `package.json#build` targets change, check this function stays in sync.
