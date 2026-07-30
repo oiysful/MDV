@@ -4,8 +4,9 @@
 `done/<YYYY-MM-DD>/` 하위로 옮겨 배치 단위로 보관한다.
 
 - [done/2026-07-20/](./done/2026-07-20/) — 2026-07-16에 식별된 11개 항목, 2026-07-20 전부 구현·검증 완료.
+- [done/2026-07-30/](./done/2026-07-30/) — 아래 2026-07-22 배치 중 01/02/03/05/06, 2026-07-30 전부 구현·독립 리뷰 2회(코드/보안)·검증 완료. 04는 사람이 직접 실행할 판별 실험이 남아 있어 이 디렉토리에 그대로 둔다.
 
-## 진행 중 — [`docs/self-check-request.md`](../self-check-request.md) 기반 (2026-07-22 조사)
+## [`docs/self-check-request.md`](../self-check-request.md) 기반 (2026-07-22 조사)
 
 사용자가 직접 작성한 개선 요청 6건을 코드 조사로 검증하고 계획 문서화했다. 각 항목의 상세 근거(파일:라인)·원인·제안 방안은 아래 표에서 링크된 문서 참고.
 
@@ -13,12 +14,12 @@
 
 | # | 문서 | 요약 | 상태 |
 |---|------|------|------|
-| 1 | [01-explorer-active-tab-sync.md](./01-explorer-active-tab-sync.md) | 탭 이동 시 탐색기가 활성 파일을 추적하지 않음 — 탭→탐색기 동기화 자체가 없음 | 요청 |
-| 2 | [02-toc-scrollspy-offset-bias.md](./02-toc-scrollspy-offset-bias.md) | 좌측 목차 하이라이트가 실제 스크롤보다 한 항목 뒤처짐 — offsetTop 기준점 오차(≈116px) | 요청 |
-| 3 | [03-tab-switch-scroll-animation.md](./03-tab-switch-scroll-animation.md) | 탭 전환/새 문서 열기 시 불필요한 스크롤 애니메이션 — `scroll-behavior:smooth` + 새 탭 스크롤 미리셋 | 요청 |
-| 4 | [04-split-view-scroll-boundary-latch.md](./04-split-view-scroll-boundary-latch.md) | 분할뷰 스크롤 경계에서 반대 방향 전까지 먹통 — 앱 코드 결함 미확인, 네이티브 동작 가능성, 재현 판별 필요 | 요청(조사 필요) |
-| 5 | [05-local-link-anchor-fragment.md](./05-local-link-anchor-fragment.md) | `#앵커` 붙은 로컬 링크가 항상 열기 실패 — 해시가 파일 경로 문자열에 그대로 섞여 들어감 | 요청 |
-| 6 | [06-security-hardening-audit-2026-07-22.md](./06-security-hardening-audit-2026-07-22.md) | 보안 감사 결과 — HIGH 1(로컬 파일 원클릭 실행), MEDIUM 2, LOW 4 | 요청 |
+| 1 | [done/2026-07-30/01-explorer-active-tab-sync.md](./done/2026-07-30/01-explorer-active-tab-sync.md) | 탭 이동 시 탐색기가 활성 파일을 추적하지 않음 — 탭→탐색기 동기화 자체가 없음 | 완료 |
+| 2 | [done/2026-07-30/02-toc-scrollspy-offset-bias.md](./done/2026-07-30/02-toc-scrollspy-offset-bias.md) | 좌측 목차 하이라이트가 실제 스크롤보다 한 항목 뒤처짐 — offsetTop 기준점 오차(≈116px) | 완료 |
+| 3 | [done/2026-07-30/03-tab-switch-scroll-animation.md](./done/2026-07-30/03-tab-switch-scroll-animation.md) | 탭 전환/새 문서 열기 시 불필요한 스크롤 애니메이션 — `scroll-behavior:smooth` + 새 탭 스크롤 미리셋 | 완료 |
+| 4 | [04-split-view-scroll-boundary-latch.md](./04-split-view-scroll-boundary-latch.md) | 분할뷰 스크롤 경계에서 반대 방향 전까지 먹통 — 하드닝 완료, 경계 래칭 자체는 사람이 직접 하는 판별 실험 결과 대기 | 조사 완료, 실사용 확인 필요 |
+| 5 | [done/2026-07-30/05-local-link-anchor-fragment.md](./done/2026-07-30/05-local-link-anchor-fragment.md) | `#앵커` 붙은 로컬 링크가 항상 열기 실패 — 해시가 파일 경로 문자열에 그대로 섞여 들어감 | 완료 |
+| 6 | [done/2026-07-30/06-security-hardening-audit-2026-07-22.md](./done/2026-07-30/06-security-hardening-audit-2026-07-22.md) | 보안 감사 결과 — HIGH 1(로컬 파일 원클릭 실행), MEDIUM 2, LOW 4 | 완료 |
 
 ### 권장 착수 순서
 1. **#6 (보안, HIGH-1)** — `open-local-path`의 임의 실행 경로는 심각도가 가장 높고 다른 항목과 독립적이라 가장 먼저 처리 권장.

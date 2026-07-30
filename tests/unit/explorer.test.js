@@ -32,7 +32,7 @@ test('getExplorerRootLabel switches between placeholder, basename, and full path
 
 // list-directory's error carries the OS message and the directory name — untrusted input.
 // It was the only unsanitized innerHTML sink left in the renderer (MEDIUM-2 in
-// docs/plans/06-security-hardening-audit-2026-07-22.md); it must render as text.
+// docs/plans/done/2026-07-30/06-security-hardening-audit-2026-07-22.md); it must render as text.
 function makeExplorerErrorHarness(error) {
   const dom = new JSDOM('<div id="explorer-tree"></div>')
   global.document = dom.window.document
@@ -62,7 +62,7 @@ test('directory listing errors render as text, never as markup', async () => {
   assert.ok(hint.innerHTML.includes('&lt;img'), 'the markup is escaped, not parsed')
 })
 
-// setActiveFilePath is the tab -> explorer sync direction (docs/plans/01-explorer-active-tab-sync.md).
+// setActiveFilePath is the tab -> explorer sync direction (docs/plans/done/2026-07-30/01-explorer-active-tab-sync.md).
 // setActiveTreeItem's own #layout lookup (explorer.js:27-30) needs a real #layout ancestor.
 function makeActiveFilePathHarness(entries) {
   const dom = new JSDOM('<div id="layout"><div id="explorer-tree"></div></div>')
@@ -115,7 +115,7 @@ test('setActiveFilePath clears the highlight for a null path or a path not in th
   assert.equal(tree.querySelectorAll('.tree-item.active').length, 0, 'an unmatched path clears rather than leaving a stale highlight')
 })
 
-// Code-review follow-up on docs/plans/01-explorer-active-tab-sync.md: the active path is
+// Code-review follow-up on docs/plans/done/2026-07-30/01-explorer-active-tab-sync.md: the active path is
 // remembered even while its row is hidden inside a collapsed folder (v1 scope: no auto-expand,
 // see the plan's own risk note), but expanding that folder later should light the row up
 // immediately rather than waiting for an unrelated root re-render.

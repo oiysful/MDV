@@ -1,7 +1,7 @@
 # 03. 탭 전환/새 문서 열기 시 불필요한 스크롤 애니메이션
 
 ## 상태
-요청 ([`docs/self-check-request.md`](../self-check-request.md) 3번 항목, 2026-07-22)
+완료 (2026-07-30) — `#scroll-area`의 `scroll-behavior: smooth` 제거, `createTab()`에 스크롤 리셋 추가(7361df2). [`docs/self-check-request.md`](../../../self-check-request.md) 3번 항목, 2026-07-22 요청.
 
 ## 문제
 열려 있는 문서 사이를 이동(탭 전환, 새 문서 열기)할 때 불필요한 스크롤 애니메이션이 발생한다. 사용자는 이를 "문서 간 스크롤이 공유된다"고 표현했다.

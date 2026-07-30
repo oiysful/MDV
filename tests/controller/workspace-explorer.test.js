@@ -1,6 +1,6 @@
 // Controller-level test: tab -> explorer active-file sync.
 //
-// docs/plans/01-explorer-active-tab-sync.md — switching tabs via the tab bar didn't move the
+// docs/plans/done/2026-07-30/01-explorer-active-tab-sync.md — switching tabs via the tab bar didn't move the
 // explorer tree's active highlight (only explorer -> tab worked, via openFileRow's direct
 // setActiveTreeItem call). Fixed by explorer.js's setActiveFilePath plus app.js:175's
 // onTabsChanged callback forwarding the active tab's path into it. Driving workspace +

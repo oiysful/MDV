@@ -1586,7 +1586,7 @@ test('shared context menu works for tab and explorer-root surfaces', async () =>
   }
 })
 
-// Code-review follow-up on docs/plans/02-toc-scrollspy-offset-bias.md: #content became its
+// Code-review follow-up on docs/plans/done/2026-07-30/02-toc-scrollspy-offset-bias.md: #content became its
 // own independent scroll container in split view, so hideAppContextMenu -- previously wired
 // to #scroll-area's scroll event only -- needs the same binding on #content, or an open
 // context menu stays put while the preview pane scrolls underneath it.
@@ -2116,7 +2116,7 @@ test('clicking a local markdown link opens the target as a new tab', async () =>
   }
 })
 
-// docs/plans/05-local-link-anchor-fragment.md: a link with a URL fragment
+// docs/plans/done/2026-07-30/05-local-link-anchor-fragment.md: a link with a URL fragment
 // (`./target.md#some-heading`) used to fail with "file not found" because the raw href,
 // hash included, was handed to resolveLocalPath as if it were part of the file path.
 test('clicking a local markdown link with a #anchor fragment still opens the target file', async () => {
@@ -2149,7 +2149,7 @@ test('clicking a local markdown link with a #anchor fragment still opens the tar
   }
 })
 
-// Code-review follow-up on docs/plans/05-local-link-anchor-fragment.md: splitHrefFragment's
+// Code-review follow-up on docs/plans/done/2026-07-30/05-local-link-anchor-fragment.md: splitHrefFragment's
 // first-`#` policy is deterministic but not lossless -- a filename that itself contains a
 // literal `#` with no trailing anchor now fails to open, because the `#` is read as an anchor
 // separator regardless of intent. This is a known, accepted limitation (see the plan's own
@@ -2253,7 +2253,7 @@ test('clicking an https link still opens externally without opening a tab', asyn
   }
 })
 
-// docs/plans/02-toc-scrollspy-offset-bias.md: cachedHeadings.top used to be cached
+// docs/plans/done/2026-07-30/02-toc-scrollspy-offset-bias.md: cachedHeadings.top used to be cached
 // relative to document.body while the scrollspy comparison used #scroll-area-relative
 // scrollTop, so the active highlight always lagged the true scroll position -- most
 // visibly, clicking a TOC item left the *previous* item highlighted instead of the one
@@ -2862,7 +2862,7 @@ test('opening a file and saving-as both register the path as a recent document',
   }
 })
 
-// HIGH-1 in docs/plans/06-security-hardening-audit-2026-07-22.md: a link in an untrusted
+// HIGH-1 in docs/plans/done/2026-07-30/06-security-hardening-audit-2026-07-22.md: a link in an untrusted
 // markdown document used to reach shell.openPath for *any* extension, so one click on
 // [Setup](./setup.command) ran local code. Only the document/image/office allowlist may be
 // opened; everything else — executables, unknown types, directories (macOS .app bundles are
@@ -2968,7 +2968,7 @@ test('setWindowOpenHandler forwards only http(s) targets to the OS', async () =>
   }
 })
 
-// docs/plans/03-tab-switch-scroll-animation.md: `#scroll-area` carried a global
+// docs/plans/done/2026-07-30/03-tab-switch-scroll-animation.md: `#scroll-area` carried a global
 // scroll-behavior: smooth, and `scrollTop = n` scrolls with behavior 'auto' — which follows
 // that computed value. So every tab restore animated across the full distance between the
 // two tabs' offsets. Restore must land in the same frame it is assigned.

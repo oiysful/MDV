@@ -6,7 +6,7 @@
   // filename that itself contains a literal `#` with no anchor (`a#b.md`) still splits at
   // that `#` (path: `a`, fragment: `b.md`), which breaks opening it as a local link. This
   // is a known, accepted limitation (see the "리스크" section of
-  // docs/plans/05-local-link-anchor-fragment.md) — v1 scopes the fix to ordinary anchor
+  // docs/plans/done/2026-07-30/05-local-link-anchor-fragment.md) — v1 scopes the fix to ordinary anchor
   // links and leaves literal-`#` filenames unresolved rather than trying to disambiguate.
   function splitHrefFragment(href) {
     const hashIndex = href.indexOf('#')

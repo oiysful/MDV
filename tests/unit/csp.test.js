@@ -3,7 +3,7 @@ const assert = require('node:assert/strict')
 const fs = require('node:fs')
 const path = require('node:path')
 
-// CSP 고정 테스트. index.html의 CSP는 하드닝 결정의 저장소이고(docs/plans/06-security-
+// CSP 고정 테스트. index.html의 CSP는 하드닝 결정의 저장소이고(docs/plans/done/2026-07-30/06-security-
 // hardening-audit-2026-07-22.md), 문자열 하나라서 조용히 되돌아가기 쉽다. 이 테스트는
 // 되돌림을 실패로 만들어 CSP 변경이 항상 의도적 갱신이 되도록 강제한다.
 const HTML = fs.readFileSync(path.join(__dirname, '../../src/renderer/index.html'), 'utf-8')
