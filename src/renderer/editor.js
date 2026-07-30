@@ -66,6 +66,27 @@
     return { nextSidebarOpen: sidebarOpenBeforeSplit === true, nextMemo: null }
   }
 
+  // Split-view scroll sync works in absolute ratios, never deltas — nothing accumulates.
+  // Both ratios are clamped because scrollHeight/clientHeight are rounded integers while
+  // scrollTop is fractional, so at the very bottom scrollTop/maxScroll can exceed 1 and the
+  // other pane would snap back by ~0.5px once the target clamps it (see
+  // docs/plans/04-split-view-scroll-boundary-latch.md). Module scope, so the clamp is unit
+  // testable with plain {scrollHeight, clientHeight, scrollTop} stubs.
+  function clampRatio(ratio) {
+    return Math.min(1, Math.max(0, ratio))
+  }
+
+  function getScrollRatio(element) {
+    const maxScroll = element.scrollHeight - element.clientHeight
+    if (maxScroll <= 0) return 0
+    return clampRatio(element.scrollTop / maxScroll)
+  }
+
+  function setScrollRatio(element, ratio) {
+    const maxScroll = element.scrollHeight - element.clientHeight
+    element.scrollTop = maxScroll > 0 ? maxScroll * clampRatio(ratio) : 0
+  }
+
   function getModeButtonState(sourceMode) {
     if (sourceMode) {
       return {
@@ -102,7 +123,9 @@
   function createEditorController({ getRefs, getMarkdown, setMarkdown, getActiveTab, rerenderTabBar, syncTabImageWatches, onSourceInput, render, closeSearch, storage, getSidebarOpen, setSidebarOpen }) {
     let sourceMode = false
     let splitMode = false
-    let syncingSplitScroll = false
+    // The pane we last wrote to programmatically; its next scroll event is the echo of that
+    // write and is dropped once (see syncSplitScroll).
+    let echoScrollSource = null
     let wrapMode = storage.getItem(WRAP_STORAGE_KEY) === '1'
     // Sidebar visibility to restore when leaving split mode -- null means "wasn't forced
     // closed by us" (either not in split mode, or it was already closed on entry).
@@ -127,6 +150,9 @@
       const next = Boolean(nextValue)
       if (next === splitMode) return
       splitMode = next
+      // A pending echo belongs to the split session that just ended; carrying it over would
+      // make the first scroll after re-entering split view get dropped as a phantom echo.
+      echoScrollSource = null
       const refs = getRefs()
       if (refs?.btnSidebar) refs.btnSidebar.disabled = splitMode
       if (!getSidebarOpen || !setSidebarOpen) return
@@ -221,22 +247,23 @@
       hl.style.display = 'block'
     }
 
-    function getScrollRatio(element) {
-      const maxScroll = element.scrollHeight - element.clientHeight
-      if (maxScroll <= 0) return 0
-      return element.scrollTop / maxScroll
-    }
-
-    function setScrollRatio(element, ratio) {
-      const maxScroll = element.scrollHeight - element.clientHeight
-      element.scrollTop = maxScroll > 0 ? maxScroll * ratio : 0
-    }
-
+    // Echo suppression by target identity rather than by frame: writing scrollTop queues a
+    // scroll event on the *next* frame, but the old requestAnimationFrame flag was already
+    // cleared by then, so one echo leaked through as an A→B→A jitter. Remember which element
+    // we wrote to and drop exactly the one event it sends back.
+    //
+    // The guard is armed only when the write actually moved the element — a no-op write emits
+    // no scroll event at all, and a flag left armed would swallow the user's next real scroll
+    // on that pane instead.
     function syncSplitScroll(sourceElement, targetElement) {
-      if (!splitMode || syncingSplitScroll) return
-      syncingSplitScroll = true
+      if (!splitMode) return
+      if (echoScrollSource === sourceElement) {
+        echoScrollSource = null
+        return
+      }
+      const before = targetElement.scrollTop
       setScrollRatio(targetElement, getScrollRatio(sourceElement))
-      requestAnimationFrame(() => { syncingSplitScroll = false })
+      echoScrollSource = targetElement.scrollTop !== before ? targetElement : null
     }
 
     function applySourceMode() {
@@ -448,6 +475,8 @@
 
   const api = {
     createEditorController,
+    getScrollRatio,
+    setScrollRatio,
     buildLineNumberText,
     getModeButtonState,
     applySourceModeToRefs,
