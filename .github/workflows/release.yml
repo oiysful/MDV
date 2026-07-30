@@ -38,3 +38,11 @@ jobs:
             dist/SHA256SUMS
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Update Homebrew tap
+        env:
+          HOMEBREW_TAP_TOKEN: ${{ secrets.HOMEBREW_TAP_TOKEN }}
+        run: |
+          version="${GITHUB_REF_NAME#v}"
+          sha256="$(awk '{ print $1 }' dist/SHA256SUMS)"
+          bash scripts/update-homebrew-tap.sh "$version" "$sha256"

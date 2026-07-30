@@ -8,7 +8,23 @@ Claude-style desktop Markdown editor built with Electron.
 
 ## Install / Update
 
-MDV supports two distribution paths: direct local builds from this repository, and GitHub Release installs.
+MDV supports three distribution paths: Homebrew, GitHub Release installs, and direct local builds from this repository.
+
+### Install via Homebrew
+
+```bash
+brew install --cask oiysful/tap/mdv
+```
+
+This uses the [`oiysful/homebrew-tap`](https://github.com/oiysful/homebrew-tap) cask, which tracks the same `MDV-*-arm64-mac.zip` release asset as the `install:release` path below and clears the quarantine attribute automatically after install. Apple Silicon (arm64) only — see [Known Limitations](#known-limitations).
+
+Note: `brew` requires the full `<user>/<repo>/<cask>` form for a one-shot install — `oiysful/tap` alone will not resolve. Once tapped (`brew tap oiysful/tap`), the bare `mdv` name also works, but plain `brew install mdv` (without `--cask`) would instead install an unrelated Homebrew Core formula also named `mdv`, so always keep `--cask` and the full path in scripts/docs.
+
+To update:
+
+```bash
+brew upgrade --cask oiysful/tap/mdv
+```
 
 ### Direct build from source
 
@@ -219,6 +235,7 @@ Current build outputs:
 - If `/Applications` is not writable for your user, rerun the install/update command with appropriate macOS permissions.
 - Pushing a `v*` tag triggers `.github/workflows/release.yml`, which builds the same unsigned `.zip` on a macOS runner and attaches it plus a `SHA256SUMS` file to that tag's GitHub Release. `npm run install:release` / `update:release` depend on these assets being present — a tag without a completed release run will not have a downloadable build. If a release run fails or a tag was pushed before this workflow existed, build locally and attach the artifacts manually: `npm run build -- --publish=never`, then `shasum -a 256 dist/MDV-*.zip > dist/SHA256SUMS` and `gh release upload <tag> dist/MDV-*.zip dist/SHA256SUMS`.
 - The workflow's `GITHUB_TOKEN` (`env: GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}`) is **not** a repo secret you need to create — it's the automatic per-run token GitHub Actions injects into every workflow, scoped to that run only. The only thing to verify is that the repo's **Settings → Actions → General → Workflow permissions** is set to "Read and write permissions" (or at least "read" plus the `contents: write` the workflow already declares at the top) — a repo defaulted to read-only Actions permissions would make `softprops/action-gh-release`'s upload step fail with a 403 even though the token itself needs no setup.
+- Unlike `GITHUB_TOKEN`, `HOMEBREW_TAP_TOKEN` **is** a repo secret you must create manually: a fine-grained PAT with write access to `oiysful/homebrew-tap`, added under this repo's **Settings → Secrets and variables → Actions**. Without it, `scripts/update-homebrew-tap.sh` logs a notice and exits 0 (release still succeeds; only the tap bump is skipped).
 
 ## Security / Architecture Notes
 
@@ -232,4 +249,5 @@ Current build outputs:
 
 - `src/renderer/app.js` and `src/renderer/app-runtime.js` remain the next structural ownership hotspots.
 - Notarization is still pending for friendlier macOS distribution.
+- The Homebrew cask and all release builds target Apple Silicon (arm64) only; there is no Intel (x64) build.
 - Session restore persists only the last-focused window's state (file paths + active tab index + explorer root); multi-window session merging is out of scope for v1.
