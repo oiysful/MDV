@@ -2767,9 +2767,42 @@ test('open-local-path opens only allowlisted file types and reveals everything e
       assert.equal(res.kind, 'revealed', `${label} must be revealed, not opened`)
     }
 
+    // shell.openPath is now handed the realpath (check-then-use fix), which on macOS
+    // canonicalizes /var/folders/... to /private/var/folders/... — resolve the same way here.
+    const allowedRealPath = await fs.realpath(allowed)
     const calls = await getShellTargetCalls(electronApp)
-    assert.deepEqual(calls.openPath, [allowed], `only the .pdf may reach openPath, got ${JSON.stringify(calls.openPath)}`)
+    assert.deepEqual(calls.openPath, [allowedRealPath], `only the .pdf may reach openPath, got ${JSON.stringify(calls.openPath)}`)
     assert.deepEqual(calls.showItem, [executable, unknown, subdir, disguised])
+  } finally {
+    await closeApp(electronApp)
+    await fs.rm(tempDir, { recursive: true, force: true })
+  }
+})
+
+// Security-review follow-up on HIGH-1: the markdown branch used to check only the link's
+// own extension, so a symlink named notes.md pointing at an arbitrary non-markdown file
+// (e.g. a credential) would still be read and handed to the renderer as tab content. Both
+// the link name and its realpath must end in a markdown extension.
+test('open-local-path refuses to read a markdown-named symlink whose real target is not markdown', async () => {
+  const tempDir = await fs.mkdtemp(path.join(os.tmpdir(), 'mdv-openlocal-mdlink-'))
+  const secret = path.join(tempDir, 'secret.txt')
+  const disguised = path.join(tempDir, 'notes.md') // symlink → secret.txt
+  await fs.writeFile(secret, 'super-secret-value\n')
+  await fs.symlink(secret, disguised)
+
+  const { electronApp, page } = await launchApp()
+
+  try {
+    await page.waitForSelector('#empty')
+    await stubShellTargets(electronApp)
+
+    const res = await page.evaluate(p => window.api.openLocalPath(p), disguised)
+    assert.equal(res.kind, 'revealed', 'a .md-named symlink to a non-markdown target must be revealed, not read')
+    assert.equal(res.content, undefined, 'file content must never be returned for a rejected target')
+
+    const calls = await getShellTargetCalls(electronApp)
+    assert.deepEqual(calls.showItem, [disguised])
+    assert.deepEqual(calls.openPath, [])
   } finally {
     await closeApp(electronApp)
     await fs.rm(tempDir, { recursive: true, force: true })

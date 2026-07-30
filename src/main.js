@@ -350,9 +350,13 @@ ipcMain.handle('open-external-url', async (_, url) => {
 // [Setup](./setup.command) must never reach shell.openPath — one click would run local
 // code (macOS Gatekeeper quarantine only covers *downloaded* files, so a git clone slips
 // through). Everything outside this list is revealed in Finder instead of opened.
+// .svg is deliberately excluded: unlike the other raster formats, it can carry an
+// embedded <script> and shell.openPath would hand it to the OS default handler (typically
+// a browser) at a file:// origin. Local SVGs already render inertly in-app as data: URIs
+// via read-image-data-url, so dropping it from this list costs no functionality.
 const OPENABLE_EXTENSIONS = [
   '.pdf', '.txt', '.csv',
-  '.png', '.jpg', '.jpeg', '.gif', '.svg', '.webp',
+  '.png', '.jpg', '.jpeg', '.gif', '.webp',
   '.docx', '.xlsx', '.pptx',
 ]
 
@@ -384,24 +388,32 @@ ipcMain.handle('open-local-path', async (_, targetPath) => {
     } catch {
       return { ok: false, error: `파일을 찾을 수 없습니다: ${targetPath}` }
     }
-    const ext = path.extname(targetPath).toLowerCase()
-    if (stat.isFile() && MARKDOWN_EXTENSIONS.includes(ext)) {
-      const content = await fs.promises.readFile(targetPath, 'utf-8')
-      return { ok: true, kind: 'markdown', content, filename: path.basename(targetPath), path: targetPath }
-    }
     // realpath failure (broken/looping symlink) is treated exactly like a non-allowlisted
-    // target: reveal, never open.
+    // target: reveal, never open or read. Resolved before the markdown check below so a
+    // symlink named notes.md pointing at an arbitrary file (e.g. ~/.ssh/id_rsa) can't be
+    // read just because its own name ends in .md.
     let realPath = null
     try {
       realPath = await fs.promises.realpath(targetPath)
     } catch {
       realPath = null
     }
+    const ext = path.extname(targetPath).toLowerCase()
+    const realExt = realPath ? path.extname(realPath).toLowerCase() : ''
+    if (
+      stat.isFile() &&
+      realPath &&
+      MARKDOWN_EXTENSIONS.includes(ext) &&
+      MARKDOWN_EXTENSIONS.includes(realExt)
+    ) {
+      const content = await fs.promises.readFile(realPath, 'utf-8')
+      return { ok: true, kind: 'markdown', content, filename: path.basename(targetPath), path: targetPath }
+    }
     if (!stat.isFile() || !realPath || !isOpenableTarget(targetPath, realPath)) {
       shell.showItemInFolder(targetPath)
       return { ok: true, kind: 'revealed' }
     }
-    const openError = await shell.openPath(targetPath)
+    const openError = await shell.openPath(realPath)
     if (openError) return { ok: false, error: openError }
     return { ok: true, kind: 'external' }
   } catch (e) {
