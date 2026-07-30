@@ -172,7 +172,10 @@ document.addEventListener('DOMContentLoaded', () => {
     reportDirtyState: hasDirty => window.api.setDirtyState?.(hasDirty),
     closeSearch: () => runtimeController.closeSearch(),
     addRecentDocument: path => window.api.addRecentDocument?.(path),
-    onTabsChanged: () => notifySessionState(),
+    onTabsChanged: () => {
+      notifySessionState()
+      explorerController?.setActiveFilePath(workspaceController.getActiveTab()?.path ?? null)
+    },
   })
 
   explorerController = window.MDVExplorer.createExplorerController({

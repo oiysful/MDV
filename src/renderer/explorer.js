@@ -21,11 +21,28 @@
     let currentExplorerRoot = null
     let explorerShowFullPath = false
     let treeKeyboardBound = false
+    let currentActiveFilePath = null
     const { getRovingIndex } = globalScope.MDVRoving
 
     function setActiveTreeItem(container, item) {
       container.closest('#layout').querySelectorAll('.tree-item.active').forEach(element => { element.classList.remove('active') })
       item.classList.add('active')
+    }
+
+    // Tab -> explorer sync (openFileRow below already covers the explorer -> tab direction:
+    // clicking a file row opens it and highlights that row immediately). Remembers the active
+    // path so it survives tree re-renders (loadDir's root branch re-applies it after every
+    // rebuild), and clears the highlight rather than reaching for it when the row isn't visible
+    // (e.g. inside a collapsed folder) — v1 deliberately doesn't auto-expand to reveal it.
+    function setActiveFilePath(path) {
+      currentActiveFilePath = path
+      const tree = getRefs().explorerTree
+      const row = path ? getVisibleTreeRows().find(r => r.dataset.path === path) : null
+      if (row) {
+        setActiveTreeItem(tree, row.closest('.tree-item'))
+      } else {
+        tree.closest('#layout').querySelectorAll('.tree-item.active').forEach(element => { element.classList.remove('active') })
+      }
     }
 
     // Rows inside a collapsed (non-.open) .tree-children group are hidden, and lazily-loaded
@@ -190,6 +207,7 @@
       currentExplorerRoot = root
       explorerShowFullPath = false
       syncExplorerHeader()
+      // loadDir's own isRoot branch re-applies currentActiveFilePath after rendering.
       await loadDir(root, getRefs().explorerTree, 0)
     }
 
@@ -222,6 +240,7 @@
         const restore = focusedPath ? getVisibleTreeRows().find(r => r.dataset.path === focusedPath) : null
         if (restore) focusTreeRow(restore)
         else syncTreeRoving()
+        setActiveFilePath(currentActiveFilePath)
       }
     }
 
@@ -300,6 +319,7 @@
       revealCurrentExplorerRoot,
       getCurrentExplorerRoot,
       restoreRoot,
+      setActiveFilePath,
     }
   }
 

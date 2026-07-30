@@ -61,3 +61,56 @@ test('directory listing errors render as text, never as markup', async () => {
   assert.equal(tree.querySelector('img'), null, 'the error must not become a live element')
   assert.ok(hint.innerHTML.includes('&lt;img'), 'the markup is escaped, not parsed')
 })
+
+// setActiveFilePath is the tab -> explorer sync direction (docs/plans/01-explorer-active-tab-sync.md).
+// setActiveTreeItem's own #layout lookup (explorer.js:27-30) needs a real #layout ancestor.
+function makeActiveFilePathHarness(entries) {
+  const dom = new JSDOM('<div id="layout"><div id="explorer-tree"></div></div>')
+  global.document = dom.window.document
+  const tree = dom.window.document.getElementById('explorer-tree')
+  const controller = createExplorerController({
+    getRefs: () => ({ explorerTree: tree }),
+    api: { listDirectory: async () => ({ entries }) },
+    load: () => {},
+    switchToExplorerTab: () => {},
+    showAppContextMenu: () => {},
+    revealInFinder: () => {},
+    onExplorerRootChanged: () => {},
+  })
+  return { controller, tree }
+}
+
+test('setActiveFilePath activates the matching row and clears any previous active row', async () => {
+  const entries = [
+    { type: 'file', name: 'a.md', path: '/docs/a.md' },
+    { type: 'file', name: 'b.md', path: '/docs/b.md' },
+  ]
+  const { controller, tree } = makeActiveFilePathHarness(entries)
+  await controller.loadDir('/docs', tree, 0)
+
+  controller.setActiveFilePath('/docs/a.md')
+  let active = tree.querySelectorAll('.tree-item.active')
+  assert.equal(active.length, 1)
+  assert.equal(active[0].querySelector('.tree-row').dataset.path, '/docs/a.md')
+
+  controller.setActiveFilePath('/docs/b.md')
+  active = tree.querySelectorAll('.tree-item.active')
+  assert.equal(active.length, 1, 'switching path moves the highlight instead of stacking it')
+  assert.equal(active[0].querySelector('.tree-row').dataset.path, '/docs/b.md')
+})
+
+test('setActiveFilePath clears the highlight for a null path or a path not in the visible tree', async () => {
+  const entries = [{ type: 'file', name: 'a.md', path: '/docs/a.md' }]
+  const { controller, tree } = makeActiveFilePathHarness(entries)
+  await controller.loadDir('/docs', tree, 0)
+
+  controller.setActiveFilePath('/docs/a.md')
+  assert.equal(tree.querySelectorAll('.tree-item.active').length, 1)
+
+  controller.setActiveFilePath(null)
+  assert.equal(tree.querySelectorAll('.tree-item.active').length, 0)
+
+  controller.setActiveFilePath('/docs/a.md')
+  controller.setActiveFilePath('/docs/not-in-tree.md')
+  assert.equal(tree.querySelectorAll('.tree-item.active').length, 0, 'an unmatched path clears rather than leaving a stale highlight')
+})
