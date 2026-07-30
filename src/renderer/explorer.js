@@ -24,8 +24,12 @@
     let currentActiveFilePath = null
     const { getRovingIndex } = globalScope.MDVRoving
 
-    function setActiveTreeItem(container, item) {
+    function clearActiveTreeItems(container) {
       container.closest('#layout').querySelectorAll('.tree-item.active').forEach(element => { element.classList.remove('active') })
+    }
+
+    function setActiveTreeItem(container, item) {
+      clearActiveTreeItems(container)
       item.classList.add('active')
     }
 
@@ -41,7 +45,7 @@
       if (row) {
         setActiveTreeItem(tree, row.closest('.tree-item'))
       } else {
-        tree.closest('#layout').querySelectorAll('.tree-item.active').forEach(element => { element.classList.remove('active') })
+        clearActiveTreeItems(tree)
       }
     }
 

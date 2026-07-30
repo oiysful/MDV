@@ -173,15 +173,18 @@
     function bindScrollAndResizeHandlers() {
       const refs = getRefs()
       const scrollArea = refs.scrollArea
-      let scrollTicking = false
+      // One ticking flag per container: below the 700px split-mode breakpoint (index.html)
+      // #scroll-area and #content can both be scrollable at once, and a single shared flag
+      // would let one container's rAF-pending scroll swallow the other's.
+      const tickingByContainer = new WeakMap()
 
       // Reads container.scrollTop inside the rAF callback (not at call time), so a burst
       // of scroll events collapses to the *freshest* position by the time it fires.
       const scheduleTocRefresh = (container, extra) => {
-        if (scrollTicking) return
-        scrollTicking = true
+        if (tickingByContainer.get(container)) return
+        tickingByContainer.set(container, true)
         windowRef.requestAnimationFrame(() => {
-          scrollTicking = false
+          tickingByContainer.set(container, false)
           if (extra) extra()
           markdownController.refreshTocActive(container.scrollTop)
         })
@@ -208,6 +211,9 @@
       })
 
       scrollArea.addEventListener('scroll', hideAppContextMenu)
+      // #content is its own scroll container in split view (see above); an open context
+      // menu should dismiss on either pane scrolling, not just #scroll-area's.
+      refs.content.addEventListener('scroll', hideAppContextMenu)
     }
 
     function bindSearchEvents() {
