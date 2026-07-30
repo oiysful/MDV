@@ -1,4 +1,16 @@
 (function (globalScope) {
+  // Splits a link href on its first `#` into a file-path part and a fragment part.
+  // Used to strip URL fragments (`#heading`) off local link hrefs before they reach
+  // resolveLocalPath, which otherwise treats the whole href — fragment included — as
+  // part of the file path. Always deterministic: the first `#` wins, so a filename
+  // that itself contains a literal `#` (e.g. `a#b.md`) with no trailing anchor is
+  // unaffected (fragment comes back empty only when there's no `#` at all).
+  function splitHrefFragment(href) {
+    const hashIndex = href.indexOf('#')
+    if (hashIndex === -1) return { path: href, fragment: '' }
+    return { path: href.slice(0, hashIndex), fragment: href.slice(hashIndex + 1) }
+  }
+
   function collectAppShellRefs(documentRef) {
     return {
       scrollArea: documentRef.getElementById('scroll-area'),
@@ -85,10 +97,15 @@
     }
 
     async function openLocalLink(href) {
+      // Strip a trailing URL fragment (`#heading`) before resolving — resolveLocalPath
+      // treats the whole string as a file path, so a real anchor would otherwise be
+      // read as part of the filename and fail to resolve. v1 drops the fragment; using
+      // it to scroll to a heading after opening is a follow-up (see plan doc #5).
+      const { path: targetPath } = splitHrefFragment(href)
       // Resolve relative hrefs against the active tab's directory. A relative link in
       // an unsaved (path-less) document has no base to resolve against.
       const docPath = getActiveTab ? getActiveTab()?.path || null : null
-      const resolved = pathUtils.resolveLocalPath(href, docPath)
+      const resolved = pathUtils.resolveLocalPath(targetPath, docPath)
       if (!resolved) {
         alert('링크 열기 실패: 문서를 저장한 뒤에 상대 경로 링크를 열 수 있습니다.')
         return
@@ -266,6 +283,7 @@
   const api = {
     collectAppShellRefs,
     createAppShellController,
+    splitHrefFragment,
   }
 
   globalScope.MDVAppShell = api
