@@ -130,6 +130,13 @@
     // Sidebar visibility to restore when leaving split mode -- null means "wasn't forced
     // closed by us" (either not in split mode, or it was already closed on entry).
     let sidebarOpenBeforeSplit = null
+    // Detaches the in-flight sidebar-width transition listener from setSplitMode below, if
+    // one is still pending. Toggling split mode twice within the .25s transition window
+    // (index.html) replaces the running transition with a new one -- the browser fires
+    // transitioncancel for the superseded transition, not transitionend, so without this the
+    // first listener would never remove itself and one would accumulate on #sidebar per
+    // rapid toggle pair.
+    let cancelPendingSidebarTransitionListener = null
 
     function getSourceMode() {
       return sourceMode
@@ -164,18 +171,31 @@
       })
       setSidebarOpen(nextSidebarOpen)
       sidebarOpenBeforeSplit = nextMemo
+      // A transition from a previous call is still pending (split toggled twice within
+      // .25s) -- detach it before starting a new one, rather than letting it accumulate.
+      cancelPendingSidebarTransitionListener?.()
+      cancelPendingSidebarTransitionListener = null
       // #sidebar's width transition (index.html, .25s) reflows #content's available width
       // over that whole span, not instantly -- refreshHeadingOffsets() in applySourceMode
       // (called right after this returns) runs before the transition starts moving, so its
       // read is stale until the transition actually finishes. Recompute once more then.
       if (nextSidebarOpen !== wasSidebarOpen && refs?.sidebar) {
         const sidebarEl = refs.sidebar
-        const onSidebarTransitionEnd = event => {
+        const onSidebarTransitionSettled = event => {
           if (event.target !== sidebarEl || event.propertyName !== 'width') return
-          sidebarEl.removeEventListener('transitionend', onSidebarTransitionEnd)
-          markdownController?.refreshHeadingOffsets()
+          sidebarEl.removeEventListener('transitionend', onSidebarTransitionSettled)
+          sidebarEl.removeEventListener('transitioncancel', onSidebarTransitionSettled)
+          cancelPendingSidebarTransitionListener = null
+          // transitioncancel means this transition got superseded (toggled again mid-flight)
+          // -- the newer call's own listener will do the recompute once it settles.
+          if (event.type === 'transitionend') markdownController?.refreshHeadingOffsets()
         }
-        sidebarEl.addEventListener('transitionend', onSidebarTransitionEnd)
+        sidebarEl.addEventListener('transitionend', onSidebarTransitionSettled)
+        sidebarEl.addEventListener('transitioncancel', onSidebarTransitionSettled)
+        cancelPendingSidebarTransitionListener = () => {
+          sidebarEl.removeEventListener('transitionend', onSidebarTransitionSettled)
+          sidebarEl.removeEventListener('transitioncancel', onSidebarTransitionSettled)
+        }
       }
     }
 

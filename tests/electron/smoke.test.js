@@ -804,6 +804,44 @@ test('entering split view force-closes the sidebar, disables its toggle, and res
   }
 })
 
+// Toggling split view twice within #sidebar's .25s width transition (index.html) supersedes
+// the running transition -- Chromium fires transitioncancel for it, not transitionend. The
+// listener setSplitMode (editor.js) attaches to recompute TOC offsets once the transition
+// settles must detach on transitioncancel too, or repeated rapid toggling accumulates one
+// stale listener per pair. This doesn't crash on its own, so the regression this guards is a
+// thrown error surfacing later (a leaked listener firing markdownController.refreshHeadingOffsets
+// against a stale closure) rather than an immediate assertion failure.
+test('rapid split-view toggling does not leak sidebar-transition listeners or throw', async () => {
+  const { electronApp, page } = await launchApp()
+  const pageErrors = []
+  page.on('pageerror', error => pageErrors.push(String(error)))
+
+  try {
+    await page.waitForSelector('#empty')
+    await stubOpenDialog(electronApp, [BASIC_MD])
+    await emitRendererCommand(electronApp, 'openFile')
+    await page.waitForFunction(() => document.title === 'basic')
+
+    for (let i = 0; i < 6; i++) {
+      await emitRendererCommand(electronApp, 'toggleSplitView')
+      await page.waitForTimeout(30) // well inside the .25s sidebar transition
+    }
+
+    // Let whichever transition is still running settle, then confirm the app landed in a
+    // consistent final state rather than something corrupted by overlapping listeners.
+    await page.waitForTimeout(400)
+    const finalState = await page.evaluate(() => ({
+      splitMode: document.getElementById('scroll-area').classList.contains('split-mode'),
+      sidebarClosed: document.getElementById('sidebar').classList.contains('closed'),
+    }))
+    assert.equal(finalState.splitMode, false, '6 toggles (even count) should land back in normal mode')
+    assert.equal(finalState.sidebarClosed, false, 'the sidebar should be restored, not left forced-closed')
+    assert.deepEqual(pageErrors, [], 'no renderer error should surface from a leaked/stale listener')
+  } finally {
+    await closeApp(electronApp)
+  }
+})
+
 test('split view leaves an already-closed sidebar closed on exit instead of force-opening it', async () => {
   const { electronApp, page } = await launchApp()
 
@@ -2805,11 +2843,17 @@ test('open-local-path opens only allowlisted file types and reveals everything e
   const unknown = path.join(tempDir, 'archive.zip')
   const subdir = path.join(tempDir, 'attachments')
   const disguised = path.join(tempDir, 'notes.pdf') // symlink → setup.command
+  // Security-review follow-up: .svg is deliberately excluded from OPENABLE_EXTENSIONS
+  // (unlike the other image formats) because it can carry an embedded <script> that would
+  // run in whatever app shell.openPath hands it to. Pinned here so re-adding it to the
+  // allowlist fails a test instead of silently reopening that gap.
+  const svg = path.join(tempDir, 'icon.svg')
   await fs.writeFile(allowed, '%PDF-1.4\n')
   await fs.writeFile(executable, '#!/bin/sh\necho pwned\n')
   await fs.writeFile(unknown, 'zip')
   await fs.mkdir(subdir)
   await fs.symlink(executable, disguised)
+  await fs.writeFile(svg, '<svg xmlns="http://www.w3.org/2000/svg"><script>alert(1)</script></svg>\n')
 
   const { electronApp, page } = await launchApp()
 
@@ -2822,7 +2866,7 @@ test('open-local-path opens only allowlisted file types and reveals everything e
     const allowedRes = await openLocal(allowed)
     assert.equal(allowedRes.kind, 'external', 'an allowlisted .pdf is handed to the OS')
 
-    for (const [target, label] of [[executable, '.command'], [unknown, '.zip'], [subdir, 'directory'], [disguised, 'symlinked .command']]) {
+    for (const [target, label] of [[executable, '.command'], [unknown, '.zip'], [subdir, 'directory'], [disguised, 'symlinked .command'], [svg, '.svg']]) {
       const res = await openLocal(target)
       assert.equal(res.kind, 'revealed', `${label} must be revealed, not opened`)
     }
@@ -2832,7 +2876,7 @@ test('open-local-path opens only allowlisted file types and reveals everything e
     const allowedRealPath = await fs.realpath(allowed)
     const calls = await getShellTargetCalls(electronApp)
     assert.deepEqual(calls.openPath, [allowedRealPath], `only the .pdf may reach openPath, got ${JSON.stringify(calls.openPath)}`)
-    assert.deepEqual(calls.showItem, [executable, unknown, subdir, disguised])
+    assert.deepEqual(calls.showItem, [executable, unknown, subdir, disguised, svg])
   } finally {
     await closeApp(electronApp)
     await fs.rm(tempDir, { recursive: true, force: true })
