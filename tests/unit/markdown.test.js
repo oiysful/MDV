@@ -5,7 +5,7 @@ const { JSDOM } = require('jsdom')
 const marked = require('marked')
 const createDOMPurify = require('dompurify')
 
-const { computeStats, createMarkdownController } = require('../../src/renderer/markdown.js')
+const { computeStats, createMarkdownController, slugifyHeading } = require('../../src/renderer/markdown.js')
 
 const DOMPurify = createDOMPurify(new JSDOM('').window)
 
@@ -167,6 +167,72 @@ test('hydrateFromDom falls back to async IPC on a cold cache and converges', asy
 
     assert.equal(h.getReadCalls(), 1, 'cold cache must hit the IPC mock exactly once')
     assert.equal(h.refs.content.querySelector('img').getAttribute('src'), IMAGE_DATA_URL)
+  } finally {
+    h.restore()
+  }
+})
+
+// buildToc used to assign positional ids (`h0`, `h1`, ...), so a hand-written
+// `[텍스트](#헤더-슬러그)` anchor -- the convention this repo's own docs use -- pointed at
+// an element that never existed and the jump silently did nothing. slugifyHeading is the
+// GFM-compatible id source that makes those links resolve.
+test('slugifyHeading lowercases and hyphenates plain ASCII heading text', () => {
+  assert.equal(slugifyHeading('Getting Started'), 'getting-started')
+  assert.equal(slugifyHeading('API Reference'), 'api-reference')
+})
+
+test('slugifyHeading keeps non-ASCII (Korean) characters intact', () => {
+  assert.equal(slugifyHeading('구현 요약 2026-07-20'), '구현-요약-2026-07-20')
+  assert.equal(slugifyHeading('한글 제목'), '한글-제목')
+})
+
+test('slugifyHeading drops punctuation but keeps hyphens and underscores', () => {
+  assert.equal(slugifyHeading('Hello, World!'), 'hello-world')
+  assert.equal(slugifyHeading('What is MDV? (v1.1)'), 'what-is-mdv-v11')
+  assert.equal(slugifyHeading('snake_case and kebab-case'), 'snake_case-and-kebab-case')
+})
+
+test('slugifyHeading collapses whitespace runs and trims surrounding space', () => {
+  assert.equal(slugifyHeading('   Spaced    Out   '), 'spaced-out')
+  assert.equal(slugifyHeading('Tabs\tand\nnewlines'), 'tabs-and-newlines')
+})
+
+test('slugifyHeading trims leading and trailing hyphens left by stripped punctuation', () => {
+  assert.equal(slugifyHeading('...Leading'), 'leading')
+  assert.equal(slugifyHeading('Trailing...'), 'trailing')
+  assert.equal(slugifyHeading('-- Both --'), 'both')
+})
+
+test('slugifyHeading returns an empty slug for text with nothing sluggable', () => {
+  // buildToc turns this into its positional `h${index}` fallback rather than an id of ''.
+  assert.equal(slugifyHeading('???'), '')
+  assert.equal(slugifyHeading('   '), '')
+})
+
+test('slugifyHeading suffixes duplicate slugs -1, -2 like GitHub does', () => {
+  const seen = new Map()
+  assert.equal(slugifyHeading('Notes', seen), 'notes')
+  assert.equal(slugifyHeading('Notes', seen), 'notes-1')
+  assert.equal(slugifyHeading('Notes', seen), 'notes-2')
+  // Punctuation differences that slugify identically collide too, as on GitHub.
+  assert.equal(slugifyHeading('notes!', seen), 'notes-3')
+  // An unrelated heading is unaffected by the counter.
+  assert.equal(slugifyHeading('Other', seen), 'other')
+})
+
+test('slugifyHeading without a seen map does not deduplicate', () => {
+  assert.equal(slugifyHeading('Notes'), 'notes')
+  assert.equal(slugifyHeading('Notes'), 'notes')
+})
+
+test('buildToc gives every heading its slug id and a matching TOC href', async () => {
+  const h = makeSnapshotHarness()
+  try {
+    await h.controller.render('# Hello, World!\n\n## 한글 제목\n\n## Notes\n\n## Notes\n', 'doc.md', null)
+    const ids = Array.from(h.refs.content.querySelectorAll('h1,h2,h3')).map(el => el.id)
+    assert.deepEqual(ids, ['hello-world', '한글-제목', 'notes', 'notes-1'])
+    const hrefs = Array.from(h.refs.tocList.querySelectorAll('a')).map(a => a.getAttribute('href'))
+    assert.deepEqual(hrefs, ids.map(id => `#${id}`))
   } finally {
     h.restore()
   }
