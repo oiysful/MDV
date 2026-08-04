@@ -987,6 +987,12 @@ test('dragging the split-view divider resizes both panes and clamps at their min
     await emitRendererCommand(electronApp, 'openFile')
     await page.waitForFunction(() => document.title === 'split-divider')
 
+    // The default-app guide is a full-viewport overlay above #scroll-area; left open, it
+    // eats the real OS-level mouse events this test sends to the divider (elementFromPoint
+    // resolves inside the guide, not the divider), while the app never sees a mousedown at
+    // all -- so the drag silently does nothing. Same pattern as the search test above.
+    await page.evaluate(() => document.getElementById('default-app-guide')?.classList.remove('show'))
+
     await armSidebarTransitionWatch(page)
     await emitRendererCommand(electronApp, 'toggleSplitView')
     await page.waitForFunction(() => document.getElementById('scroll-area').classList.contains('split-mode'))
@@ -1027,8 +1033,17 @@ test('dragging the split-view divider resizes both panes and clamps at their min
 
     // Leaving and re-entering split mode must reset the drag-set width back to the
     // roughly-even CSS default rather than remembering the last drag.
+    //
+    // The exit toggle also reopens the sidebar (it was forced closed on entry), which is its
+    // own .25s width transition -- without waiting for it here, the immediate re-entry below
+    // interrupts it mid-flight (a 'transitioncancel', not 'transitionend', for that transition)
+    // and the re-arm+re-entry race the still-settling layout, so the second wait's
+    // 'transitionend' listener can end up registered after the one legitimate event already
+    // fired. Same guard the entry above already needed, just missing here.
+    await armSidebarTransitionWatch(page)
     await emitRendererCommand(electronApp, 'toggleSplitView')
     await page.waitForFunction(() => !document.getElementById('scroll-area').classList.contains('split-mode'))
+    await waitForSidebarTransition(page)
 
     // Direct check of the setSplitMode(false) reset mechanism (editor.js), not just its
     // visual effect below -- exercises the exact requirement (clear the drag-set inline style).
