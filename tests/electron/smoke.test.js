@@ -955,6 +955,102 @@ test('split view shows editor and preview together, live-renders edits, and save
   }
 })
 
+// Entering (and, on restore, leaving) split view force-closes/reopens #sidebar, whose width
+// transition (index.html, .25s) keeps reflowing #scroll-area's available width for the whole
+// span -- arm a transitionend watch before the toggle and wait for it before reading any
+// geometry, the same way tests/electron/smoke.test.js's TOC-scrollspy test does, so pane-width
+// assertions aren't racing a still-animating sidebar.
+async function armSidebarTransitionWatch(page) {
+  await page.evaluate(() => {
+    window.__mdvSidebarTransitionDone = false
+    const sidebar = document.getElementById('sidebar')
+    const onEnd = event => {
+      if (event.propertyName !== 'width') return
+      sidebar.removeEventListener('transitionend', onEnd)
+      window.__mdvSidebarTransitionDone = true
+    }
+    sidebar.addEventListener('transitionend', onEnd)
+  })
+}
+
+async function waitForSidebarTransition(page) {
+  await page.waitForFunction(() => window.__mdvSidebarTransitionDone === true)
+}
+
+test('dragging the split-view divider resizes both panes and clamps at their minimum widths', async () => {
+  const { path: tempMarkdown, cleanup } = await createTempMarkdown(BASIC_MD, 'split-divider.md')
+  const { electronApp, page } = await launchApp()
+
+  try {
+    await page.waitForSelector('#empty')
+    await stubOpenDialog(electronApp, [tempMarkdown])
+    await emitRendererCommand(electronApp, 'openFile')
+    await page.waitForFunction(() => document.title === 'split-divider')
+
+    await armSidebarTransitionWatch(page)
+    await emitRendererCommand(electronApp, 'toggleSplitView')
+    await page.waitForFunction(() => document.getElementById('scroll-area').classList.contains('split-mode'))
+    await waitForSidebarTransition(page)
+
+    const scrollAreaBox = await page.locator('#scroll-area').boundingBox()
+    const initialWidths = await page.evaluate(() => ({
+      sourceView: document.getElementById('source-view').getBoundingClientRect().width,
+      content: document.getElementById('content').getBoundingClientRect().width,
+    }))
+
+    // Drag the divider well to the right of its starting (roughly centered) position.
+    const dividerBox = await page.locator('#split-divider').boundingBox()
+    const dividerY = dividerBox.y + dividerBox.height / 2
+    await page.mouse.move(dividerBox.x + dividerBox.width / 2, dividerY)
+    await page.mouse.down()
+    await page.mouse.move(scrollAreaBox.x + scrollAreaBox.width * 0.7, dividerY)
+    await page.mouse.up()
+
+    const widthsAfterDrag = await page.evaluate(() => ({
+      sourceView: document.getElementById('source-view').getBoundingClientRect().width,
+      content: document.getElementById('content').getBoundingClientRect().width,
+    }))
+    assert.ok(widthsAfterDrag.sourceView > initialWidths.sourceView + 100, `left pane should have grown, got ${widthsAfterDrag.sourceView} vs initial ${initialWidths.sourceView}`)
+    assert.ok(widthsAfterDrag.content < initialWidths.content - 100, `right pane should have shrunk, got ${widthsAfterDrag.content} vs initial ${initialWidths.content}`)
+    assert.ok(widthsAfterDrag.content >= 320, `right pane must never go below its 320px minimum, got ${widthsAfterDrag.content}`)
+
+    // Drag far past the left edge -- the left pane must clamp at 300px, not collapse further.
+    const dividerBoxAfterDrag = await page.locator('#split-divider').boundingBox()
+    const dividerYAfterDrag = dividerBoxAfterDrag.y + dividerBoxAfterDrag.height / 2
+    await page.mouse.move(dividerBoxAfterDrag.x + dividerBoxAfterDrag.width / 2, dividerYAfterDrag)
+    await page.mouse.down()
+    await page.mouse.move(scrollAreaBox.x - 500, dividerYAfterDrag)
+    await page.mouse.up()
+
+    const widthAtMin = await page.evaluate(() => document.getElementById('source-view').getBoundingClientRect().width)
+    assert.ok(widthAtMin >= 299 && widthAtMin <= 301, `left pane must clamp at its 300px minimum instead of collapsing, got ${widthAtMin}`)
+
+    // Leaving and re-entering split mode must reset the drag-set width back to the
+    // roughly-even CSS default rather than remembering the last drag.
+    await emitRendererCommand(electronApp, 'toggleSplitView')
+    await page.waitForFunction(() => !document.getElementById('scroll-area').classList.contains('split-mode'))
+
+    // Direct check of the setSplitMode(false) reset mechanism (editor.js), not just its
+    // visual effect below -- exercises the exact requirement (clear the drag-set inline style).
+    const inlineColumnsAfterExit = await page.evaluate(() => document.getElementById('scroll-area').style.gridTemplateColumns)
+    assert.equal(inlineColumnsAfterExit, '', 'leaving split mode must clear the drag-set inline grid-template-columns')
+
+    await armSidebarTransitionWatch(page)
+    await emitRendererCommand(electronApp, 'toggleSplitView')
+    await page.waitForFunction(() => document.getElementById('scroll-area').classList.contains('split-mode'))
+    await waitForSidebarTransition(page)
+
+    const widthsAfterReopen = await page.evaluate(() => ({
+      sourceView: document.getElementById('source-view').getBoundingClientRect().width,
+      content: document.getElementById('content').getBoundingClientRect().width,
+    }))
+    assert.ok(Math.abs(widthsAfterReopen.sourceView - widthsAfterReopen.content) < 20, `reopening split view should reset to a roughly even split, got ${JSON.stringify(widthsAfterReopen)}`)
+  } finally {
+    await closeApp(electronApp)
+    await cleanup()
+  }
+})
+
 test('split view restores fresh preview and pane scroll after immediate tab switch', async () => {
   const { electronApp, page } = await launchApp()
   const longBody = Array.from({ length: 80 }, (_, index) => `## Section ${index + 1}\n\nParagraph ${index + 1}.`).join('\n\n')

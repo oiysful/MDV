@@ -618,8 +618,8 @@ mark.search-hl.current {
 #scroll-area.source-mode { padding: 0; }
 #scroll-area.split-mode {
   display: grid;
-  grid-template-columns: minmax(300px, 1fr) minmax(320px, 1fr);
-  gap: 1px;
+  grid-template-columns: minmax(300px, 1fr) 7px minmax(320px, 1fr);
+  gap: 0;
   padding: 0;
   background: var(--border);
   overflow: hidden;
@@ -635,7 +635,7 @@ mark.search-hl.current {
 
 #content { max-width: 720px; margin: 0 auto; user-select: text; -webkit-user-select: text; }
 #scroll-area.split-mode #content {
-  order: 2;
+  order: 3;
   max-width: none;
   width: 100%;
   height: 100%;
@@ -652,6 +652,22 @@ mark.search-hl.current {
   height: 100%;
   overflow-y: auto;
   background: var(--bg);
+}
+
+/* Split-view divider: drag to resize #source-view/#content. Hidden outside split mode,
+   same pattern as #source-view above. */
+#split-divider { display: none; }
+#scroll-area.split-mode #split-divider {
+  display: block;
+  order: 2;
+  width: 7px;
+  height: 100%;
+  cursor: col-resize;
+  background: var(--border);
+}
+#scroll-area.split-mode #split-divider:hover,
+#scroll-area.split-mode #split-divider.dragging {
+  background: var(--brand);
 }
 #source-editor {
   display: block; width: calc(100% - 40px); margin-left: 40px; border: none; outline: none; resize: none;
@@ -1129,7 +1145,7 @@ kbd {
 #btn-copy-all.copied { color: var(--success) !important; }
 
 @media print {
-  #toolbar, #search-bar, #sidebar, #tab-strip, #go-top, #source-view, .copy-btn { display: none !important; }
+  #toolbar, #search-bar, #sidebar, #tab-strip, #go-top, #source-view, #split-divider, .copy-btn { display: none !important; }
   html, body, #layout, #main-pane, #scroll-area, #content {
     height: auto !important;
     min-height: 0 !important;
@@ -1173,6 +1189,8 @@ kbd {
   #layout { padding-top: 48px; }
   #scroll-area { padding: var(--sp-lg) var(--sp-md) 60px; }
   #scroll-area.split-mode { display: block; padding: 0; overflow-y: auto; }
+  /* Stacked (non-grid) layout on narrow viewports -- column-width dragging doesn't apply. */
+  #scroll-area.split-mode #split-divider { display: none; }
   #sidebar { position: absolute; left: 0; top: 48px; bottom: 0; height: auto; }
   #sidebar.closed { width: 0; min-width: 0; }
   #tab-strip { padding-inline: 12px; }
@@ -1497,6 +1515,7 @@ kbd {
           </div>
         </div>
       </div>
+      <div id="split-divider" role="separator" aria-orientation="vertical" aria-label="분할뷰 폭 조절"></div>
       <div id="source-view">
         <div id="source-lines"></div>
         <div id="line-highlight"></div>
