@@ -2197,7 +2197,9 @@ test('clicking an in-page #slug anchor scrolls to that heading, including Korean
   const filler = `${'Filler paragraph for scroll height. '.repeat(40)}\n\n`.repeat(12)
   await fs.writeFile(
     docPath,
-    `# In-page Doc\n\n[jump ascii](#deep-section)\n\n[jump korean](#한글-절)\n\n${filler}## Deep Section\n\nAscii target body.\n\n${filler}## 한글 절\n\nKorean target body.\n\n${filler}`,
+    // "Content" slugifies to `content`, which collides with the #content chrome div —
+    // a document-wide getElementById would return the div, not the heading.
+    `# In-page Doc\n\n[jump ascii](#deep-section)\n\n[jump korean](#한글-절)\n\n[jump colliding](#content)\n\n${filler}## Deep Section\n\nAscii target body.\n\n${filler}## 한글 절\n\nKorean target body.\n\n${filler}## Content\n\nColliding-slug target body.\n\n${filler}`,
     'utf-8',
   )
 
@@ -2211,7 +2213,7 @@ test('clicking an in-page #slug anchor scrolls to that heading, including Korean
     // Both headings must have real slug ids for the anchors to resolve at all.
     assert.deepEqual(
       await page.evaluate(() => Array.from(document.querySelectorAll('#content h2')).map(el => el.id)),
-      ['deep-section', '한글-절'],
+      ['deep-section', '한글-절', 'content'],
     )
 
     await page.locator('#content a', { hasText: 'jump ascii' }).click()
@@ -2227,6 +2229,19 @@ test('clicking an in-page #slug anchor scrolls to that heading, including Korean
     await page.locator('#content a', { hasText: 'jump korean' }).click()
     await page.waitForFunction(() => {
       const heading = document.getElementById('한글-절')
+      const scrollArea = document.getElementById('scroll-area')
+      return scrollArea.scrollTop > 0
+        && Math.abs(heading.getBoundingClientRect().top - scrollArea.getBoundingClientRect().top) < 40
+    })
+
+    // A slug that collides with an app-chrome id must still resolve to the heading.
+    // getElementById('content') returns the chrome div (earlier in document order), so
+    // scrollToContentFragment has to search inside #content rather than document-wide;
+    // scrolling the div itself would land at the top of the document instead.
+    await page.evaluate(() => { document.getElementById('scroll-area').scrollTop = 0 })
+    await page.locator('#content a', { hasText: 'jump colliding' }).click()
+    await page.waitForFunction(() => {
+      const heading = Array.from(document.querySelectorAll('#content h2')).find(el => el.id === 'content')
       const scrollArea = document.getElementById('scroll-area')
       return scrollArea.scrollTop > 0
         && Math.abs(heading.getBoundingClientRect().top - scrollArea.getBoundingClientRect().top) < 40

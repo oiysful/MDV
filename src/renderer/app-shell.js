@@ -118,9 +118,12 @@
     // heading an id via slugifyHeading, and a link author writes that same slug, so the
     // fragment text *is* the id — no re-slugification needed.
     //
-    // Scoped to #content on purpose: heading slugs share an id namespace with the app
-    // chrome (`sidebar`, `stats`, `toast`, `scroll-area`, ...), so a heading literally
-    // titled "Sidebar" would otherwise scroll the real sidebar element into view.
+    // The lookup is scoped *inside* #content rather than done with getElementById,
+    // because heading slugs share an id namespace with the app chrome (`sidebar`,
+    // `stats`, `toast`, and `content` itself): a heading titled "Sidebar" or "Content"
+    // would otherwise win the document-wide lookup and scroll a chrome element.
+    // Matching on the id property instead of a `#id` selector also sidesteps escaping
+    // — a slug is arbitrary heading text and need not be a valid CSS identifier.
     //
     // A fragment with no matching heading is ignored silently — unlike a missing file,
     // a stale anchor isn't worth interrupting the user with an alert.
@@ -128,15 +131,15 @@
       if (!fragment) return
       // marked percent-encodes non-ASCII characters in hrefs (`#헤더` is stored as
       // `#%ED%97%A4...`) while heading ids stay raw, so decode before matching. A
-      // malformed `%` sequence throws; fall back to the literal fragment then.
+      // malformed `%` sequence throws; match against the literal fragment then.
       let id = fragment
       try {
         id = decodeURIComponent(fragment)
       } catch (e) {
         id = fragment
       }
-      const target = documentRef.getElementById(id)
-      if (!target || !getRefs().content.contains(target)) return
+      const target = Array.from(getRefs().content.querySelectorAll('[id]')).find(el => el.id === id)
+      if (!target) return
       target.scrollIntoView({ behavior: 'smooth', block: 'start' })
     }
 
