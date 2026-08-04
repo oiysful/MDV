@@ -146,6 +146,7 @@ document.addEventListener('DOMContentLoaded', () => {
     runSearch: query => runtimeController.runSearch(query),
     searchNext: () => runtimeController.searchNext(),
     searchPrev: () => runtimeController.searchPrev(),
+    isEditorSearchActive: () => runtimeController.isEditorSearchActive(),
     handleFileOpened: jsonStr => documentFlowController.handleFileOpened(jsonStr),
     handleFileChanged: payload => documentFlowController.handleFileChanged(payload),
     handleRendererCommand: commandName => runRendererCommand(commandName),
@@ -189,7 +190,6 @@ document.addEventListener('DOMContentLoaded', () => {
     onExplorerRootChanged: () => notifySessionState(),
   })
 
-  editorController.bindEditorEvents()
   rendererCommands = createRendererCommands()
 
   appShellController.initializeUi({
@@ -204,6 +204,11 @@ document.addEventListener('DOMContentLoaded', () => {
   })
   appShellController.registerIpcHandlers()
   appShellController.bindUiEvents(rendererCommands)
+  // Must run after bindUiEvents: bindSearchEvents (app-shell.js) registers a keydown listener
+  // on #source-editor that needs to fire before editor.js's own Enter handling so it can
+  // stopImmediatePropagation() while search is open in editor mode. Registration order is
+  // what decides precedence for two listeners on the same element.
+  editorController.bindEditorEvents()
   runtimeController.bindGlobalEvents()
   window.api.onRestoreSession?.(payload => { void restoreSession(payload) })
   void runtimeController.checkMarkdownDefaultAppStatus()

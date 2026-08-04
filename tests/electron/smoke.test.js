@@ -1821,7 +1821,25 @@ test('search steps through matches in source mode using the editor selection', a
     })
     assert.equal(second.start, second.expectedStart)
     assert.equal(second.end, second.expectedStart + 5)
-    assert.equal(second.activeId, 'search-input', 'focus must return to the search input after stepping to the next match')
+    // docs/plans/08-search-highlight-and-ime-fixes.md: a textarea only paints its selection
+    // while focused, so the match highlight was invisible when focus bounced back to the
+    // search input. Focus must now stay on the editor after stepping to a match.
+    assert.equal(second.activeId, 'source-editor', 'focus must stay on the editor so the match selection is actually visible')
+
+    // Focus is now on the editor itself. Pressing Enter again must keep cycling search
+    // matches, not fall through to editor.js's own Enter handling (list continuation) and
+    // insert a newline into the document -- a data-corrupting regression, not just a UX one.
+    const contentBeforeSecondEnter = await page.evaluate(() => document.getElementById('source-editor').value)
+    await page.keyboard.press('Enter')
+    await page.waitForFunction(() => document.getElementById('search-count').textContent === '1/2')
+
+    const third = await page.evaluate(() => {
+      const editor = document.getElementById('source-editor')
+      return { start: editor.selectionStart, end: editor.selectionEnd, value: editor.value, activeId: document.activeElement?.id }
+    })
+    assert.deepEqual({ start: third.start, end: third.end }, firstSelection, 'Enter from the editor must wrap back to the first match')
+    assert.equal(third.value, contentBeforeSecondEnter, 'Enter must navigate search, not insert a newline into the document')
+    assert.equal(third.activeId, 'source-editor')
   } finally {
     await closeApp(electronApp)
   }

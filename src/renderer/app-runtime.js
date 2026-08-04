@@ -290,6 +290,10 @@
       return searchController.closeSearch()
     }
 
+    function isEditorSearchActive() {
+      return searchController.isSearchOpen() && searchController.getCurrentTarget() === 'editor'
+    }
+
     function clearSearchHighlights() {
       return searchController.clearSearchHighlights()
     }
@@ -436,6 +440,7 @@
       copyAll,
       toggleSearch,
       closeSearch,
+      isEditorSearchActive,
       clearSearchHighlights,
       runSearch,
       highlightCurrent,

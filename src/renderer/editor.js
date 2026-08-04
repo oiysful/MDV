@@ -87,6 +87,36 @@
     element.scrollTop = maxScroll > 0 ? maxScroll * clampRatio(ratio) : 0
   }
 
+  // Echo suppression by value, not by a single-slot arm/disarm flag: a wheel gesture fires a
+  // burst of scroll events per pane, not one. With a flag armed on write and cleared on the
+  // first matching event, a second echo arriving before the next write re-arms could slip
+  // through as a "real" scroll, sync back to the source pane, and eat the user's next genuine
+  // scroll there -- surfacing as the pane going dead right as the user reverses direction.
+  // Comparing against the exact scrollTop we last wrote is idempotent under any number of echo
+  // events: every echo still matches the recorded value and is dropped, and a real scroll
+  // (which changes scrollTop) always gets through.
+  function createSplitScrollSync() {
+    let lastWrittenScrollTop = new WeakMap()
+
+    function sync(sourceElement, targetElement) {
+      const lastWritten = lastWrittenScrollTop.get(sourceElement)
+      if (lastWritten !== undefined && Math.abs(sourceElement.scrollTop - lastWritten) < 1) {
+        lastWrittenScrollTop.delete(sourceElement)
+        return
+      }
+      setScrollRatio(targetElement, getScrollRatio(sourceElement))
+      lastWrittenScrollTop.set(targetElement, targetElement.scrollTop)
+    }
+
+    // A pending echo record belongs to the split session that just ended; carrying it over
+    // would make the first scroll after re-entering split view get dropped as a phantom echo.
+    function reset() {
+      lastWrittenScrollTop = new WeakMap()
+    }
+
+    return { sync, reset }
+  }
+
   function getModeButtonState(sourceMode) {
     if (sourceMode) {
       return {
@@ -123,9 +153,7 @@
   function createEditorController({ getRefs, getMarkdown, setMarkdown, getActiveTab, rerenderTabBar, syncTabImageWatches, onSourceInput, render, closeSearch, storage, getSidebarOpen, setSidebarOpen, markdownController }) {
     let sourceMode = false
     let splitMode = false
-    // The pane we last wrote to programmatically; its next scroll event is the echo of that
-    // write and is dropped once (see syncSplitScroll).
-    let echoScrollSource = null
+    const splitScrollSync = createSplitScrollSync()
     let wrapMode = storage.getItem(WRAP_STORAGE_KEY) === '1'
     // Sidebar visibility to restore when leaving split mode -- null means "wasn't forced
     // closed by us" (either not in split mode, or it was already closed on entry).
@@ -159,9 +187,7 @@
       const next = Boolean(nextValue)
       if (next === splitMode) return
       splitMode = next
-      // A pending echo belongs to the split session that just ended; carrying it over would
-      // make the first scroll after re-entering split view get dropped as a phantom echo.
-      echoScrollSource = null
+      splitScrollSync.reset()
       const refs = getRefs()
       if (refs?.btnSidebar) refs.btnSidebar.disabled = splitMode
       if (!getSidebarOpen || !setSidebarOpen) return
@@ -283,23 +309,9 @@
       hl.style.display = 'block'
     }
 
-    // Echo suppression by target identity rather than by frame: writing scrollTop queues a
-    // scroll event on the *next* frame, but the old requestAnimationFrame flag was already
-    // cleared by then, so one echo leaked through as an A→B→A jitter. Remember which element
-    // we wrote to and drop exactly the one event it sends back.
-    //
-    // The guard is armed only when the write actually moved the element — a no-op write emits
-    // no scroll event at all, and a flag left armed would swallow the user's next real scroll
-    // on that pane instead.
     function syncSplitScroll(sourceElement, targetElement) {
       if (!splitMode) return
-      if (echoScrollSource === sourceElement) {
-        echoScrollSource = null
-        return
-      }
-      const before = targetElement.scrollTop
-      setScrollRatio(targetElement, getScrollRatio(sourceElement))
-      echoScrollSource = targetElement.scrollTop !== before ? targetElement : null
+      splitScrollSync.sync(sourceElement, targetElement)
     }
 
     function applySourceMode() {
@@ -519,6 +531,7 @@
     createEditorController,
     getScrollRatio,
     setScrollRatio,
+    createSplitScrollSync,
     buildLineNumberText,
     getModeButtonState,
     applySourceModeToRefs,

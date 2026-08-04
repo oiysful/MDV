@@ -77,3 +77,28 @@ test('editor search advances the selection on searchNext/searchPrev', () => {
   assert.equal(sourceEditor.selectionStart, 8)
   assert.equal(sourceEditor.selectionEnd, 11)
 })
+
+test('searchNext/searchPrev leave the editor focused so the match selection is actually visible', () => {
+  // Chromium only paints a text field's selection while it has focus. An earlier version
+  // moved focus back to #search-input synchronously in the same call that focused the editor,
+  // before the browser ever got a frame to paint -- so the highlight never rendered. Focus
+  // must now stay on the editor after jumping to a match.
+  const { controller, sourceEditor } = makeEditorSearchHarness('foo bar foo baz foo')
+  controller.toggleSearch({ target: 'editor' })
+  controller.runSearch('foo')
+
+  controller.searchNext()
+  assert.equal(document.activeElement, sourceEditor, 'editor must stay focused after searchNext')
+
+  controller.searchPrev()
+  assert.equal(document.activeElement, sourceEditor, 'editor must stay focused after searchPrev')
+})
+
+test('getCurrentTarget reflects the target toggleSearch was opened with', () => {
+  const { controller } = makeEditorSearchHarness('foo bar')
+  assert.equal(controller.getCurrentTarget(), 'preview')
+  controller.toggleSearch({ target: 'editor' })
+  assert.equal(controller.getCurrentTarget(), 'editor')
+  controller.closeSearch()
+  assert.equal(controller.getCurrentTarget(), 'preview')
+})

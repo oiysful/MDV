@@ -10,6 +10,7 @@ const {
   computeSidebarOpenForSplitChange,
   getScrollRatio,
   setScrollRatio,
+  createSplitScrollSync,
 } = require('../../src/renderer/editor.js')
 
 function createClassList() {
@@ -293,4 +294,99 @@ test('a ratio round-trip is stable at both boundaries', () => {
     setScrollRatio(target, getScrollRatio(source))
     assert.equal(target.scrollTop, scrollTop)
   }
+})
+
+// createSplitScrollSync (docs/plans/04-split-view-scroll-boundary-latch.md, reopened after
+// Ian reproduced it directly: scrolling one pane then immediately reversing direction did
+// nothing). The prior implementation armed a single arm/disarm flag on write and cleared it on
+// the first matching echo event; a wheel gesture fires a *burst* of scroll events per pane, and
+// a second echo arriving before the next write re-armed could be misread as a real scroll,
+// sync back onto the source pane, and arm it too — eating the user's very next genuine scroll
+// there. Comparing against the exact scrollTop last written is immune to how many echo events
+// a write produces.
+test('sync treats a scroll event as real when the pane has no recorded programmatic write', () => {
+  const sync = createSplitScrollSync()
+  const content = scrollStub({ scrollTop: 100 })
+  const sourceView = scrollStub({ scrollTop: 0 })
+
+  sync.sync(content, sourceView)
+  assert.equal(sourceView.scrollTop, 100, 'a real scroll on content must sync onto sourceView')
+})
+
+test('sync drops an echo event whose scrollTop matches what was just written', () => {
+  const sync = createSplitScrollSync()
+  const content = scrollStub({ scrollTop: 100 })
+  const sourceView = scrollStub({ scrollTop: 0 })
+
+  sync.sync(content, sourceView) // writes sourceView
+  const before = content.scrollTop
+
+  // sourceView's own scroll event fires next, echoing the write we just made into it.
+  sync.sync(sourceView, content)
+  assert.equal(content.scrollTop, before, 'an echo of our own write must not move content back')
+})
+
+test('a burst of two real scrolls on one pane does not cause the other pane\'s later real scroll to be swallowed', () => {
+  const sync = createSplitScrollSync()
+  const content = scrollStub({ scrollTop: 0 })
+  const sourceView = scrollStub({ scrollTop: 0 })
+
+  // Two real scrolls on content land back-to-back (a wheel burst) before sourceView's own
+  // echo event for the first write has been processed — normal under momentum scrolling.
+  content.scrollTop = 100
+  sync.sync(content, sourceView)
+  content.scrollTop = 150
+  sync.sync(content, sourceView)
+  const syncedAfterBurst = sourceView.scrollTop
+
+  // sourceView's native scroll event now fires for our own write and must be dropped.
+  sync.sync(sourceView, content)
+  assert.equal(content.scrollTop, 150, 'the echo must not have moved content off where the user actually scrolled to')
+
+  // Ian's exact repro: the user immediately reverses direction on content. This must still
+  // reach sourceView — a stale echo-guard swallowing it is the bug being fixed here.
+  content.scrollTop = 60
+  sync.sync(content, sourceView)
+  assert.notEqual(sourceView.scrollTop, syncedAfterBurst, 'a real reversal on content must propagate to sourceView')
+})
+
+test('a duplicate echo for an already-processed write cannot permanently block a later real scroll', () => {
+  // Guards the residual edge case in the value-based design: if sourceView fires two scroll
+  // events for one write (browsers can, depending on timing) the first is correctly dropped as
+  // an echo, and the second -- now that the record was consumed -- can get misread as real and
+  // write content again. That write reproduces the *same* ratio-equivalent value, so nothing
+  // visibly moves, but it does arm a record for content. The property that actually matters:
+  // that record must not swallow a later real scroll on content, because a real scroll changes
+  // the value and this design only ever drops an event whose value exactly matches what was
+  // last written -- unlike the old single-slot flag, which dropped by identity regardless of
+  // how far the pane had actually moved.
+  const sync = createSplitScrollSync()
+  const content = scrollStub({ scrollTop: 100 })
+  const sourceView = scrollStub({ scrollTop: 0 })
+
+  sync.sync(content, sourceView) // sourceView -> 100
+  sync.sync(sourceView, content) // echo #1: correctly dropped
+  sync.sync(sourceView, content) // echo #2 (duplicate): may be misread as real; reproduces 100
+  assert.equal(content.scrollTop, 100)
+
+  content.scrollTop = 40 // a real, larger reversal scroll
+  sync.sync(content, sourceView)
+  assert.equal(sourceView.scrollTop, 40, 'a real scroll with a different value must never be dropped, regardless of prior echo handling')
+})
+
+test('reset forgets prior writes so a stale record cannot swallow the first scroll of a new split session', () => {
+  const sync = createSplitScrollSync()
+  const content = scrollStub({ scrollTop: 100 })
+  const sourceView = scrollStub({ scrollTop: 0 })
+
+  sync.sync(content, sourceView) // records lastWritten[sourceView] at content's ratio-equivalent position
+  sync.reset() // e.g. leaving split mode
+
+  // Perturb content so an incorrect "this is just an echo, do nothing" classification is
+  // observable: if sourceView's scrollTop (unchanged since the pre-reset write) still matches
+  // the forgotten record, it would wrongly count as an echo and content would stay at 999.
+  content.scrollTop = 999
+  sync.sync(sourceView, content)
+
+  assert.notEqual(content.scrollTop, 999, 'post-reset, sourceView\'s scroll must be treated as real and overwrite content, not dropped as a phantom echo of the pre-reset write')
 })

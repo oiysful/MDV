@@ -48,6 +48,10 @@
       return document.getElementById('search-bar').style.display !== 'none'
     }
 
+    function getCurrentTarget() {
+      return currentTarget
+    }
+
     function selectEditorMatch(focusEditor) {
       const editor = getRefs().sourceEditor
       const match = searchMatches[searchIndex]
@@ -63,14 +67,18 @@
         : ''
     }
 
-    // Enter/Shift+Enter is the only moment the editor is focused, so the selection
-    // becomes visible; focus returns to the search input right after so typing
-    // and Escape keep working without the user re-clicking the search box.
+    // The textarea only paints a selection while it has focus (Chromium hides an unfocused
+    // field's selection outright, regardless of the custom ::selection color), so the editor
+    // must stay focused for the current match to be visible at all. Focus deliberately does
+    // NOT return to the search input here anymore -- an earlier version did that synchronously
+    // in the same call, before the browser ever got a frame to paint the selection, so the
+    // highlight this comment promised never actually rendered. Enter/Shift+Enter keep working
+    // from the editor itself via the source-editor keydown forwarding in app-shell.js; typing a
+    // new query requires clicking back into the search box.
     function advanceEditorMatch(direction) {
       searchIndex = (searchIndex + direction + searchMatches.length) % searchMatches.length
       selectEditorMatch(true)
       updateEditorCount()
-      document.getElementById('search-input').focus()
     }
 
     function highlightCurrent() {
@@ -199,6 +207,7 @@
       toggleSearch,
       closeSearch,
       isSearchOpen,
+      getCurrentTarget,
       clearSearchHighlights,
       runSearch,
       highlightCurrent,

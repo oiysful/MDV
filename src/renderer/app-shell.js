@@ -14,6 +14,21 @@
     return { path: href.slice(0, hashIndex), fragment: href.slice(hashIndex + 1) }
   }
 
+  // Shared by the search-input and source-editor keydown listeners in bindSearchEvents below.
+  // Returns 'next'/'prev' for a navigation keystroke, or null when the key isn't one.
+  //
+  // The isComposing guard matters specifically for Korean (and other IME) input: confirming a
+  // composition sends a keydown with key === 'Enter' *before* compositionend fires. Treating
+  // that keystroke as a navigation Enter and calling preventDefault() on it interferes with the
+  // composition finishing, which is what produced a duplicated trailing syllable in the search
+  // box. The next, real Enter keydown (isComposing: false) is the one to act on.
+  // editor.js:452 applies the same guard for its own Enter handling.
+  function resolveSearchKeydownAction(event) {
+    if (event.isComposing) return null
+    if (event.key !== 'Enter') return null
+    return event.shiftKey ? 'prev' : 'next'
+  }
+
   function collectAppShellRefs(documentRef) {
     return {
       scrollArea: documentRef.getElementById('scroll-area'),
@@ -61,7 +76,7 @@
     }
   }
 
-  function createAppShellController({ documentRef, windowRef, api, getRefs, pathUtils, themeController, markdownController, getExplorerRoot, revealInFinder, clearExplorerRoot, showAppContextMenu, hideAppContextMenu, runSearch, searchNext, searchPrev, getActiveTab, openLocalFile, handleFileOpened, handleFileChanged, handleRendererCommand }) {
+  function createAppShellController({ documentRef, windowRef, api, getRefs, pathUtils, themeController, markdownController, getExplorerRoot, revealInFinder, clearExplorerRoot, showAppContextMenu, hideAppContextMenu, runSearch, searchNext, searchPrev, isEditorSearchActive, getActiveTab, openLocalFile, handleFileOpened, handleFileChanged, handleRendererCommand }) {
     function initializeUi({ applyTheme, sidebarOpen, activeTab, syncExplorerHeader, updateToolbarActions, updateEntryAffordance, maybeShowWelcomeGuide, applyWrapMode }) {
       const refs = getRefs()
       applyTheme()
@@ -220,16 +235,32 @@
       const searchInput = documentRef.getElementById('search-input')
       searchInput.addEventListener('input', () => runSearch(searchInput.value))
       searchInput.addEventListener('keydown', event => {
-        if (event.key === 'Enter' && event.shiftKey) {
-          event.preventDefault()
-          searchPrev()
-        } else if (event.key === 'Enter') {
-          event.preventDefault()
-          searchNext()
-        }
+        const action = resolveSearchKeydownAction(event)
+        if (!action) return
+        event.preventDefault()
+        if (action === 'prev') searchPrev()
+        else searchNext()
         // Escape is deliberately not handled here: it bubbles to the document-level
         // handler (app-runtime.js), which closes the topmost layer first (guides,
         // then search, then the context menu) instead of always closing search.
+      })
+
+      // The textarea only paints its selection while focused (see search.js's
+      // advanceEditorMatch), so jumping to a match in source/split mode leaves focus on the
+      // editor instead of returning it to the search input. Enter/Shift+Enter must keep
+      // navigating matches from there. This listener is registered before editor.js's own
+      // Enter handling (app.js binds editor events after appShellController.bindUiEvents) so
+      // it can stopImmediatePropagation() and prevent that handler from also treating the key
+      // as a newline/list-continuation while search is active.
+      const sourceEditor = getRefs().sourceEditor
+      sourceEditor.addEventListener('keydown', event => {
+        if (!isEditorSearchActive()) return
+        const action = resolveSearchKeydownAction(event)
+        if (!action) return
+        event.preventDefault()
+        event.stopImmediatePropagation()
+        if (action === 'prev') searchPrev()
+        else searchNext()
       })
     }
 
@@ -311,6 +342,7 @@
     collectAppShellRefs,
     createAppShellController,
     splitHrefFragment,
+    resolveSearchKeydownAction,
   }
 
   globalScope.MDVAppShell = api
