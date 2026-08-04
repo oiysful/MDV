@@ -75,7 +75,11 @@
       const hl = (langId && hljsLib.getLanguage(langId))
         ? hljsLib.highlight(code, { language: langId }).value
         : hljsLib.highlightAuto(code, autoSubset.length ? autoSubset : undefined).value
-      return `<div class="code-wrapper"><div class="code-meta"><span class="code-lang">${escapeHtml(langId)}</span><button class="copy-btn" type="button" data-command="copyCode" data-command-element="true" title="코드 복사" aria-label="코드 복사">복사</button></div><pre><code class="hljs">${hl}</code></pre></div>`
+      // No language means no reserved header row: the lang label is only emitted
+      // when there is text to show, so an empty pill never occupies layout space.
+      const langLabel = langId ? `<span class="code-lang">${escapeHtml(langId)}</span>` : ''
+      const copyIcon = '<svg class="icon-copy" aria-hidden="true" width="12" height="12" viewBox="0 0 13 13" fill="none"><rect x="4.5" y="4.5" width="8" height="9" rx="1" stroke="currentColor" stroke-width="1.3"/><path d="M2.5 10.5V2.5h8" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"/></svg>'
+      return `<div class="code-wrapper">${langLabel}<button class="copy-btn" type="button" data-command="copyCode" data-command-element="true" title="코드 복사" aria-label="코드 복사">${copyIcon}</button><pre><code class="hljs">${hl}</code></pre></div>`
     }
     markedLib.setOptions({ renderer, breaks: true, gfm: true })
 
