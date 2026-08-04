@@ -1,0 +1,42 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024" width="1024" height="1024">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#fbfaf7"/>
+      <stop offset="100%" stop-color="#f2f0e8"/>
+    </linearGradient>
+    <linearGradient id="brand" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#d97757"/>
+      <stop offset="100%" stop-color="#c15f3c"/>
+    </linearGradient>
+  </defs>
+
+  <rect x="8" y="8" width="1008" height="1008" rx="228" ry="228" fill="url(#bg)" stroke="rgba(0,0,0,0.06)" stroke-width="2"/>
+  <rect x="8" y="8" width="1008" height="1008" rx="228" ry="228" fill="none" stroke="rgba(255,255,255,0.6)" stroke-width="2" transform="translate(0,-1)"/>
+
+  <!-- "M" glyph, near-black -->
+  <path fill="#141413" d="
+    M 150,314
+    L 265,314
+    L 383,486
+    L 501,314
+    L 616,314
+    L 616,706
+    L 501,706
+    L 501,486
+    L 383,650
+    L 265,486
+    L 265,706
+    L 150,706
+    Z"/>
+
+  <!-- downward chevron, brand orange -->
+  <path fill="url(#brand)" d="
+    M 668,392
+    L 748,392
+    L 748,486
+    L 800,486
+    L 718,596
+    L 636,486
+    L 688,486
+    Z"/>
+</svg>

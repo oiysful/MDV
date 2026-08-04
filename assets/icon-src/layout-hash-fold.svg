@@ -1,0 +1,42 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024" width="1024" height="1024">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#fbfaf7"/>
+      <stop offset="100%" stop-color="#f2f0e8"/>
+    </linearGradient>
+    <linearGradient id="hash" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#d97757"/>
+      <stop offset="100%" stop-color="#c15f3c"/>
+    </linearGradient>
+    <linearGradient id="flap" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#fdfcf8"/>
+      <stop offset="100%" stop-color="#f5f2e7"/>
+    </linearGradient>
+    <clipPath id="squircle">
+      <rect x="8" y="8" width="1008" height="1008" rx="228" ry="228"/>
+    </clipPath>
+  </defs>
+
+  <rect x="8" y="8" width="1008" height="1008" rx="228" ry="228" fill="url(#bg)" stroke="rgba(0,0,0,0.06)" stroke-width="2"/>
+  <rect x="8" y="8" width="1008" height="1008" rx="228" ry="228" fill="none" stroke="rgba(255,255,255,0.6)" stroke-width="2" transform="translate(0,-1)"/>
+
+  <!-- hash mark, re-balanced: symmetric top/bottom margins, pivot on true center -->
+  <g transform="translate(178,222) rotate(-8 171 143) scale(0.86)">
+    <rect x="78" y="0"   width="72" height="332" rx="14" fill="url(#hash)"/>
+    <rect x="248" y="0"  width="72" height="332" rx="14" fill="url(#hash)"/>
+    <rect x="0" y="62"   width="398" height="72" rx="14" fill="url(#hash)"/>
+    <rect x="0" y="198"  width="398" height="72" rx="14" fill="url(#hash)"/>
+  </g>
+
+  <rect x="548" y="298" width="326" height="68" rx="34" fill="#141413"/>
+  <rect x="548" y="424" width="326" height="68" rx="34" fill="#141413"/>
+  <rect x="150" y="582" width="724" height="68" rx="34" fill="#141413"/>
+  <rect x="150" y="712" width="724" height="68" rx="34" fill="#141413"/>
+
+  <!-- folded corner, clipped to the squircle silhouette -->
+  <g clip-path="url(#squircle)">
+    <polygon points="866,8 1016,8 1016,158" fill="#d97757"/>
+    <polygon points="866,8 1016,158 866,158" fill="url(#flap)" stroke="rgba(20,19,18,0.08)" stroke-width="2"/>
+    <line x1="866" y1="8" x2="1016" y2="158" stroke="rgba(20,19,18,0.10)" stroke-width="2"/>
+  </g>
+</svg>

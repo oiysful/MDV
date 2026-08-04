@@ -1,0 +1,48 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024" width="1024" height="1024">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#fbfaf7"/>
+      <stop offset="100%" stop-color="#f2f0e8"/>
+    </linearGradient>
+    <linearGradient id="hash" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#d97757"/>
+      <stop offset="100%" stop-color="#c15f3c"/>
+    </linearGradient>
+    <linearGradient id="flap" x1="1" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#fffefb"/>
+      <stop offset="100%" stop-color="#e6dfc9"/>
+    </linearGradient>
+    <clipPath id="squircle">
+      <rect x="8" y="8" width="1008" height="1008" rx="228" ry="228"/>
+    </clipPath>
+    <filter id="foldShadow" x="-40%" y="-40%" width="180%" height="180%">
+      <feDropShadow dx="-4" dy="6" stdDeviation="8" flood-color="#141413" flood-opacity="0.24"/>
+    </filter>
+  </defs>
+
+  <rect x="8" y="8" width="1008" height="1008" rx="228" ry="228" fill="url(#bg)" stroke="rgba(0,0,0,0.06)" stroke-width="2"/>
+  <rect x="8" y="8" width="1008" height="1008" rx="228" ry="228" fill="none" stroke="rgba(255,255,255,0.6)" stroke-width="2" transform="translate(0,-1)"/>
+
+  <!-- hash mark, re-balanced: symmetric top/bottom margins, pivot on true center -->
+  <g transform="translate(178,222) rotate(-8 171 143) scale(0.86)">
+    <rect x="78" y="0"   width="72" height="332" rx="14" fill="url(#hash)"/>
+    <rect x="248" y="0"  width="72" height="332" rx="14" fill="url(#hash)"/>
+    <rect x="0" y="62"   width="398" height="72" rx="14" fill="url(#hash)"/>
+    <rect x="0" y="198"  width="398" height="72" rx="14" fill="url(#hash)"/>
+  </g>
+
+  <rect x="548" y="298" width="326" height="68" rx="34" fill="#141413"/>
+  <rect x="548" y="424" width="326" height="68" rx="34" fill="#141413"/>
+  <rect x="150" y="582" width="724" height="68" rx="34" fill="#141413"/>
+  <rect x="150" y="712" width="724" height="68" rx="34" fill="#141413"/>
+
+  <!-- folded corner, enlarged, brand-colored underside, clipped to the squircle silhouette -->
+  <g clip-path="url(#squircle)">
+    <g filter="url(#foldShadow)">
+      <polygon points="776,8 1016,8 1016,248" fill="#d97757"/>
+      <polygon points="776,8 1016,248 776,248" fill="url(#flap)" stroke="rgba(20,19,18,0.14)" stroke-width="2"/>
+    </g>
+    <line x1="776" y1="8" x2="1016" y2="248" stroke="rgba(20,19,18,0.24)" stroke-width="3"/>
+    <line x1="781" y1="3" x2="1021" y2="243" stroke="rgba(255,255,255,0.55)" stroke-width="1.5"/>
+  </g>
+</svg>
