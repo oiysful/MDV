@@ -114,12 +114,38 @@
       }
     }
 
+    // Scrolls to the heading a link fragment names. markdown.js's buildToc assigns every
+    // heading an id via slugifyHeading, and a link author writes that same slug, so the
+    // fragment text *is* the id — no re-slugification needed.
+    //
+    // Scoped to #content on purpose: heading slugs share an id namespace with the app
+    // chrome (`sidebar`, `stats`, `toast`, `scroll-area`, ...), so a heading literally
+    // titled "Sidebar" would otherwise scroll the real sidebar element into view.
+    //
+    // A fragment with no matching heading is ignored silently — unlike a missing file,
+    // a stale anchor isn't worth interrupting the user with an alert.
+    function scrollToContentFragment(fragment) {
+      if (!fragment) return
+      // marked percent-encodes non-ASCII characters in hrefs (`#헤더` is stored as
+      // `#%ED%97%A4...`) while heading ids stay raw, so decode before matching. A
+      // malformed `%` sequence throws; fall back to the literal fragment then.
+      let id = fragment
+      try {
+        id = decodeURIComponent(fragment)
+      } catch (e) {
+        id = fragment
+      }
+      const target = documentRef.getElementById(id)
+      if (!target || !getRefs().content.contains(target)) return
+      target.scrollIntoView({ behavior: 'smooth', block: 'start' })
+    }
+
     async function openLocalLink(href) {
       // Strip a trailing URL fragment (`#heading`) before resolving — resolveLocalPath
       // treats the whole string as a file path, so a real anchor would otherwise be
-      // read as part of the filename and fail to resolve. v1 drops the fragment; using
-      // it to scroll to a heading after opening is a follow-up (see plan doc #5).
-      const { path: targetPath } = splitHrefFragment(href)
+      // read as part of the filename and fail to resolve. The fragment itself is kept
+      // and used to scroll to the target heading once the document is open.
+      const { path: targetPath, fragment } = splitHrefFragment(href)
       // Resolve relative hrefs against the active tab's directory. A relative link in
       // an unsaved (path-less) document has no base to resolve against.
       const docPath = getActiveTab ? getActiveTab()?.path || null : null
@@ -137,6 +163,14 @@
       // renderer opens them as a new tab. Non-markdown files were handed to the OS.
       if (res.kind === 'markdown' && openLocalFile) {
         await openLocalFile({ content: res.content, filename: res.filename, path: res.path })
+        // This await already covers rendering: createTab awaits render() (which runs
+        // buildToc, so heading ids exist), and the already-open-tab branch populates
+        // #content synchronously via restoreTabState. What it does *not* cover is
+        // restoreTabState's own requestAnimationFrame, which writes the target tab's
+        // remembered scrollTop and would immediately undo a synchronous scroll here.
+        // Registering our rAF after that one puts this callback second in the same
+        // frame's queue, so the anchor scroll wins.
+        if (fragment) windowRef.requestAnimationFrame(() => scrollToContentFragment(fragment))
       }
     }
 
@@ -145,7 +179,15 @@
         const link = event.target.closest('a[href]')
         if (!link) return
         const href = link.getAttribute('href')
-        if (!href || href.startsWith('#')) return
+        if (!href) return
+        if (href.startsWith('#')) {
+          // Same-document anchor. The browser's native fragment jump would land on the
+          // right heading now that ids are real slugs, but it teleports; intercept so
+          // in-page anchors animate like TOC clicks and search navigation do.
+          event.preventDefault()
+          scrollToContentFragment(href.slice(1))
+          return
+        }
         event.preventDefault()
         // A scheme (http(s), mailto:, //protocol-relative, ...) stays on the external-URL
         // path, which only allows http(s) and rejects the rest. A schemeless href is a

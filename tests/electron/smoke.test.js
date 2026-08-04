@@ -2137,11 +2137,21 @@ test('clicking a local markdown link opens the target as a new tab', async () =>
 // docs/plans/done/2026-07-30/05-local-link-anchor-fragment.md: a link with a URL fragment
 // (`./target.md#some-heading`) used to fail with "file not found" because the raw href,
 // hash included, was handed to resolveLocalPath as if it were part of the file path.
-test('clicking a local markdown link with a #anchor fragment still opens the target file', async () => {
+// Follow-up (the plan's own "v1 drops the fragment" note): the fragment is now also used
+// to scroll the freshly opened document to the heading it names, which only works because
+// buildToc assigns GFM slug ids instead of positional `h${index}` ones.
+test('clicking a local markdown link with a #anchor fragment opens the target file and scrolls to the heading', async () => {
   const tempDir = await fs.mkdtemp(path.join(os.tmpdir(), 'mdv-smoke-links-'))
   const sourcePath = path.join(tempDir, 'source.md')
   const targetPath = path.join(tempDir, 'target-anchor.md')
-  await fs.writeFile(targetPath, '# Anchor Target\n\nOpened via anchored link.\n', 'utf-8')
+  // Enough filler above the anchored heading that scrollTop can genuinely move —
+  // a short document would scroll nowhere and the assertion would pass either way.
+  const filler = `${'Filler paragraph for scroll height. '.repeat(40)}\n\n`.repeat(12)
+  await fs.writeFile(
+    targetPath,
+    `# Anchor Target\n\nOpened via anchored link.\n\n${filler}## Some Heading\n\nDeep section content.\n\n${filler}`,
+    'utf-8',
+  )
   await fs.writeFile(
     sourcePath,
     '# Source Doc\n\n[open anchored](./target-anchor.md#some-heading)\n',
@@ -2161,6 +2171,66 @@ test('clicking a local markdown link with a #anchor fragment still opens the tar
       return document.querySelectorAll('#tab-list .file-tab').length === 2 && active && active.textContent.includes('target-anchor.md')
     })
     assert.match(await page.textContent('#content'), /Opened via anchored link\./)
+
+    // The scroll is smooth (animated) and is deliberately queued behind restoreTabState's
+    // own rAF, so poll rather than reading scrollTop once.
+    await page.waitForFunction(() => {
+      const heading = document.getElementById('some-heading')
+      const scrollArea = document.getElementById('scroll-area')
+      if (!heading || !scrollArea) return false
+      return scrollArea.scrollTop > 0
+        && Math.abs(heading.getBoundingClientRect().top - scrollArea.getBoundingClientRect().top) < 40
+    })
+  } finally {
+    await closeApp(electronApp)
+    await fs.rm(tempDir, { recursive: true, force: true })
+  }
+})
+
+// Same plan doc, in-page half: `[텍스트](#헤더-슬러그)` inside a document used to do nothing at
+// all, because heading ids were positional (`h0`, `h1`, ...) so the slug matched no element.
+// The Korean anchor also exercises the decodeURIComponent step — marked percent-encodes
+// non-ASCII hrefs while heading ids stay raw.
+test('clicking an in-page #slug anchor scrolls to that heading, including Korean slugs', async () => {
+  const tempDir = await fs.mkdtemp(path.join(os.tmpdir(), 'mdv-smoke-inpage-anchor-'))
+  const docPath = path.join(tempDir, 'inpage.md')
+  const filler = `${'Filler paragraph for scroll height. '.repeat(40)}\n\n`.repeat(12)
+  await fs.writeFile(
+    docPath,
+    `# In-page Doc\n\n[jump ascii](#deep-section)\n\n[jump korean](#한글-절)\n\n${filler}## Deep Section\n\nAscii target body.\n\n${filler}## 한글 절\n\nKorean target body.\n\n${filler}`,
+    'utf-8',
+  )
+
+  const { electronApp, page } = await launchApp()
+  try {
+    await page.waitForSelector('#empty')
+    await stubOpenDialog(electronApp, [docPath])
+    await emitRendererCommand(electronApp, 'openFile')
+    await page.waitForFunction(() => document.title === 'inpage')
+
+    // Both headings must have real slug ids for the anchors to resolve at all.
+    assert.deepEqual(
+      await page.evaluate(() => Array.from(document.querySelectorAll('#content h2')).map(el => el.id)),
+      ['deep-section', '한글-절'],
+    )
+
+    await page.locator('#content a', { hasText: 'jump ascii' }).click()
+    await page.waitForFunction(() => {
+      const heading = document.getElementById('deep-section')
+      const scrollArea = document.getElementById('scroll-area')
+      return scrollArea.scrollTop > 0
+        && Math.abs(heading.getBoundingClientRect().top - scrollArea.getBoundingClientRect().top) < 40
+    })
+
+    // Back to the top so the Korean jump is a real movement, not a no-op.
+    await page.evaluate(() => { document.getElementById('scroll-area').scrollTop = 0 })
+    await page.locator('#content a', { hasText: 'jump korean' }).click()
+    await page.waitForFunction(() => {
+      const heading = document.getElementById('한글-절')
+      const scrollArea = document.getElementById('scroll-area')
+      return scrollArea.scrollTop > 0
+        && Math.abs(heading.getBoundingClientRect().top - scrollArea.getBoundingClientRect().top) < 40
+    })
   } finally {
     await closeApp(electronApp)
     await fs.rm(tempDir, { recursive: true, force: true })
@@ -2297,7 +2367,8 @@ test('TOC scrollspy activates the clicked heading itself, and tracks the heading
     // is actually observable) and confirm the clicked item itself ends up active.
     const targetLink = page.locator('#toc-list a').nth(6) // Section 6
     const targetHref = await targetLink.getAttribute('href')
-    assert.match(targetHref, /^#h\d+$/)
+    // Heading ids are GFM slugs (markdown.js slugifyHeading), not positional `h${index}`.
+    assert.equal(targetHref, '#section-6')
     await targetLink.click()
     await page.waitForFunction(
       href => document.querySelector('#toc-list a.active')?.getAttribute('href') === href,

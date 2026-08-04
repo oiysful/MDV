@@ -12,6 +12,28 @@
   ]
   const IMAGE_CACHE_LIMIT = 100
 
+  // Turns heading text into a GitHub-Flavored-Markdown-style anchor slug, so that a
+  // `[텍스트](#헤더-슬러그)` link written by hand (the convention this repo's own docs
+  // already use — see docs/plans/README.md) actually resolves to a rendered heading.
+  // Rules, matching GitHub: lowercase, drop everything that isn't a letter, number,
+  // space, `-` or `_` (so punctuation vanishes), collapse whitespace runs to a single
+  // `-`, trim leading/trailing `-`. \p{L}/\p{N} keep non-ASCII (Korean) intact rather
+  // than stripping it. `seen` is an optional Map<slug, count> for duplicate-heading
+  // disambiguation: the 2nd "Notes" becomes `notes-1`, the 3rd `notes-2`, as GitHub
+  // does. Callers pass a fresh Map per document; omitting it disables dedup.
+  function slugifyHeading(text, seen) {
+    const slug = String(text == null ? '' : text)
+      .trim()
+      .toLowerCase()
+      .replace(/[^\p{L}\p{N}\s_-]/gu, '')
+      .replace(/\s+/g, '-')
+      .replace(/^-+|-+$/g, '')
+    if (!slug || !seen) return slug
+    const count = seen.get(slug) || 0
+    seen.set(slug, count + 1)
+    return count ? `${slug}-${count}` : slug
+  }
+
   function escapeHtml(value) {
     return String(value).replace(/[&<>"']/g, ch => (
       ch === '&' ? '&amp;'
@@ -130,12 +152,19 @@
       const headings = document.querySelectorAll('#content h1,#content h2,#content h3')
       const list = refs.tocList
       list.innerHTML = ''
+      // Per-document dedup counter; a fresh Map each build so reopening the same
+      // document doesn't keep incrementing suffixes across renders.
+      const slugCounts = new Map()
       headings.forEach((heading, index) => {
-        heading.id = `h${index}`
+        // A heading made entirely of punctuation slugifies to '', which would leave it
+        // unaddressable and break refreshTocActive's `#${id}` href matching — fall back
+        // to the old positional id for those.
+        const slug = slugifyHeading(heading.textContent, slugCounts) || `h${index}`
+        heading.id = slug
         const li = document.createElement('li')
         li.className = heading.tagName.toLowerCase()
         const anchor = document.createElement('a')
-        anchor.href = `#h${index}`
+        anchor.href = `#${slug}`
         anchor.textContent = heading.textContent
         anchor.onclick = event => {
           event.preventDefault()
@@ -290,7 +319,7 @@
     }
   }
 
-  const api = { createMarkdownController, computeStats }
+  const api = { createMarkdownController, computeStats, slugifyHeading }
   globalScope.MDVMarkdown = api
   if (typeof module !== 'undefined' && module.exports) module.exports = api
 })(typeof window !== 'undefined' ? window : globalThis)
