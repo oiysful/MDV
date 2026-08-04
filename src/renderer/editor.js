@@ -372,15 +372,20 @@
       }
 
       if (sourceMode) {
+        // Always render here, even if `edited` reads back equal to getMarkdown() -- saveFile()
+        // (document-flow.js's syncTabContentForSave) also calls setMarkdown() to keep the save
+        // path's conflict check accurate, which by itself doesn't touch #content. A save
+        // immediately followed by leaving source mode used to skip this render because the
+        // text-equality check saw no diff, leaving the preview showing pre-save content until
+        // the tab was closed and reopened. toggleSplitView's equivalent transition (below)
+        // already renders unconditionally; this matches it.
         const edited = getEditorValue()
-        if (edited !== getMarkdown()) {
-          setMarkdown(edited)
-          tab.content = edited
-          tab.dirty = edited !== tab.savedContent
-          rerenderTabBar()
-          const imagePaths = await render(edited, tab.filename || '', tab.path || null)
-          syncTabImageWatches(tab, imagePaths)
-        }
+        setMarkdown(edited)
+        tab.content = edited
+        tab.dirty = edited !== tab.savedContent
+        rerenderTabBar()
+        const imagePaths = await render(edited, tab.filename || '', tab.path || null)
+        syncTabImageWatches(tab, imagePaths)
       }
 
       sourceMode = !sourceMode

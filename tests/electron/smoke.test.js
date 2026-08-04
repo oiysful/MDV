@@ -582,6 +582,47 @@ test('editing in source mode marks the tab dirty and save clears it', async () =
   }
 })
 
+// Regression: document-flow.js's syncTabContentForSave calls setMarkdown() on every save while
+// in source mode, to keep the save-conflict check accurate. toggleSource() used to skip its own
+// render when `editorValue === getMarkdown()` -- a save immediately before leaving source mode
+// already made those equal, so the preview kept showing pre-save content until the tab was
+// closed and reopened. toggleSource now always renders on that transition (matching
+// toggleSplitView's already-unconditional equivalent).
+test('saving in source mode and returning to preview shows the saved content immediately', async () => {
+  const { path: tempMarkdown, cleanup } = await createTempMarkdown(BASIC_MD, 'save-then-preview.md')
+  const { electronApp, page } = await launchApp()
+
+  try {
+    await page.waitForSelector('#empty')
+    await stubOpenDialog(electronApp, [tempMarkdown])
+    await emitRendererCommand(electronApp, 'openFile')
+    await page.waitForFunction(() => document.title === 'save-then-preview')
+
+    await emitRendererCommand(electronApp, 'toggleSource')
+    await page.waitForFunction(() => document.getElementById('source-view').style.display === 'block')
+
+    await page.locator('#source-editor').fill('# Smoke Fixture\n\nSaved then previewed without reopening.\n')
+    await page.waitForFunction(() => {
+      const saveButton = document.getElementById('btn-save')
+      return saveButton && !saveButton.disabled
+    })
+
+    await emitRendererCommand(electronApp, 'saveFile')
+    await page.waitForFunction(() => document.getElementById('btn-save')?.disabled === true)
+
+    // Leaving source mode right after the save -- the exact sequence that used to skip the
+    // render because saveFile()'s setMarkdown() already made editorValue === getMarkdown().
+    await emitRendererCommand(electronApp, 'toggleSource')
+    await page.waitForFunction(() => document.getElementById('content').style.display === '')
+
+    const previewText = await page.textContent('#content')
+    assert.match(previewText, /Saved then previewed without reopening\./)
+  } finally {
+    await closeApp(electronApp)
+    await cleanup()
+  }
+})
+
 test('save as rewires the active tab path and future saves to the new file', async () => {
   const { path: initialPath, cleanup } = await createTempMarkdown(BASIC_MD, 'save-as-source.md')
   const tempDir = path.dirname(initialPath)

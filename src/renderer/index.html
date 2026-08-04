@@ -655,7 +655,10 @@ mark.search-hl.current {
 }
 
 /* Split-view divider: drag to resize #source-view/#content. Hidden outside split mode,
-   same pattern as #source-view above. */
+   same pattern as #source-view above. The 7px grid track is the drag hit target (matches
+   computeSplitGridColumns's dividerWidthPx in editor.js) -- kept wide for an easy grab even
+   though only a thin centered line is ever visible, so the bar itself doesn't read as a thick
+   permanent wall between the panes. */
 #split-divider { display: none; }
 #scroll-area.split-mode #split-divider {
   display: block;
@@ -663,10 +666,19 @@ mark.search-hl.current {
   width: 7px;
   height: 100%;
   cursor: col-resize;
-  background: var(--border);
+  background: transparent;
+  position: relative;
 }
-#scroll-area.split-mode #split-divider:hover,
-#scroll-area.split-mode #split-divider.dragging {
+#scroll-area.split-mode #split-divider::after {
+  content: '';
+  position: absolute; top: 0; bottom: 0; left: 50%;
+  width: 1px; transform: translateX(-50%);
+  background: var(--border);
+  transition: background .1s, width .1s;
+}
+#scroll-area.split-mode #split-divider:hover::after,
+#scroll-area.split-mode #split-divider.dragging::after {
+  width: 3px;
   background: var(--brand);
 }
 #source-editor {
@@ -1103,13 +1115,17 @@ kbd {
   position: absolute; top: 6px; right: 6px; z-index: 2;
   display: flex; align-items: center; justify-content: center;
   width: 24px; height: 24px; padding: 0; border-radius: 6px;
-  background: var(--code-copy-bg); border: 1px solid var(--code-copy-border);
+  /* Solid (not the translucent --code-copy-bg) so it fully occludes whatever code text is
+     underneath instead of letting it show through the icon -- code lines run the full width
+     of the block, so this corner isn't reliably empty. */
+  background: var(--code-bg); border: 1px solid var(--code-copy-border);
+  box-shadow: 0 1px 3px rgba(0,0,0,0.12);
   color: var(--code-label);
   cursor: pointer; transition: background .1s, color .1s, opacity .15s;
   opacity: 0;
 }
 .code-wrapper:hover .copy-btn { opacity: 1; }
-.copy-btn:hover { background: var(--code-copy-hover); color: var(--code-text); }
+.copy-btn:hover { background: color-mix(in srgb, var(--code-bg) 85%, var(--text) 15%); color: var(--code-text); }
 .copy-btn.copied { color: #2da44e; border-color: #2da44e40; opacity: 1; }
 [data-theme="dark"] .copy-btn.copied { color: #98c379; border-color: #98c37940; }
 
