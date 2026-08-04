@@ -147,8 +147,12 @@
         refs.btnSplit.style.display = activeTab ? '' : 'none'
       }
       if (refs.btnWrap) {
-        refs.btnWrap.disabled = !activeTab
-        refs.btnWrap.style.display = activeTab ? '' : 'none'
+        // Wrap only affects #source-editor's rendering (editor.js's wrap-mode CSS), so it has
+        // no visible effect in plain preview -- show it only where it can do something.
+        const editor = getEditorController()
+        const inEditor = Boolean(activeTab) && Boolean(editor?.getSourceMode() || editor?.getSplitMode())
+        refs.btnWrap.disabled = !inEditor
+        refs.btnWrap.style.display = inEditor ? '' : 'none'
       }
     }
 
@@ -214,10 +218,12 @@
 
     async function toggleSource() {
       await getEditorController().toggleSource()
+      updateToolbarActions()
     }
 
     async function toggleSplitView() {
       await getEditorController().toggleSplitView()
+      updateToolbarActions()
     }
 
     function toggleWrap() {
@@ -248,6 +254,7 @@
       const name = getNextUntitledFilename(untitledCounter)
       await getWorkspaceController().createTab({ content: '', filename: name, path: null })
       getEditorController().openInSourceMode()
+      updateToolbarActions()
     }
 
     async function saveFile() {

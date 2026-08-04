@@ -738,6 +738,44 @@ test('wrap toggle hides the line-number gutter and un-hides it when toggled off'
   }
 })
 
+// Wrap only affects #source-editor's CSS (editor.js's wrap-mode class), so it has no visible
+// effect in plain preview -- the toolbar button used to stay enabled there anyway, which let
+// a click silently toggle a mode with nothing to show for it until the user switched to
+// source/split view themselves.
+test('wrap button is only available in source/split mode, not in plain preview', async () => {
+  const { electronApp, page } = await launchApp()
+
+  try {
+    await page.waitForSelector('#empty')
+    await stubOpenDialog(electronApp, [BASIC_MD])
+    await emitRendererCommand(electronApp, 'openFile')
+    await page.waitForFunction(() => document.title === 'basic')
+
+    const inPreview = await page.evaluate(() => {
+      const btn = document.getElementById('btn-wrap')
+      return { display: btn.style.display, disabled: btn.disabled }
+    })
+    assert.equal(inPreview.display, 'none')
+    assert.equal(inPreview.disabled, true)
+
+    await emitRendererCommand(electronApp, 'toggleSource')
+    await page.waitForFunction(() => document.getElementById('source-view').style.display === 'block')
+    const inSource = await page.evaluate(() => {
+      const btn = document.getElementById('btn-wrap')
+      return { display: btn.style.display, disabled: btn.disabled }
+    })
+    assert.notEqual(inSource.display, 'none')
+    assert.equal(inSource.disabled, false)
+
+    await emitRendererCommand(electronApp, 'toggleSource')
+    await page.waitForFunction(() => document.getElementById('source-view').style.display === 'none')
+    const backInPreview = await page.evaluate(() => document.getElementById('btn-wrap').style.display)
+    assert.equal(backInPreview, 'none')
+  } finally {
+    await closeApp(electronApp)
+  }
+})
+
 test('toggleSource switches between preview and editor and re-renders preview on return', async () => {
   const { electronApp, page } = await launchApp()
 
