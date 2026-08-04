@@ -11,6 +11,7 @@ const {
   getScrollRatio,
   setScrollRatio,
   createSplitScrollSync,
+  computeSplitGridColumns,
 } = require('../../src/renderer/editor.js')
 
 function createClassList() {
@@ -389,4 +390,26 @@ test('reset forgets prior writes so a stale record cannot swallow the first scro
   sync.sync(sourceView, content)
 
   assert.notEqual(content.scrollTop, 999, 'post-reset, sourceView\'s scroll must be treated as real and overwrite content, not dropped as a phantom echo of the pre-reset write')
+})
+
+// Split-view divider drag (grid-template-columns clamp). Mirrors the minmax(300px, 1fr) /
+// minmax(320px, 1fr) minimums that used to be hardcoded and static in index.html's
+// #scroll-area.split-mode rule -- dragging must never be able to push either pane below them.
+test('computeSplitGridColumns passes an in-range left width straight through', () => {
+  assert.equal(computeSplitGridColumns(500, 1000), '500px 7px minmax(320px, 1fr)')
+})
+
+test('computeSplitGridColumns clamps the left pane at its minimum width', () => {
+  assert.equal(computeSplitGridColumns(50, 1000), '300px 7px minmax(320px, 1fr)')
+  assert.equal(computeSplitGridColumns(-40, 1000), '300px 7px minmax(320px, 1fr)')
+})
+
+test('computeSplitGridColumns clamps the left pane so the right pane keeps its minimum width', () => {
+  // containerWidth 1000, divider 7px, minRight 320 -> left maxes out at 673px.
+  assert.equal(computeSplitGridColumns(950, 1000), '673px 7px minmax(320px, 1fr)')
+})
+
+test('computeSplitGridColumns degrades gracefully when the container is narrower than both minimums combined', () => {
+  // 300 + 7 + 320 = 627 > containerWidth (600), so the max-left clamp itself floors at minLeft.
+  assert.equal(computeSplitGridColumns(400, 600), '300px 7px minmax(320px, 1fr)')
 })

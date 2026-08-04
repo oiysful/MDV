@@ -54,6 +54,7 @@
       btnMode: documentRef.getElementById('btn-mode'),
       modeLabel: documentRef.getElementById('mode-label'),
       sourceView: documentRef.getElementById('source-view'),
+      splitDivider: documentRef.getElementById('split-divider'),
       sourceEditor: documentRef.getElementById('source-editor'),
       sourceLines: documentRef.getElementById('source-lines'),
       dropOverlay: documentRef.getElementById('drop-overlay'),

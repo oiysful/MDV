@@ -76,6 +76,23 @@
     return Math.min(1, Math.max(0, ratio))
   }
 
+  // Split-view divider drag: converts a raw mouse-x-derived left-pane pixel width into a
+  // clamped `grid-template-columns` string. Kept as a pure function (mouse position and
+  // container width in, CSS string out) so the clamp math is unit testable with plain
+  // numbers, following the getScrollRatio/setScrollRatio pattern above. The minimums (300/320)
+  // mirror the original static minmax() values in index.html's #scroll-area.split-mode rule;
+  // the right column keeps its own minmax(SPLIT_MIN_RIGHT, 1fr) as a second guard so a window
+  // resize after a drag can't shrink the right pane below its minimum either.
+  const SPLIT_DIVIDER_WIDTH = 7
+  const SPLIT_MIN_LEFT = 300
+  const SPLIT_MIN_RIGHT = 320
+
+  function computeSplitGridColumns(leftWidthPx, containerWidthPx, dividerWidthPx = SPLIT_DIVIDER_WIDTH, minLeft = SPLIT_MIN_LEFT, minRight = SPLIT_MIN_RIGHT) {
+    const maxLeft = Math.max(minLeft, containerWidthPx - dividerWidthPx - minRight)
+    const clampedLeft = Math.min(maxLeft, Math.max(minLeft, leftWidthPx))
+    return `${clampedLeft}px ${dividerWidthPx}px minmax(${minRight}px, 1fr)`
+  }
+
   function getScrollRatio(element) {
     const maxScroll = element.scrollHeight - element.clientHeight
     if (maxScroll <= 0) return 0
@@ -190,6 +207,9 @@
       splitScrollSync.reset()
       const refs = getRefs()
       if (refs?.btnSidebar) refs.btnSidebar.disabled = splitMode
+      // Drop the drag-set inline width so the next time split mode opens it starts back at
+      // the CSS default (50/50-ish minmax split) instead of remembering the last drag.
+      if (!splitMode && refs?.scrollArea) refs.scrollArea.style.gridTemplateColumns = ''
       if (!getSidebarOpen || !setSidebarOpen) return
       const wasSidebarOpen = getSidebarOpen()
       const { nextSidebarOpen, nextMemo } = computeSidebarOpenForSplitChange({
@@ -502,6 +522,56 @@
 
       refs.content.addEventListener('scroll', () => syncSplitScroll(refs.content, refs.sourceView))
       refs.sourceView.addEventListener('scroll', () => syncSplitScroll(refs.sourceView, refs.content))
+
+      if (refs.splitDivider) {
+        let dragging = false
+
+        function onDividerMouseMove(event) {
+          if (!dragging) return
+          // splitMode can flip to false mid-drag (keyboard shortcut/menu while the button is
+          // still held) -- setSplitMode already cleared the inline width then, so writing it
+          // back here would both fight that reset and leave the next split-view entry
+          // remembering this drag, which requirement 4 forbids.
+          if (!splitMode) {
+            onDividerMouseUp()
+            return
+          }
+          // The button can be released outside the BrowserWindow, where our document
+          // mouseup listener never fires -- event.buttons catches that case on the next
+          // move so the drag doesn't get stuck "on" with the cursor still following.
+          if (event.buttons === 0) {
+            onDividerMouseUp()
+            return
+          }
+          const containerRect = refs.scrollArea.getBoundingClientRect()
+          const leftWidthPx = event.clientX - containerRect.left
+          refs.scrollArea.style.gridTemplateColumns = computeSplitGridColumns(leftWidthPx, containerRect.width)
+        }
+
+        function onDividerMouseUp() {
+          if (!dragging) return
+          dragging = false
+          refs.splitDivider.classList.remove('dragging')
+          document.body.style.cursor = ''
+          document.removeEventListener('mousemove', onDividerMouseMove)
+          document.removeEventListener('mouseup', onDividerMouseUp)
+          // Dragging changes #content's width by hundreds of px but isn't a window resize,
+          // so the window 'resize' listener (app-shell.js) that normally recomputes cached
+          // heading offsets never fires -- recompute once here, at drag end, matching the
+          // "exactly one recompute per layout change" pattern setSplitMode above already uses.
+          markdownController?.refreshHeadingOffsets()
+        }
+
+        refs.splitDivider.addEventListener('mousedown', event => {
+          if (!splitMode) return
+          event.preventDefault()
+          dragging = true
+          refs.splitDivider.classList.add('dragging')
+          document.body.style.cursor = 'col-resize'
+          document.addEventListener('mousemove', onDividerMouseMove)
+          document.addEventListener('mouseup', onDividerMouseUp)
+        })
+      }
     }
 
     return {
@@ -538,6 +608,7 @@
     computeListContinuation,
     computeInlineMarkerToggle,
     computeSidebarOpenForSplitChange,
+    computeSplitGridColumns,
   }
 
   globalScope.MDVEditor = api
