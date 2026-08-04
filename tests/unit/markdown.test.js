@@ -66,6 +66,13 @@ test('renderMarkdown preserves custom code-block markup and data attributes', ()
   assert.ok(/class="code-lang"/.test(html), html)
 })
 
+test('renderMarkdown omits the code-lang element entirely for a fence with no language', () => {
+  const html = makeController().renderMarkdown('```\nplain text\n```')
+  assert.ok(!/code-lang/.test(html), html)
+  assert.ok(!/code-meta/.test(html), html)
+  assert.ok(/data-command="copyCode"/.test(html), html)
+})
+
 // --- snapshot capture / rehydration (plan 06) ---
 
 const IMAGE_DATA_URL = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg=='

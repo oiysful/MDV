@@ -322,12 +322,73 @@ test('openFile loads markdown, updates title, and renders code highlighting', as
     assert.equal(await copyButton.getAttribute('onclick'), null)
     assert.equal(await copyButton.getAttribute('data-command'), 'copyCode')
     assert.equal(await copyButton.getAttribute('aria-label'), '코드 복사')
+
+    // The button overlays the wrapper's top-right corner instead of sitting in a
+    // separate header row: its box must be near the wrapper's top and right edges.
+    const wrapperBox = await page.locator('#content .code-wrapper').first().boundingBox()
+    const btnBox = await copyButton.boundingBox()
+    assert.ok(wrapperBox && btnBox, 'expected bounding boxes for wrapper and copy button')
+    assert.ok(btnBox.y - wrapperBox.y < 20, `copy button not near top: ${JSON.stringify({ wrapperBox, btnBox })}`)
+    assert.ok(
+      (wrapperBox.x + wrapperBox.width) - (btnBox.x + btnBox.width) < 20,
+      `copy button not near right edge: ${JSON.stringify({ wrapperBox, btnBox })}`
+    )
+
+    const langLabel = page.locator('#content .code-lang').first()
+    assert.equal(await langLabel.textContent(), 'js')
+
     await copyButton.click()
     await page.waitForFunction(() => document.querySelector('#content .copy-btn')?.classList.contains('copied'))
     await page.waitForFunction(() => document.getElementById('toast')?.textContent === '코드 복사됨' && document.getElementById('toast')?.classList.contains('show'))
+    const copiedIconHtml = await copyButton.evaluate(el => el.innerHTML)
+    assert.match(copiedIconHtml, /icon-check/)
 
     await page.click('#btn-copy-all')
     await page.waitForFunction(() => document.getElementById('toast')?.textContent === '복사됨' && document.getElementById('toast')?.classList.contains('show'))
+  } finally {
+    await closeApp(electronApp)
+  }
+})
+
+test('code fence with no language renders without a reserved header row', async () => {
+  const { electronApp, page } = await launchApp()
+
+  try {
+    await page.waitForSelector('#empty')
+
+    const html = await page.evaluate(() => {
+      const ctrl = window.MDVMarkdown.createMarkdownController({
+        getRefs: () => ({}),
+        markedLib: window.marked,
+        hljsLib: window.hljs,
+        pathUtils: window.MDVPathUtils,
+        api: window.api,
+      })
+      return ctrl.renderMarkdown('```\nplain text\n```')
+    })
+    assert.ok(!/code-lang/.test(html), html)
+    assert.ok(!/code-meta/.test(html), html)
+    assert.ok(/data-command="copyCode"/.test(html), html)
+
+    await page.evaluate(htmlStr => {
+      const probe = document.createElement('div')
+      probe.id = 'code-fence-probe'
+      probe.innerHTML = htmlStr
+      document.body.appendChild(probe)
+    }, html)
+
+    // With no language label to show, the wrapper must not reserve any extra vertical space
+    // for a header bar: its height should match the <pre> alone, plus .code-wrapper's own
+    // top+bottom 1px border (index.html's `.code-wrapper { border: 1px solid ... }`) -- that
+    // border is a fixed decorative frame around the whole block, not reserved header space.
+    const heights = await page.locator('#code-fence-probe .code-wrapper').first().evaluate(el => ({
+      wrapper: el.getBoundingClientRect().height,
+      pre: el.querySelector('pre').getBoundingClientRect().height,
+      borderTop: parseFloat(getComputedStyle(el).borderTopWidth),
+      borderBottom: parseFloat(getComputedStyle(el).borderBottomWidth),
+    }))
+    const expectedWrapperHeight = heights.pre + heights.borderTop + heights.borderBottom
+    assert.ok(Math.abs(heights.wrapper - expectedWrapperHeight) < 1, JSON.stringify(heights))
   } finally {
     await closeApp(electronApp)
   }

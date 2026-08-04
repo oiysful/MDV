@@ -1090,17 +1090,21 @@ kbd {
   margin: 0;
   overflow: hidden;
 }
-.code-meta {
-  display: flex; align-items: center; justify-content: space-between;
-  padding: 0.32rem 0.85rem 0.18rem;
-  background: transparent;
-  border-bottom: none;
+/* Overlaid on top of the code, not laid out in flow: no header row is ever
+   reserved, so a fenceless-language block has zero extra vertical space. */
+.code-lang {
+  position: absolute; top: 6px; left: 10px; z-index: 1;
+  padding: 1px 6px; border-radius: 4px;
+  background: var(--code-copy-bg);
+  font-size: 11px; font-family: var(--font-mono); color: var(--code-label);
+  pointer-events: none;
 }
-.code-lang { font-size: 11px; font-family: var(--font-mono); color: var(--code-label); }
 .copy-btn {
-  height: 20px; padding: 0 8px; border-radius: 4px;
+  position: absolute; top: 6px; right: 6px; z-index: 2;
+  display: flex; align-items: center; justify-content: center;
+  width: 24px; height: 24px; padding: 0; border-radius: 6px;
   background: var(--code-copy-bg); border: 1px solid var(--code-copy-border);
-  color: var(--code-label); font-family: var(--font-mono); font-size: 11px;
+  color: var(--code-label);
   cursor: pointer; transition: background .1s, color .1s, opacity .15s;
   opacity: 0;
 }
