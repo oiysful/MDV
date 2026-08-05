@@ -64,6 +64,9 @@ test('renderMarkdown preserves custom code-block markup and data attributes', ()
   assert.ok(/data-command="copyCode"/.test(html), html)
   assert.ok(/class="hljs"/.test(html), html)
   assert.ok(/class="code-lang"/.test(html), html)
+  assert.ok(/class="code-lang-row"/.test(html), html)
+  assert.ok(/class="code-body"/.test(html), html)
+  assert.ok(/class="code-gutter"/.test(html), html)
 })
 
 test('renderMarkdown omits the code-lang element entirely for a fence with no language', () => {
@@ -71,6 +74,8 @@ test('renderMarkdown omits the code-lang element entirely for a fence with no la
   assert.ok(!/code-lang/.test(html), html)
   assert.ok(!/code-meta/.test(html), html)
   assert.ok(/data-command="copyCode"/.test(html), html)
+  assert.ok(/class="code-body"/.test(html), html)
+  assert.ok(/class="code-gutter"/.test(html), html)
 })
 
 // --- snapshot capture / rehydration (plan 06) ---

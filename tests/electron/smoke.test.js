@@ -7,6 +7,7 @@ const path = require('node:path')
 const { ROOT, launchApp, closeApp, stubCloseDialog, getCloseDialogCalls } = require('./helpers/launch')
 
 const BASIC_MD = path.join(ROOT, 'tests/fixtures/basic.md')
+const SEARCH_LIST_MD = path.join(ROOT, 'tests/fixtures/search-list.md')
 const EXPLORER_DIR = path.join(ROOT, 'tests/fixtures/explorer')
 const ROOT_MD = path.join(ROOT, 'tests/fixtures/explorer/root.md')
 
@@ -323,15 +324,21 @@ test('openFile loads markdown, updates title, and renders code highlighting', as
     assert.equal(await copyButton.getAttribute('data-command'), 'copyCode')
     assert.equal(await copyButton.getAttribute('aria-label'), '코드 복사')
 
-    // The button overlays the wrapper's top-right corner instead of sitting in a
-    // separate header row: its box must be near the wrapper's top and right edges.
-    const wrapperBox = await page.locator('#content .code-wrapper').first().boundingBox()
+    // The copy button lives in a dedicated right-hand gutter column (a flex sibling of the
+    // code body), not an absolute overlay: the gutter must sit fully to the right of the
+    // code body with no horizontal overlap, and the button must sit inside the gutter.
+    const codeWrapper = page.locator('#content .code-wrapper').first()
+    const bodyBox = await codeWrapper.locator('.code-body').boundingBox()
+    const gutterBox = await codeWrapper.locator('.code-gutter').boundingBox()
     const btnBox = await copyButton.boundingBox()
-    assert.ok(wrapperBox && btnBox, 'expected bounding boxes for wrapper and copy button')
-    assert.ok(btnBox.y - wrapperBox.y < 20, `copy button not near top: ${JSON.stringify({ wrapperBox, btnBox })}`)
+    assert.ok(bodyBox && gutterBox && btnBox, 'expected bounding boxes for body, gutter, and copy button')
     assert.ok(
-      (wrapperBox.x + wrapperBox.width) - (btnBox.x + btnBox.width) < 20,
-      `copy button not near right edge: ${JSON.stringify({ wrapperBox, btnBox })}`
+      gutterBox.x >= bodyBox.x + bodyBox.width - 1,
+      `gutter overlaps code body: ${JSON.stringify({ bodyBox, gutterBox })}`
+    )
+    assert.ok(
+      btnBox.x >= gutterBox.x - 1 && btnBox.x + btnBox.width <= gutterBox.x + gutterBox.width + 1,
+      `copy button not inside gutter: ${JSON.stringify({ gutterBox, btnBox })}`
     )
 
     const langLabel = page.locator('#content .code-lang').first()
@@ -369,6 +376,8 @@ test('code fence with no language renders without a reserved header row', async 
     assert.ok(!/code-lang/.test(html), html)
     assert.ok(!/code-meta/.test(html), html)
     assert.ok(/data-command="copyCode"/.test(html), html)
+    assert.ok(/class="code-gutter"/.test(html), html)
+    assert.ok(/class="copy-btn"/.test(html), html)
 
     await page.evaluate(htmlStr => {
       const probe = document.createElement('div')
@@ -389,6 +398,58 @@ test('code fence with no language renders without a reserved header row', async 
     }))
     const expectedWrapperHeight = heights.pre + heights.borderTop + heights.borderBottom
     assert.ok(Math.abs(heights.wrapper - expectedWrapperHeight) < 1, JSON.stringify(heights))
+  } finally {
+    await closeApp(electronApp)
+  }
+})
+
+test('long code lines scroll under the code body without ever overlapping the gutter', async () => {
+  const { electronApp, page } = await launchApp()
+
+  try {
+    await page.waitForSelector('#empty')
+
+    const longLine = 'x'.repeat(400)
+    const html = await page.evaluate(longLine => {
+      const ctrl = window.MDVMarkdown.createMarkdownController({
+        getRefs: () => ({}),
+        markedLib: window.marked,
+        hljsLib: window.hljs,
+        pathUtils: window.MDVPathUtils,
+        api: window.api,
+      })
+      return ctrl.renderMarkdown('```js\nconst longLine = "' + longLine + '"\n```')
+    }, longLine)
+
+    // Must land inside #content (not document.body, unlike the no-language probe above) so
+    // #content pre code's overflow-x:auto actually gets a real scrollbar to exercise -- the
+    // whole point of this test is to prove the gutter can't be reached by scrolled code.
+    await page.evaluate(htmlStr => {
+      const content = document.getElementById('content')
+      content.classList.remove('is-empty')
+      content.innerHTML = htmlStr
+    }, html)
+
+    const wrapper = page.locator('#content .code-wrapper').first()
+    const bodyBefore = await wrapper.locator('.code-body').boundingBox()
+    const gutterBefore = await wrapper.locator('.code-gutter').boundingBox()
+    assert.ok(
+      gutterBefore.x >= bodyBefore.x + bodyBefore.width - 1,
+      `gutter overlaps code body before scroll: ${JSON.stringify({ bodyBefore, gutterBefore })}`
+    )
+
+    await wrapper.locator('pre code').evaluate(el => { el.scrollLeft = el.scrollWidth })
+
+    const bodyAfter = await wrapper.locator('.code-body').boundingBox()
+    const gutterAfter = await wrapper.locator('.code-gutter').boundingBox()
+    assert.ok(
+      gutterAfter.x >= bodyAfter.x + bodyAfter.width - 1,
+      `gutter overlaps code body after scroll: ${JSON.stringify({ bodyAfter, gutterAfter })}`
+    )
+    assert.ok(
+      Math.abs(gutterAfter.x - gutterBefore.x) < 1 && Math.abs(gutterAfter.width - gutterBefore.width) < 1,
+      `gutter position/width shifted after scrolling code: ${JSON.stringify({ gutterBefore, gutterAfter })}`
+    )
   } finally {
     await closeApp(electronApp)
   }
@@ -2123,6 +2184,70 @@ test('search in split mode selects editor matches without marking the preview pa
     })
     assert.deepEqual({ selectionStart: state.selectionStart, selectionEnd: state.selectionEnd }, { selectionStart: 2, selectionEnd: 7 })
     assert.equal(state.previewMarks, 0, 'split-mode search must not touch the debounced preview pane')
+  } finally {
+    await closeApp(electronApp)
+  }
+})
+
+// docs/plans/done/2026-08-04/08-search-highlight-and-ime-fixes.md: app.js registers the
+// search-forwarding Enter listener on #source-editor (bound in app-shell.js's bindSearchEvents)
+// BEFORE editor.js's own Enter handler, so it can stopImmediatePropagation() and keep editor.js
+// from also treating Enter as list-continuation while search is active. A landed search match
+// always leaves a *non-empty* selection (selectEditorMatch uses setSelectionRange), and editor.js
+// guards its own Enter handling on an empty selection -- so immediately after a match jump,
+// editor.js's handler is a no-op in either registration order and a naive "press Enter twice"
+// test cannot observe the regression. The reachable corruption path needs the selection
+// collapsed first (e.g. the user nudges the cursor with an arrow key) while search is still
+// open and the cursor sits on a list line: if listener order regresses, editor.js's Enter
+// handler runs first, sees the collapsed cursor, and inserts a list-continuation into the
+// document; the forwarding listener still runs afterward and advances the search count anyway,
+// so the corruption would otherwise go unnoticed by count-only assertions. Uses search-list.md
+// (both matches on list lines) rather than basic.md, since non-list lines never trigger
+// editor.js's list-continuation mutation regardless of listener order. Verified against a
+// deliberately swapped bindEditorEvents()/bindUiEvents() call order in app.js: this exact
+// sequence fails (document mutated) under the swap and passes against the real registration
+// order.
+test('a second Enter with a collapsed cursor after a search match jump navigates search instead of corrupting the document', async () => {
+  const { electronApp, page } = await launchApp()
+
+  try {
+    await page.waitForSelector('#empty')
+    await stubOpenDialog(electronApp, [SEARCH_LIST_MD])
+    await emitRendererCommand(electronApp, 'openFile')
+    await page.waitForFunction(() => document.title === 'search-list')
+
+    await emitRendererCommand(electronApp, 'toggleSplitView')
+    await page.waitForFunction(() => document.getElementById('scroll-area').classList.contains('split-mode'))
+
+    await emitRendererCommand(electronApp, 'toggleSearch')
+    await page.waitForSelector('#search-bar', { state: 'visible' })
+    await page.fill('#search-input', 'smoke')
+    await page.waitForFunction(() => document.getElementById('search-count').textContent === '1/2')
+
+    await page.locator('#search-input').press('Enter')
+    await page.waitForFunction(() => document.getElementById('search-count').textContent === '2/2')
+
+    const afterFirstEnter = await page.evaluate(() => ({ activeId: document.activeElement?.id }))
+    assert.equal(afterFirstEnter.activeId, 'source-editor', 'focus must stay on the editor after the match jump')
+
+    // Collapse the selection (still on the same list line, search still open) so editor.js's
+    // Enter handler is no longer guarded off by a non-empty selection -- this is the state
+    // where listener registration order actually decides the outcome.
+    await page.keyboard.press('ArrowRight')
+    const beforeSecondEnter = await page.evaluate(() => {
+      const editor = document.getElementById('source-editor')
+      return { value: editor.value, collapsed: editor.selectionStart === editor.selectionEnd }
+    })
+    assert.equal(beforeSecondEnter.collapsed, true, 'cursor must be collapsed for this to exercise editor.js\'s own Enter handling')
+
+    // The dedicated forwarding listener added in the 08 fix must catch this Enter -- not
+    // editor.js's own Enter handler, which (since the cursor sits on a list line) would
+    // otherwise insert a list-continuation.
+    await page.keyboard.press('Enter')
+    await page.waitForFunction(() => document.getElementById('search-count').textContent === '1/2')
+
+    const afterSecondEnter = await page.evaluate(() => document.getElementById('source-editor').value)
+    assert.equal(afterSecondEnter, beforeSecondEnter.value, 'Enter must navigate search, not insert a list-continuation into the document')
   } finally {
     await closeApp(electronApp)
   }

@@ -280,7 +280,12 @@
     async function copyAll() {
       const markdown = getMarkdown()
       if (!markdown) return
-      await navigator.clipboard.writeText(markdown)
+      try {
+        await navigator.clipboard.writeText(markdown)
+      } catch (err) {
+        showToast('복사 실패')
+        return
+      }
       const button = documentRef.getElementById('btn-copy-all')
       button.classList.add('copied')
       showToast('복사됨')
@@ -321,12 +326,17 @@
       return searchController.searchPrev()
     }
 
-    const COPY_ICON = '<svg class="icon-copy" aria-hidden="true" width="12" height="12" viewBox="0 0 13 13" fill="none"><rect x="4.5" y="4.5" width="8" height="9" rx="1" stroke="currentColor" stroke-width="1.3"/><path d="M2.5 10.5V2.5h8" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"/></svg>'
+    const COPY_ICON = '<svg class="icon-copy" aria-hidden="true" width="12" height="12" viewBox="0 0 13 13" fill="none"><rect x="4.5" y="4.5" width="8" height="8" rx="1" stroke="currentColor" stroke-width="1.3"/><path d="M2.5 10.5V2.5h8" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"/></svg>'
     const CHECK_ICON = '<svg class="icon-check" aria-hidden="true" width="12" height="12" viewBox="0 0 13 13" fill="none"><path d="M2 6.5L5 9.5L11 3" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>'
 
     async function copyCode(button) {
       const code = button.closest('.code-wrapper').querySelector('code')
-      await navigator.clipboard.writeText(code?.innerText || '')
+      try {
+        await navigator.clipboard.writeText(code?.innerText || '')
+      } catch (err) {
+        showToast('코드 복사 실패')
+        return
+      }
       button.innerHTML = CHECK_ICON
       button.classList.add('copied')
       showToast('코드 복사됨')

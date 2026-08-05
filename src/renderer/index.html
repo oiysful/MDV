@@ -1093,6 +1093,23 @@ kbd {
   border-radius: 12px; overflow: hidden;
   border: 1px solid color-mix(in srgb, var(--border) 85%, transparent);
   background: color-mix(in srgb, var(--bg) 84%, transparent);
+  display: flex; align-items: stretch;
+}
+
+.code-body {
+  flex: 1 1 auto;
+  /* flex item의 기본 min-width:auto는 <pre>의 콘텐츠 기반 최소 너비(줄바꿈 없는 긴 줄의
+     전체 렌더 너비)를 따라간다 — 이 값이 없으면 긴 줄이 .code-body(와 그 옆 gutter)를
+     wrapper 밖으로 밀어내며, 원래 <pre>/<code> 안에서 스크롤돼야 할 게 레이아웃 자체를
+     깨버린다. */
+  min-width: 0;
+}
+
+.code-lang-row {
+  padding: 0.32rem 0.85rem 0.18rem;
+}
+.code-lang {
+  font-size: 11px; font-family: var(--font-mono); color: var(--code-label);
 }
 
 /* Code block */
@@ -1101,25 +1118,26 @@ kbd {
   border-radius: 0;   /* gap 제거: code-wrapper가 radius 담당 */
   margin: 0;
   overflow: hidden;
+  min-width: 0;
 }
-/* Overlaid on top of the code, not laid out in flow: no header row is ever
-   reserved, so a fenceless-language block has zero extra vertical space. */
-.code-lang {
-  position: absolute; top: 6px; left: 10px; z-index: 1;
-  padding: 1px 6px; border-radius: 4px;
-  background: var(--code-copy-bg);
-  font-size: 11px; font-family: var(--font-mono); color: var(--code-label);
-  pointer-events: none;
+
+/* 영구 고정폭 우측 여백 — #source-lines(줄번호 거터)와 같은 40px 폭 관례.
+   24x24 버튼에 양쪽 여유 패딩까지 편하게 들어간다. 코드의 가로 스크롤 영역이 이 컬럼을
+   절대 침범할 수 없어서(형제 컬럼이지 오버레이가 아니므로) 어떤 줄 길이에서도 겹침이
+   구조적으로 불가능하다. */
+.code-gutter {
+  flex: 0 0 40px;
+  display: flex; justify-content: center;
+  padding-top: 6px;
+  border-left: 1px solid transparent;
+  transition: border-left-color .15s;
 }
+.code-wrapper:hover .code-gutter { border-left-color: var(--code-border); }
+
 .copy-btn {
-  position: absolute; top: 6px; right: 6px; z-index: 2;
   display: flex; align-items: center; justify-content: center;
   width: 24px; height: 24px; padding: 0; border-radius: 6px;
-  /* Solid (not the translucent --code-copy-bg) so it fully occludes whatever code text is
-     underneath instead of letting it show through the icon -- code lines run the full width
-     of the block, so this corner isn't reliably empty. */
   background: var(--code-bg); border: 1px solid var(--code-copy-border);
-  box-shadow: 0 1px 3px rgba(0,0,0,0.12);
   color: var(--code-label);
   cursor: pointer; transition: background .1s, color .1s, opacity .15s;
   opacity: 0;
@@ -1166,7 +1184,7 @@ kbd {
 #btn-copy-all.copied { color: var(--success) !important; }
 
 @media print {
-  #toolbar, #search-bar, #sidebar, #tab-strip, #go-top, #source-view, #split-divider, .copy-btn { display: none !important; }
+  #toolbar, #search-bar, #sidebar, #tab-strip, #go-top, #source-view, #split-divider, .code-gutter { display: none !important; }
   html, body, #layout, #main-pane, #scroll-area, #content {
     height: auto !important;
     min-height: 0 !important;

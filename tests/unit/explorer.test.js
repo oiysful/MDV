@@ -99,6 +99,36 @@ test('setActiveFilePath activates the matching row and clears any previous activ
   assert.equal(active[0].querySelector('.tree-row').dataset.path, '/docs/b.md')
 })
 
+// The empty-state hint tells the user which button opens a folder. It must name the
+// actual button label ("열기"), not a stale "+" that no longer appears in the UI
+// (src/renderer/index.html's #btn-add renders an icon plus a "열기" text label).
+test('clearExplorerRoot renders an empty-state hint that names the actual 열기 button', () => {
+  const dom = new JSDOM('<div id="explorer-tree"></div><span id="explorer-path"></span><button id="btn-explorer-reveal"></button><button id="btn-explorer-close"></button>')
+  global.document = dom.window.document
+  const tree = dom.window.document.getElementById('explorer-tree')
+  const controller = createExplorerController({
+    getRefs: () => ({
+      explorerTree: tree,
+      explorerPath: dom.window.document.getElementById('explorer-path'),
+      btnExplorerReveal: dom.window.document.getElementById('btn-explorer-reveal'),
+      btnExplorerClose: dom.window.document.getElementById('btn-explorer-close'),
+    }),
+    api: { listDirectory: async () => ({ entries: [] }) },
+    load: () => {},
+    switchToExplorerTab: () => {},
+    showAppContextMenu: () => {},
+    revealInFinder: () => {},
+    onExplorerRootChanged: () => {},
+  })
+
+  controller.clearExplorerRoot()
+
+  const hint = tree.querySelector('.tree-hint')
+  assert.ok(hint, 'the empty state still renders inside a .tree-hint element')
+  assert.ok(hint.innerHTML.includes('<strong>열기</strong>'), 'hint names the actual 열기 button')
+  assert.ok(!hint.innerHTML.includes('<strong>+</strong>'), 'hint no longer points at a bare + that is not on screen')
+})
+
 test('setActiveFilePath clears the highlight for a null path or a path not in the visible tree', async () => {
   const entries = [{ type: 'file', name: 'a.md', path: '/docs/a.md' }]
   const { controller, tree } = makeActiveFilePathHarness(entries)
