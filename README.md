@@ -1,4 +1,7 @@
 # MDV
+<div align="center">
+  <img src="https://gist.githubusercontent.com/oiysful/9a601ec1d827116eaddb16d65df084de/raw/14a84d2741606557c4195bbd7ab4ca2542a46894/MDV-icon.svg" alt="MDV App icon">
+</div>
 
 Claude-style desktop Markdown editor built with Electron.
 
