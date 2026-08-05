@@ -60,9 +60,10 @@
 ## 테스트 계획
 - `tests/unit/search.test.js`: 매치 이동(`searchNext`/`searchPrev`) 후 `document.activeElement`가 `sourceEditor`인지 확인하는 테스트 추가 완료(하이라이팅이 실제로 그려질 조건인 "포커스 유지"를 직접 검증), `getCurrentTarget()` 테스트 추가 완료.
 - `tests/unit/app-shell.test.js`: `resolveSearchKeydownAction`에 대해 (a) `isComposing: true`면 Enter/Shift+Enter 모두 `null`, (b) Enter가 아닌 키는 `null`, (c) 일반 Enter/Shift+Enter가 각각 `'next'`/`'prev'`로 매핑되는지 유닛 테스트 추가 완료.
-- `#source-editor` 리스너의 `stopImmediatePropagation` 자체(실제로 `editor.js`의 개행 삽입을 막는지)와 리스너 등록 순서는 jsdom 유닛 테스트로는 이벤트 디스패치 타이밍까지 재현하기 번거로워 커버하지 못했다 — 아래 리스크 참고.
+- `#source-editor` 리스너의 `stopImmediatePropagation` 자체(실제로 `editor.js`의 개행 삽입을 막는지)와 리스너 등록 순서는 jsdom 유닛 테스트로는 이벤트 디스패치 타이밍까지 재현하기 번거로워 커버하지 못했다 — **2026-08-05에 Electron 스모크 테스트로 커버 완료**(아래 리스크 절 참고).
 
 ## 리스크 / 미결정 사항
-- **리스너 등록 순서 의존**: `app.js`에서 `editorController.bindEditorEvents()`를 `appShellController.bindUiEvents()` 뒤로 옮긴 것이 이 수정의 핵심 전제다. 이후 누군가 두 호출 순서를 다시 바꾸면(둘 다 "이벤트 리스너 등록"이라 별다른 부작용 없이 재정렬하기 쉬워 보인다는 게 위험 요소) 검색 활성 중 Enter가 다시 문서에 개행/목록 이어쓰기를 삽입하는 조용한 회귀가 생긴다 — 유닛 테스트가 이 순서 자체를 검증하지 못하므로, 실제 앱에서 "분할뷰 검색 중 Enter"를 눌러봐서 확인하는 것이 유일한 안전망이다. 필요하면 Electron 스모크에 케이스 추가를 후속으로 고려.
+- ~~리스너 등록 순서 의존~~ — **2026-08-05 해소.** `app.js`에서 `editorController.bindEditorEvents()`를 `appShellController.bindUiEvents()` 뒤로 옮긴 순서가 이 수정의 핵심 전제였고, 이를 지키는 자동 회귀 테스트가 없다는 것이 리스크였다. `tests/electron/smoke.test.js`에 `'a second Enter with a collapsed cursor after a search match jump navigates search instead of corrupting the document'` 테스트를 추가해 닫았다.
+  - 구현 중 중요한 정정이 있었다: 매치로 막 이동한 직후에는 `selectEditorMatch()`가 항상 **비어 있지 않은** 선택 영역을 남기고, `editor.js`의 자체 Enter 핸들러는 선택 영역이 비어 있을 때만 동작하도록 가드돼 있다 — 즉 "Enter 두 번 연속"만으로는 리스너 등록 순서를 바꿔도 재현되지 않는, 테스트로서 공허한 케이스였다. 실제로 재현 가능한 경로는 매치 이동 후 커서를 한 번 움직여(예: → 화살표) 선택을 접은 상태에서, 목록 줄 위에 커서가 있고 검색이 열려 있는 채로 Enter를 누르는 경우다. 최종 테스트는 `tests/fixtures/search-list.md`(매치 2개가 모두 목록 줄 위에 있음)로 이 조건을 만들고, `app.js`의 두 호출 순서를 일부러 바꿔 실제로 실패(문서가 훼손됨)하는 것과 원래 순서에서 통과하는 것을 둘 다 확인해 테스트 자체의 유효성을 검증했다.
 - 매치 이동 후 포커스가 에디터로 넘어가므로, 새 검색어를 입력하려면 검색창을 다시 클릭해야 한다는 동작 변화가 있다 — 위 "알려진 제한"에서 의도적 트레이드오프로 명시했지만, 실사용에서 불편하다는 피드백이 나오면 재검토 대상.
 - 타이핑 중 실시간(포커스 무관) 하이라이팅은 이번 범위에서 제외했다 — 필요해지면 미리보기 모드의 `<mark>` 방식을 참고한 오버레이 레이어 설계가 별도로 필요하다.

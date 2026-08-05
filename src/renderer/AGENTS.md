@@ -40,6 +40,7 @@ Renderer now uses an HTML/CSS shell plus multiple plain browser scripts; `app.js
 - Do not capture `tab.renderedHTML` via raw `refs.content.innerHTML`; use `markdownController.captureSnapshotHTML()`, which strips embedded images' base64 and keeps only `data-mdv-local-path` for synchronous rehydration from `imageDataUrlCache` on restore.
 - Do not add a second `splitMode` mutation site; `editor.js#setSplitMode` is the sole chokepoint (interactive toggle and tab-restore both funnel through it) that also force-closes/restores the sidebar.
 - Do not give the tab bar or explorer tree per-item keydown listeners; both use one delegated listener on the persistent container (survives `innerHTML` rebuilds) plus roving tabindex from `roving.js`.
+- Do not call `navigator.clipboard.writeText` without a try/catch; `app-runtime.js#copyAll`/`copyCode` show a failure toast (`복사 실패`/`코드 복사 실패`) and skip the success-path DOM updates on rejection, rather than failing silently.
 
 ## UNIQUE STYLES
 - Design language mimics Claude app styling with warm light theme, dark counterpart, glassy toolbar/sidebar, and compact pills.

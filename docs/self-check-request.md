@@ -1,7 +1,7 @@
 # 개선 작업 요청
 
 ## 상태
-6/6 원인 확정·수정 완료 (PR #5, 2026-07-30 main 머지 + 분할모드 스크롤 경계 항목 2026-08-04 추가 수정) — 상세 진행은 [`docs/plans/README.md`](./plans/README.md) 참고. 분할모드 스크롤 경계 항목은 2026-07-30엔 "네이티브 래칭"으로 잠정 결론 냈으나 2026-08-04 실사용 중 재현되어 결론이 뒤집혔고, 근본 원인(에코 판별 로직의 버스트 오판)을 찾아 수정했다 — 실사용 재확인만 남음([`docs/plans/04-split-view-scroll-boundary-latch.md`](./plans/04-split-view-scroll-boundary-latch.md)).
+6/6 완료 (PR #5, 2026-07-30 main 머지 + 분할모드 스크롤 경계 항목 2026-08-04 추가 수정, 2026-08-05 Ian 실사용 재확인) — 상세 진행은 [`docs/plans/README.md`](./plans/README.md) 참고. 분할모드 스크롤 경계 항목은 2026-07-30엔 "네이티브 래칭"으로 잠정 결론 냈으나 2026-08-04 실사용 중 재현되어 결론이 뒤집혔고, 근본 원인(에코 판별 로직의 버스트 오판)을 찾아 수정한 뒤 2026-08-05에 Ian이 실기기에서 해소를 확인했다([`docs/plans/done/2026-08-05/04-split-view-scroll-boundary-latch.md`](./plans/done/2026-08-05/04-split-view-scroll-boundary-latch.md)).
 
 ## 목록
 - 폴더 열기로 열고 탐색기에서 여러 문서를 열었을 때, 열어둔 문서로 탭 이동 시 탐색기에서 추적되지 않음.
