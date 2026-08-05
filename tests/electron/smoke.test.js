@@ -7,6 +7,7 @@ const path = require('node:path')
 const { ROOT, launchApp, closeApp, stubCloseDialog, getCloseDialogCalls } = require('./helpers/launch')
 
 const BASIC_MD = path.join(ROOT, 'tests/fixtures/basic.md')
+const MERMAID_MD = path.join(ROOT, 'tests/fixtures/mermaid.md')
 const SEARCH_LIST_MD = path.join(ROOT, 'tests/fixtures/search-list.md')
 const EXPLORER_DIR = path.join(ROOT, 'tests/fixtures/explorer')
 const ROOT_MD = path.join(ROOT, 'tests/fixtures/explorer/root.md')
@@ -324,34 +325,97 @@ test('openFile loads markdown, updates title, and renders code highlighting', as
     assert.equal(await copyButton.getAttribute('data-command'), 'copyCode')
     assert.equal(await copyButton.getAttribute('aria-label'), '코드 복사')
 
-    // The copy button lives in a dedicated right-hand gutter column (a flex sibling of the
-    // code body), not an absolute overlay: the gutter must sit fully to the right of the
-    // code body with no horizontal overlap, and the button must sit inside the gutter.
+    // The copy button is an absolute-positioned overlay pinned to the wrapper's top-right
+    // corner (Claude desktop-style): it must sit inside the wrapper's bounds and stay
+    // clickable regardless of how the code beneath it scrolls.
     const codeWrapper = page.locator('#content .code-wrapper').first()
-    const bodyBox = await codeWrapper.locator('.code-body').boundingBox()
-    const gutterBox = await codeWrapper.locator('.code-gutter').boundingBox()
+    const wrapperBox = await codeWrapper.boundingBox()
     const btnBox = await copyButton.boundingBox()
-    assert.ok(bodyBox && gutterBox && btnBox, 'expected bounding boxes for body, gutter, and copy button')
+    assert.ok(wrapperBox && btnBox, 'expected bounding boxes for wrapper and copy button')
     assert.ok(
-      gutterBox.x >= bodyBox.x + bodyBox.width - 1,
-      `gutter overlaps code body: ${JSON.stringify({ bodyBox, gutterBox })}`
+      btnBox.x >= wrapperBox.x && btnBox.x + btnBox.width <= wrapperBox.x + wrapperBox.width &&
+      btnBox.y >= wrapperBox.y && btnBox.y + btnBox.height <= wrapperBox.y + wrapperBox.height,
+      `copy button not inside wrapper bounds: ${JSON.stringify({ wrapperBox, btnBox })}`
     )
-    assert.ok(
-      btnBox.x >= gutterBox.x - 1 && btnBox.x + btnBox.width <= gutterBox.x + gutterBox.width + 1,
-      `copy button not inside gutter: ${JSON.stringify({ gutterBox, btnBox })}`
-    )
+    assert.equal(await copyButton.evaluate(el => getComputedStyle(el).pointerEvents), 'auto')
 
     const langLabel = page.locator('#content .code-lang').first()
     assert.equal(await langLabel.textContent(), 'js')
+
+    // Hovering the button alone (not just the wrapper) reveals the custom "복사" tooltip,
+    // and no native title tooltip fights it since the title attribute was dropped.
+    await copyButton.hover()
+    await page.waitForFunction(() => {
+      const btn = document.querySelector('#content .copy-btn')
+      return btn && getComputedStyle(btn, '::after').opacity === '1'
+    })
+    assert.equal(await copyButton.evaluate(el => getComputedStyle(el, '::after').content), '"복사"')
 
     await copyButton.click()
     await page.waitForFunction(() => document.querySelector('#content .copy-btn')?.classList.contains('copied'))
     await page.waitForFunction(() => document.getElementById('toast')?.textContent === '코드 복사됨' && document.getElementById('toast')?.classList.contains('show'))
     const copiedIconHtml = await copyButton.evaluate(el => el.innerHTML)
     assert.match(copiedIconHtml, /icon-check/)
+    // Tooltip hides once the button flips to its "copied" state so it doesn't read stale.
+    // The opacity is CSS-transitioned (.1s), so poll for it to actually settle rather than
+    // asserting immediately after the class flip -- getComputedStyle can still report the
+    // pre-transition value until the next paint.
+    await page.waitForFunction(() => {
+      const btn = document.querySelector('#content .copy-btn')
+      return btn && getComputedStyle(btn, '::after').opacity === '0'
+    })
 
     await page.click('#btn-copy-all')
     await page.waitForFunction(() => document.getElementById('toast')?.textContent === '복사됨' && document.getElementById('toast')?.classList.contains('show'))
+  } finally {
+    await closeApp(electronApp)
+  }
+})
+
+test('mermaid fence renders an actual diagram, redraws on a theme toggle, and reuses its snapshot on tab switch', async () => {
+  const { electronApp, page } = await launchApp()
+  const consoleErrors = []
+  page.on('pageerror', err => consoleErrors.push(String(err)))
+
+  try {
+    await page.waitForSelector('#empty')
+    await stubOpenDialog(electronApp, [MERMAID_MD])
+    await clickApplicationMenuItem(electronApp, '파일', '파일 열기…')
+    await page.waitForFunction(() => document.title === 'mermaid')
+
+    await page.waitForFunction(() => !!document.querySelector('#content .mermaid svg'), { timeout: 8000 })
+    const mermaidNode = page.locator('#content .mermaid')
+    assert.equal(await mermaidNode.getAttribute('data-processed'), 'true')
+    assert.ok(await mermaidNode.getAttribute('data-mermaid-src'), 'raw source is preserved for a future theme re-render')
+
+    // mermaid mints a fresh random id per render (never assert its exact value) -- only
+    // whether it changed. Two clicks from the default 'auto' state deterministically land on
+    // 'dark' (mirrors the toggleTheme test above: 1st click -> light, 2nd -> dark).
+    const svgIdInitial = await page.evaluate(() => document.querySelector('#content .mermaid svg').id)
+    await page.evaluate(() => document.querySelector('[data-command="toggleTheme"]').click())
+    await page.evaluate(() => document.querySelector('[data-command="toggleTheme"]').click())
+    await page.waitForFunction(() => document.documentElement.getAttribute('data-theme') === 'dark')
+    await page.waitForFunction(
+      prevId => document.querySelector('#content .mermaid svg')?.id !== prevId,
+      svgIdInitial,
+      { timeout: 5000 }
+    )
+    const svgIdAfterThemeToggle = await page.evaluate(() => document.querySelector('#content .mermaid svg').id)
+    assert.notEqual(svgIdAfterThemeToggle, svgIdInitial, 'theme toggle must redraw the diagram, not just leave the old SVG in place')
+
+    // Switching away and back must reuse the cached snapshot rather than re-running mermaid.
+    await stubOpenDialog(electronApp, [BASIC_MD])
+    await clickApplicationMenuItem(electronApp, '파일', '파일 열기…')
+    await page.waitForFunction(() => document.title === 'basic')
+    await page.evaluate(() => {
+      const tab = Array.from(document.querySelectorAll('.file-tab')).find(t => t.textContent.includes('mermaid.md'))
+      tab.click()
+    })
+    await page.waitForFunction(() => document.title === 'mermaid')
+    const svgIdAfterTabSwitch = await page.evaluate(() => document.querySelector('#content .mermaid svg')?.id)
+    assert.equal(svgIdAfterTabSwitch, svgIdAfterThemeToggle, 'a plain tab switch must reuse the snapshot, not re-run mermaid')
+
+    assert.deepEqual(consoleErrors, [], 'mermaid must not raise CSP violations or runtime errors')
   } finally {
     await closeApp(electronApp)
   }
@@ -376,7 +440,6 @@ test('code fence with no language renders without a reserved header row', async 
     assert.ok(!/code-lang/.test(html), html)
     assert.ok(!/code-meta/.test(html), html)
     assert.ok(/data-command="copyCode"/.test(html), html)
-    assert.ok(/class="code-gutter"/.test(html), html)
     assert.ok(/class="copy-btn"/.test(html), html)
 
     await page.evaluate(htmlStr => {
@@ -403,7 +466,7 @@ test('code fence with no language renders without a reserved header row', async 
   }
 })
 
-test('long code lines scroll under the code body without ever overlapping the gutter', async () => {
+test('long code lines scroll under the copy button and it stays clickable', async () => {
   const { electronApp, page } = await launchApp()
 
   try {
@@ -422,8 +485,7 @@ test('long code lines scroll under the code body without ever overlapping the gu
     }, longLine)
 
     // Must land inside #content (not document.body, unlike the no-language probe above) so
-    // #content pre code's overflow-x:auto actually gets a real scrollbar to exercise -- the
-    // whole point of this test is to prove the gutter can't be reached by scrolled code.
+    // #content pre code's overflow-x:auto actually gets a real scrollbar to exercise.
     await page.evaluate(htmlStr => {
       const content = document.getElementById('content')
       content.classList.remove('is-empty')
@@ -431,24 +493,19 @@ test('long code lines scroll under the code body without ever overlapping the gu
     }, html)
 
     const wrapper = page.locator('#content .code-wrapper').first()
-    const bodyBefore = await wrapper.locator('.code-body').boundingBox()
-    const gutterBefore = await wrapper.locator('.code-gutter').boundingBox()
-    assert.ok(
-      gutterBefore.x >= bodyBefore.x + bodyBefore.width - 1,
-      `gutter overlaps code body before scroll: ${JSON.stringify({ bodyBefore, gutterBefore })}`
-    )
+    const copyButton = wrapper.locator('.copy-btn')
 
     await wrapper.locator('pre code').evaluate(el => { el.scrollLeft = el.scrollWidth })
 
-    const bodyAfter = await wrapper.locator('.code-body').boundingBox()
-    const gutterAfter = await wrapper.locator('.code-gutter').boundingBox()
+    // The overlay copy button is deliberately allowed to sit on top of scrolled code (this
+    // reverts plan 09's overlap-proof gutter in favor of matching Claude desktop's look) --
+    // what must still hold is that it stays positioned and clickable.
+    assert.equal(await copyButton.evaluate(el => getComputedStyle(el).position), 'absolute')
+    const btnBox = await copyButton.boundingBox()
+    const wrapperBox = await wrapper.boundingBox()
     assert.ok(
-      gutterAfter.x >= bodyAfter.x + bodyAfter.width - 1,
-      `gutter overlaps code body after scroll: ${JSON.stringify({ bodyAfter, gutterAfter })}`
-    )
-    assert.ok(
-      Math.abs(gutterAfter.x - gutterBefore.x) < 1 && Math.abs(gutterAfter.width - gutterBefore.width) < 1,
-      `gutter position/width shifted after scrolling code: ${JSON.stringify({ gutterBefore, gutterAfter })}`
+      btnBox.x + btnBox.width <= wrapperBox.x + wrapperBox.width + 1,
+      `copy button drifted outside wrapper after scroll: ${JSON.stringify({ wrapperBox, btnBox })}`
     )
   } finally {
     await closeApp(electronApp)

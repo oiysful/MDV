@@ -13,6 +13,7 @@ if (process.env.MDV_USER_DATA_DIR) {
 }
 
 const watchers = new Map() // path → { watcher: chokidar.FSWatcher, subscribers: Set<WebContents> }
+const dirWatchers = new Map() // dirPath → { watcher: chokidar.FSWatcher, subscribers: Set<WebContents>, debounceTimer }
 const dirtyState = new Map() // BrowserWindow.id → boolean (미저장 변경 존재 여부)
 const sessionState = new Map() // BrowserWindow.id → { tabs, activeIndex, explorerRoot } (렌더러가 통지한 최신 상태)
 let lastFocusedWindowId = null
@@ -516,6 +517,17 @@ function removeWatchSubscriber(filePath, wc) {
   }
 }
 
+function removeDirWatchSubscriber(dirPath, wc) {
+  const entry = dirWatchers.get(dirPath)
+  if (!entry) return
+  entry.subscribers.delete(wc)
+  if (entry.subscribers.size === 0) {
+    clearTimeout(entry.debounceTimer)
+    entry.watcher.close()
+    dirWatchers.delete(dirPath)
+  }
+}
+
 // 탭을 바꿀 때마다 unwatch+watch가 호출되므로, 경로마다 'destroyed' 리스너를
 // 달면 창 하나에 리스너가 무한히 쌓인다. WebContents당 한 번만 등록해서
 // 파괴될 때 그 창의 모든 구독을 한 번에 정리한다.
@@ -526,8 +538,62 @@ function registerWatchSweep(wc) {
   sweepRegistered.add(wc)
   wc.once('destroyed', () => {
     for (const filePath of [...watchers.keys()]) removeWatchSubscriber(filePath, wc)
+    for (const dirPath of [...dirWatchers.keys()]) removeDirWatchSubscriber(dirPath, wc)
   })
 }
+
+// node_modules/.git and any dot-prefixed directory (matching list-directory's own display
+// filter) are excluded so opening a large repo root doesn't spin up tens of thousands of
+// watchers -- that would make the debounce below meaningless under real event volume.
+const DIR_WATCH_IGNORED = /(^|[\\/])(node_modules|\.[^\\/]+)([\\/]|$)/
+const DIR_WATCH_DEBOUNCE_MS = 300
+const DIR_WATCH_DEPTH = 10
+
+ipcMain.handle('watch-directory', async (event, dirPath) => {
+  try {
+    const stat = await fs.promises.stat(dirPath)
+    if (!stat.isDirectory()) return { error: 'Not a directory' }
+  } catch (e) {
+    return { error: e.message }
+  }
+
+  const wc = event.sender
+  registerWatchSweep(wc)
+  const existing = dirWatchers.get(dirPath)
+  if (existing) {
+    existing.subscribers.add(wc)
+    return {}
+  }
+
+  const entry = { watcher: null, subscribers: new Set([wc]), debounceTimer: null }
+  const notify = () => {
+    for (const sub of entry.subscribers) {
+      if (!sub.isDestroyed()) sub.send('directory-changed', { path: dirPath })
+    }
+  }
+  const scheduleNotify = () => {
+    clearTimeout(entry.debounceTimer)
+    entry.debounceTimer = setTimeout(notify, DIR_WATCH_DEBOUNCE_MS)
+  }
+
+  const watcher = chokidar.watch(dirPath, {
+    ignoreInitial: true,
+    ignored: DIR_WATCH_IGNORED,
+    depth: DIR_WATCH_DEPTH,
+  })
+  watcher.on('add', scheduleNotify)
+  watcher.on('unlink', scheduleNotify)
+  watcher.on('addDir', scheduleNotify)
+  watcher.on('unlinkDir', scheduleNotify)
+
+  entry.watcher = watcher
+  dirWatchers.set(dirPath, entry)
+  return {}
+})
+
+ipcMain.handle('unwatch-directory', async (event, dirPath) => {
+  removeDirWatchSubscriber(dirPath, event.sender)
+})
 
 // filePath 하나에 여러 창(WebContents)이 구독할 수 있다. 마지막 구독자가
 // 빠질 때만 워처를 닫는다.

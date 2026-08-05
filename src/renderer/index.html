@@ -7,10 +7,11 @@
   content="default-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; script-src 'self'; img-src 'self' data:; form-action 'none'; base-uri 'none'; object-src 'none';">
 <title>MDV</title>
 
-<!-- marked.js, highlight.js & DOMPurify (locally bundled) -->
+<!-- marked.js, highlight.js, DOMPurify & mermaid (locally bundled) -->
 <script src="../../node_modules/marked/marked.min.js"></script>
 <script src="../../node_modules/@highlightjs/cdn-assets/highlight.min.js"></script>
 <script src="../../node_modules/dompurify/dist/purify.min.js"></script>
+<script src="../../node_modules/mermaid/dist/mermaid.min.js"></script>
 
 <!-- highlight.js: light 모드 → GitHub Light, dark 모드 → One Dark -->
 <link id="hljs-light" rel="stylesheet"
@@ -501,6 +502,7 @@ mark.search-hl.current {
 .file-tab.drag-before { box-shadow: inset 2px 0 0 var(--brand); }
 .file-tab.drag-after  { box-shadow: inset -2px 0 0 var(--brand); }
 .file-tab.has-conflict .file-tab-name { color: var(--danger); }
+.file-tab-name--deleted { text-decoration: line-through; opacity: .7; }
 .file-tab:focus-visible {
   outline: none;
   border-color: color-mix(in srgb, var(--brand) 55%, transparent);
@@ -1093,16 +1095,6 @@ kbd {
   border-radius: 12px; overflow: hidden;
   border: 1px solid color-mix(in srgb, var(--border) 85%, transparent);
   background: color-mix(in srgb, var(--bg) 84%, transparent);
-  display: flex; align-items: stretch;
-}
-
-.code-body {
-  flex: 1 1 auto;
-  /* flex item의 기본 min-width:auto는 <pre>의 콘텐츠 기반 최소 너비(줄바꿈 없는 긴 줄의
-     전체 렌더 너비)를 따라간다 — 이 값이 없으면 긴 줄이 .code-body(와 그 옆 gutter)를
-     wrapper 밖으로 밀어내며, 원래 <pre>/<code> 안에서 스크롤돼야 할 게 레이아웃 자체를
-     깨버린다. */
-  min-width: 0;
 }
 
 .code-lang-row {
@@ -1121,20 +1113,8 @@ kbd {
   min-width: 0;
 }
 
-/* 영구 고정폭 우측 여백 — #source-lines(줄번호 거터)와 같은 40px 폭 관례.
-   24x24 버튼에 양쪽 여유 패딩까지 편하게 들어간다. 코드의 가로 스크롤 영역이 이 컬럼을
-   절대 침범할 수 없어서(형제 컬럼이지 오버레이가 아니므로) 어떤 줄 길이에서도 겹침이
-   구조적으로 불가능하다. */
-.code-gutter {
-  flex: 0 0 40px;
-  display: flex; justify-content: center;
-  padding-top: 6px;
-  border-left: 1px solid transparent;
-  transition: border-left-color .15s;
-}
-.code-wrapper:hover .code-gutter { border-left-color: var(--code-border); }
-
 .copy-btn {
+  position: absolute; top: 8px; right: 8px; z-index: 1;
   display: flex; align-items: center; justify-content: center;
   width: 24px; height: 24px; padding: 0; border-radius: 6px;
   background: var(--code-bg); border: 1px solid var(--code-copy-border);
@@ -1146,6 +1126,18 @@ kbd {
 .copy-btn:hover { background: color-mix(in srgb, var(--code-bg) 85%, var(--text) 15%); color: var(--code-text); }
 .copy-btn.copied { color: #2da44e; border-color: #2da44e40; opacity: 1; }
 [data-theme="dark"] .copy-btn.copied { color: #98c379; border-color: #98c37940; }
+
+.copy-btn::after {
+  content: '복사';
+  position: absolute; top: calc(100% + 6px); right: 0;
+  padding: 4px 8px; border-radius: 6px;
+  background: #1f2328; color: #fff;
+  font-size: 11px; font-family: var(--font); white-space: nowrap;
+  opacity: 0; pointer-events: none;
+  transition: opacity .1s;
+}
+.copy-btn:hover::after { opacity: 1; }
+.copy-btn.copied::after { opacity: 0; }
 
 #content pre code {
   display: block;
@@ -1164,7 +1156,10 @@ kbd {
   border-radius: var(--radius-sm); overflow: hidden;
 }
 #content th, #content td {
-  padding: 9px var(--sp-sm); border-bottom: 1px solid var(--border); text-align: left;
+  padding: 9px var(--sp-sm); border-bottom: 1px solid var(--border);
+}
+#content th:not([align]), #content td:not([align]) {
+  text-align: left;
 }
 #content th {
   background: var(--subtle); font-size: 11px; font-weight: 600;
@@ -1172,6 +1167,24 @@ kbd {
 }
 #content tr:last-child td { border-bottom: none; }
 #content tr:hover td { background: var(--hover); }
+
+/* Frontmatter meta card — collapsed by default (no `open` attribute), Obsidian-properties-ish. */
+.frontmatter-card {
+  margin: 0 0 1.2em; padding: 0.5em 0.9em;
+  border: 1px solid var(--border); border-radius: var(--radius-sm);
+  background: var(--subtle); font-size: 0.85em;
+}
+.frontmatter-card summary {
+  cursor: pointer; font-weight: 600; color: var(--text-muted);
+  user-select: none;
+}
+.frontmatter-card[open] summary { margin-bottom: 0.6em; }
+.frontmatter-table { width: 100%; border-collapse: collapse; }
+.frontmatter-table th, .frontmatter-table td {
+  padding: 4px 8px; text-align: left; vertical-align: top;
+  border: none;
+}
+.frontmatter-table th { color: var(--text-muted); font-weight: 600; white-space: nowrap; width: 1%; }
 
 #content img {
   max-width: 100%; border-radius: var(--radius-md); border: 1px solid var(--border);
@@ -1184,7 +1197,7 @@ kbd {
 #btn-copy-all.copied { color: var(--success) !important; }
 
 @media print {
-  #toolbar, #search-bar, #sidebar, #tab-strip, #go-top, #source-view, #split-divider, .code-gutter { display: none !important; }
+  #toolbar, #search-bar, #sidebar, #tab-strip, #go-top, #source-view, #split-divider, .copy-btn { display: none !important; }
   html, body, #layout, #main-pane, #scroll-area, #content {
     height: auto !important;
     min-height: 0 !important;

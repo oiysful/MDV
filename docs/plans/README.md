@@ -6,9 +6,7 @@
 - [done/2026-07-20/](./done/2026-07-20/) — 2026-07-16에 식별된 11개 항목, 2026-07-20 전부 구현·검증 완료.
 - [done/2026-07-30/](./done/2026-07-30/) — 아래 2026-07-22 배치 중 01/02/03/05/06, 2026-07-30 전부 구현·독립 리뷰 2회(코드/보안)·검증 완료.
 - [done/2026-08-04/](./done/2026-08-04/) — [08](./done/2026-08-04/08-search-highlight-and-ime-fixes.md) 편집모드 검색 하이라이팅 + 한글 IME Enter 중복 입력, 2026-08-04 구현·검증 완료.
-- [done/2026-08-05/](./done/2026-08-05/) — [04](./done/2026-08-05/04-split-view-scroll-boundary-latch.md) 분할뷰 스크롤 경계 래칭(Ian 실사용 재확인 완료), [07](./done/2026-08-05/07-usability-roadmap-followup-gaps.md) 사용성 로드맵 후속 갭 A/B/C/D 전부, [09](./done/2026-08-05/09-code-block-copy-gutter-redesign.md) 코드블럭 복사버튼 gutter 재설계 — 2026-08-05 구현·검증 완료.
-
-**현재 열려 있는 항목 없음** — 이 저장소에서 조사·계획된 모든 항목이 구현·테스트·검증까지 완료된 상태다(2026-08-05 기준).
+- [done/2026-08-05/](./done/2026-08-05/) — [04](./done/2026-08-05/04-split-view-scroll-boundary-latch.md) 분할뷰 스크롤 경계 래칭(Ian 실사용 재확인 완료), [07](./done/2026-08-05/07-usability-roadmap-followup-gaps.md) 사용성 로드맵 후속 갭 A/B/C/D 전부, [09](./done/2026-08-05/09-code-block-copy-gutter-redesign.md) 코드블럭 복사버튼 gutter 재설계, [10](./done/2026-08-05/10-mermaid-support-and-usability-fixes.md) mermaid 지원 + 표 정렬/검색 가로스크롤/탐색기 watch + 프론트매터 메타 블록 + 복사버튼 오버레이 회귀(6항목) — 2026-08-05 구현·검증 완료.
 
 ## [`docs/self-check-request.md`](./done/2026-08-05/self-check-request.md) 기반 (2026-07-22 조사)
 

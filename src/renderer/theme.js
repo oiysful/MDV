@@ -1,5 +1,5 @@
 (function (globalScope) {
-  function createThemeController({ matchMedia, storage, documentRef, getRefs }) {
+  function createThemeController({ matchMedia, storage, documentRef, getRefs, onThemeApplied }) {
     let theme = storage.getItem('theme') || 'auto'
 
     function applyTheme() {
@@ -20,6 +20,13 @@
         refs.btnTheme.title = labels[theme]
         refs.btnTheme.setAttribute('aria-label', labels[theme])
       }
+
+      // mermaid bakes its palette into the SVG at draw time (unlike hljs's stylesheet-swap
+      // above), so a theme change needs an explicit redraw callback, not just this stylesheet
+      // toggle. Fires on every applyTheme call, including the very first one at startup --
+      // that call has nothing to redraw yet, but it's also this app's one guaranteed place to
+      // hand mermaid its initial theme before any diagram renders.
+      onThemeApplied?.(isDark)
 
       return { theme, isDark }
     }

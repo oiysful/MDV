@@ -34,6 +34,16 @@
     return count ? `${slug}-${count}` : slug
   }
 
+  // btoa/atob are Latin1-only; TextEncoder/TextDecoder round-trip through them safely so
+  // Korean (or any non-Latin1) mermaid label survives storage in an HTML attribute.
+  function utf8ToBase64(str) {
+    return btoa(String.fromCharCode(...new TextEncoder().encode(str)))
+  }
+
+  function base64ToUtf8(b64) {
+    return new TextDecoder().decode(Uint8Array.from(atob(b64), ch => ch.charCodeAt(0)))
+  }
+
   function escapeHtml(value) {
     return String(value).replace(/[&<>"']/g, ch => (
       ch === '&' ? '&amp;'
@@ -44,13 +54,46 @@
     ))
   }
 
-  function createMarkdownController({ getRefs, markedLib, hljsLib, pathUtils, api, onShowModeButton, domPurify }) {
+  // Only the document's very first line may open a frontmatter block. marked's hr and
+  // setext-heading tokenizers interact such that a bare `---` elsewhere in the body is
+  // ambiguous -- it renders as <hr> or gets swallowed into a heading underline depending on
+  // what precedes it. Requiring line 0 keeps this detector from ever mistaking a normal
+  // mid-document <hr> for frontmatter. No closing `---` means it isn't frontmatter either;
+  // the text is left untouched and falls through to marked's existing (if surprising) hr
+  // and heading handling, matching current behavior for anyone not using frontmatter.
+  function extractFrontmatter(text) {
+    const lines = text.split('\n')
+    if (lines[0]?.trim() !== '---') return { frontmatter: null, body: text }
+    let closingIndex = -1
+    for (let i = 1; i < lines.length; i++) {
+      if (lines[i].trim() === '---') { closingIndex = i; break }
+    }
+    if (closingIndex === -1) return { frontmatter: null, body: text }
+    const fields = []
+    for (let i = 1; i < closingIndex; i++) {
+      const match = lines[i].match(/^([^:\s][^:]*):\s?(.*)$/)
+      if (match) fields.push({ key: match[1].trim(), value: match[2].trim() })
+    }
+    const body = lines.slice(closingIndex + 1).join('\n')
+    return { frontmatter: fields, body }
+  }
+
+  function renderFrontmatterCard(fields) {
+    if (!fields.length) return ''
+    const rows = fields.map(({ key, value }) => (
+      `<tr><th>${escapeHtml(key)}</th><td>${escapeHtml(value)}</td></tr>`
+    )).join('')
+    return `<details class="frontmatter-card"><summary>메타데이터</summary><table class="frontmatter-table"><tbody>${rows}</tbody></table></details>`
+  }
+
+  function createMarkdownController({ getRefs, markedLib, hljsLib, pathUtils, api, onShowModeButton, domPurify, mermaidLib }) {
     let cachedHeadings = []
     let cachedTocLinks = []
     let prevTocLink = null
     let prevTocHref = ''
     const imageDataUrlCache = new Map()
     const purify = domPurify || globalScope.DOMPurify
+    const getMermaidLib = () => mermaidLib || globalScope.mermaid
 
     // hljs.highlightAuto over every language is slow; restrict auto-detection to
     // a common subset, filtered to the languages this build actually registers.
@@ -94,6 +137,19 @@
     const renderer = new markedLib.Renderer()
     renderer.code = (code, lang) => {
       const langId = lang ? lang.split(/[\s{]/)[0] : ''
+      // mermaid owns this block entirely -- no hljs highlighting, no copy button/gutter
+      // chrome. The source goes into the element's text (what mermaid.run() reads on first
+      // render) escaped as normal HTML, and separately into data-mermaid-src base64-encoded
+      // (preserved across a theme-triggered re-render, since mermaid replaces the element's
+      // content with an <svg>). Base64, not escapeHtml, for the attribute: DOMPurify's mXSS
+      // defenses strip an attribute outright if its value contains an encoded `>` -- which an
+      // escaped mermaid arrow (`A-->B`) does on essentially every real diagram. Base64's
+      // alphabet never touches an HTML metacharacter, so it can't trip that heuristic.
+      if (langId === 'mermaid') {
+        const escaped = escapeHtml(code)
+        const encoded = utf8ToBase64(code)
+        return `<pre class="mermaid" data-mermaid-src="${encoded}">${escaped}</pre>`
+      }
       const hl = (langId && hljsLib.getLanguage(langId))
         ? hljsLib.highlight(code, { language: langId }).value
         : hljsLib.highlightAuto(code, autoSubset.length ? autoSubset : undefined).value
@@ -101,9 +157,39 @@
       // when there is text to show, so an empty pill never occupies layout space.
       const langRow = langId ? `<div class="code-lang-row"><span class="code-lang">${escapeHtml(langId)}</span></div>` : ''
       const copyIcon = '<svg class="icon-copy" aria-hidden="true" width="12" height="12" viewBox="0 0 13 13" fill="none"><rect x="4.5" y="4.5" width="8" height="8" rx="1" stroke="currentColor" stroke-width="1.3"/><path d="M2.5 10.5V2.5h8" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"/></svg>'
-      return `<div class="code-wrapper"><div class="code-body">${langRow}<pre><code class="hljs">${hl}</code></pre></div><div class="code-gutter"><button class="copy-btn" type="button" data-command="copyCode" data-command-element="true" title="코드 복사" aria-label="코드 복사">${copyIcon}</button></div></div>`
+      return `<div class="code-wrapper">${langRow}<pre><code class="hljs">${hl}</code></pre><button class="copy-btn" type="button" data-command="copyCode" data-command-element="true" aria-label="코드 복사">${copyIcon}</button></div>`
     }
     markedLib.setOptions({ renderer, breaks: true, gfm: true })
+
+    // No-op in any environment without a global mermaid (e.g. the jsdom unit-test suite),
+    // so tests never need to stub it just to exercise render().
+    async function runMermaidBlocks(container) {
+      const lib = getMermaidLib()
+      if (!lib) return
+      const nodes = Array.from(container.querySelectorAll('.mermaid:not([data-processed])'))
+      if (!nodes.length) return
+      try {
+        await lib.run({ nodes })
+      } catch {
+        // mermaid.run() already renders a per-node error SVG for a syntax error in the
+        // diagram itself; this only guards against a harder failure (e.g. a bug in mermaid)
+        // taking the whole render down with it.
+      }
+    }
+
+    // Theme toggle re-render: mermaid bakes its color choices into the SVG at draw time, so
+    // switching theme requires drawing again, not a CSS swap. The element's original source
+    // survives in data-mermaid-src (its text content was replaced by the first render's SVG),
+    // so this resets each node back to source and re-runs it through mermaid.run().
+    async function rerenderMermaidTheme(container) {
+      if (!container) return
+      const nodes = Array.from(container.querySelectorAll('.mermaid[data-mermaid-src]'))
+      nodes.forEach(node => {
+        node.removeAttribute('data-processed')
+        node.textContent = base64ToUtf8(node.dataset.mermaidSrc)
+      })
+      await runMermaidBlocks(container)
+    }
 
     async function resolveRenderedImagePaths(docPath) {
       const refs = getRefs()
@@ -189,10 +275,13 @@
 
     async function render(text, filename, docPath) {
       const refs = getRefs()
-      refs.content.innerHTML = renderMarkdown(text)
+      const { frontmatter, body } = extractFrontmatter(text)
+      const frontmatterHtml = frontmatter ? sanitizeHtml(renderFrontmatterCard(frontmatter)) : ''
+      refs.content.innerHTML = frontmatterHtml + renderMarkdown(body)
+      await runMermaidBlocks(refs.content)
       const imagePaths = await resolveRenderedImagePaths(docPath)
       document.title = (filename || 'untitled.md').replace(/\.(md|markdown)$/i, '')
-      updateStats(text)
+      updateStats(body)
       buildToc()
       if (onShowModeButton) onShowModeButton()
       return imagePaths
@@ -320,10 +409,12 @@
       refreshHeadingOffsets,
       clearImageCache,
       clearImageCacheEntry,
+      runMermaidBlocks,
+      rerenderMermaidTheme,
     }
   }
 
-  const api = { createMarkdownController, computeStats, slugifyHeading }
+  const api = { createMarkdownController, computeStats, slugifyHeading, extractFrontmatter }
   globalScope.MDVMarkdown = api
   if (typeof module !== 'undefined' && module.exports) module.exports = api
 })(typeof window !== 'undefined' ? window : globalThis)

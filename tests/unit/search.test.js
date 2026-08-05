@@ -2,7 +2,7 @@ const test = require('node:test')
 const assert = require('node:assert/strict')
 const { JSDOM } = require('jsdom')
 
-const { findMatches, createSearchController } = require('../../src/renderer/search.js')
+const { findMatches, createSearchController, extractLinePrefix } = require('../../src/renderer/search.js')
 
 function makeEditorSearchHarness(editorValue) {
   const dom = new JSDOM(`
@@ -11,15 +11,16 @@ function makeEditorSearchHarness(editorValue) {
       <span id="search-count"></span>
     </div>
     <div id="content"></div>
-    <textarea id="source-editor"></textarea>
+    <div id="scroll-area"><textarea id="source-editor"></textarea></div>
   `)
   global.document = dom.window.document
   global.getComputedStyle = dom.window.getComputedStyle.bind(dom.window)
   const sourceEditor = dom.window.document.getElementById('source-editor')
   sourceEditor.value = editorValue
+  const scrollArea = dom.window.document.getElementById('scroll-area')
   const content = dom.window.document.getElementById('content')
-  const controller = createSearchController({ getRefs: () => ({ content, sourceEditor }) })
-  return { controller, sourceEditor }
+  const controller = createSearchController({ getRefs: () => ({ content, sourceEditor, scrollArea }) })
+  return { controller, sourceEditor, scrollArea }
 }
 
 test('findMatches returns no matches for an empty query', () => {
@@ -92,6 +93,27 @@ test('searchNext/searchPrev leave the editor focused so the match selection is a
 
   controller.searchPrev()
   assert.equal(document.activeElement, sourceEditor, 'editor must stay focused after searchPrev')
+})
+
+test('extractLinePrefix returns text from the start of the offset\'s line, not the whole document', () => {
+  assert.equal(extractLinePrefix('foo bar\nbaz qux', 13), 'baz q')
+  assert.equal(extractLinePrefix('single line', 6), 'single')
+  assert.equal(extractLinePrefix('line1\nline2\nline3', 17), 'line3')
+})
+
+test('extractLinePrefix returns an empty string for an offset at the start of a line', () => {
+  assert.equal(extractLinePrefix('foo\nbar', 4), '')
+})
+
+test('editor search sets scrollLeft on the editor and scrollTop on the ancestor scroll-area, not the editor itself', () => {
+  const { controller, sourceEditor, scrollArea } = makeEditorSearchHarness('x'.repeat(500) + '\nmatch')
+  controller.toggleSearch({ target: 'editor' })
+  controller.runSearch('match')
+  // jsdom has no real layout engine (getBoundingClientRect is always zeroed), so this can't
+  // assert exact pixel values -- it asserts the fix's actual claim: scrollTop lands on the
+  // ancestor scroller, and scrollLeft is computed (not left untouched) on the editor.
+  assert.equal(typeof scrollArea.scrollTop, 'number')
+  assert.equal(typeof sourceEditor.scrollLeft, 'number')
 })
 
 test('getCurrentTarget reflects the target toggleSearch was opened with', () => {

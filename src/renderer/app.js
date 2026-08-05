@@ -46,6 +46,12 @@ const themeController = window.MDVTheme.createThemeController({
   storage: localStorage,
   documentRef: document,
   getRefs: () => $,
+  onThemeApplied: isDark => {
+    if (typeof mermaid !== 'undefined') {
+      mermaid.initialize({ startOnLoad: false, securityLevel: 'strict', theme: isDark ? 'dark' : 'default' })
+    }
+    if ($ && $.content) markdownController.rerenderMermaidTheme($.content)
+  },
 })
 
 const onboardingController = window.MDVOnboarding.createOnboardingController({

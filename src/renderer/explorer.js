@@ -22,6 +22,7 @@
     let explorerShowFullPath = false
     let treeKeyboardBound = false
     let currentActiveFilePath = null
+    let refreshInFlight = false
     const { getRovingIndex } = globalScope.MDVRoving
 
     function clearActiveTreeItems(container) {
@@ -77,19 +78,67 @@
 
     // Shared open/toggle logic, DOM-driven so both the per-row click listener and the
     // delegated keyboard handler call the same path (no mouse/keyboard duplication).
-    async function toggleFolderRow(row) {
+    // Also reused by the directory-watch refresh to deterministically re-open a folder
+    // (rather than toggle it) when restoring expansion state after a tree rebuild.
+    async function setFolderRowOpen(row, open) {
       const children = row.nextElementSibling
       const arrow = row.querySelector('.tree-arrow')
       const icon = row.querySelector('.tree-icon')
-      const isOpen = children.classList.toggle('open')
-      arrow.textContent = getFolderArrow(isOpen)
-      icon.innerHTML = isOpen ? FOLDER_OPEN_SVG : FOLDER_CLOSED_SVG
-      row.setAttribute('aria-expanded', isOpen ? 'true' : 'false')
-      if (isOpen && children.dataset.loaded !== 'true') {
+      children.classList.toggle('open', open)
+      arrow.textContent = getFolderArrow(open)
+      icon.innerHTML = open ? FOLDER_OPEN_SVG : FOLDER_CLOSED_SVG
+      row.setAttribute('aria-expanded', open ? 'true' : 'false')
+      if (open && children.dataset.loaded !== 'true') {
         children.dataset.loaded = 'true'
         await loadDir(row.dataset.path, children, Number(row.dataset.depth) + 1)
       }
     }
+
+    async function toggleFolderRow(row) {
+      const isOpen = row.nextElementSibling.classList.contains('open')
+      await setFolderRowOpen(row, !isOpen)
+    }
+
+    // Snapshot of which folder paths are currently expanded, in document order (parent
+    // rows always precede their children here since the tree renders depth-first) --
+    // that order matters for restoreExpandedPaths, which must open a parent before it can
+    // find and open a child that was lazily rendered underneath it.
+    function getExpandedPaths() {
+      const tree = getRefs().explorerTree
+      return Array.from(tree.querySelectorAll('.tree-row')).filter(row => {
+        const children = row.nextElementSibling
+        return children?.classList.contains('tree-children') && children.classList.contains('open')
+      }).map(row => row.dataset.path)
+    }
+
+    // Re-opens (and lazily loads) each previously-expanded folder path after a full tree
+    // rebuild wiped the DOM. Must run sequentially in top-down order: a nested path's row
+    // doesn't exist until its ancestor has been re-opened and re-rendered.
+    async function restoreExpandedPaths(paths) {
+      for (const path of paths) {
+        const row = getVisibleTreeRows().find(r => r.dataset.path === path && r.parentElement.classList.contains('tree-dir'))
+        if (row) await setFolderRowOpen(row, true)
+      }
+    }
+
+    // Debounced on the main-process side already; this guard just avoids two overlapping
+    // rebuilds if a second directory-changed event arrives while the first is still restoring
+    // expanded folders.
+    async function refreshTree() {
+      if (!currentExplorerRoot || refreshInFlight) return
+      refreshInFlight = true
+      try {
+        const expandedPaths = getExpandedPaths()
+        await loadDir(currentExplorerRoot, getRefs().explorerTree, 0)
+        await restoreExpandedPaths(expandedPaths)
+      } finally {
+        refreshInFlight = false
+      }
+    }
+
+    api.onDirectoryChanged?.(payload => {
+      if (payload?.path === currentExplorerRoot) refreshTree()
+    })
 
     async function openFileRow(row, event) {
       if (event?.metaKey) {
@@ -170,6 +219,7 @@
 
     function clearExplorerRoot() {
       const refs = getRefs()
+      if (currentExplorerRoot) api.unwatchDirectory?.(currentExplorerRoot)
       currentExplorerRoot = null
       explorerShowFullPath = false
       refs.explorerTree.innerHTML = EXPLORER_EMPTY_HTML
@@ -195,12 +245,16 @@
     async function openFolder() {
       const res = await api.openFolderDialog()
       if (res.cancelled || res.error) return
+      // Switching roots (re-picking a folder) must drop the previous watch first, or every
+      // switch leaks one more chokidar watcher that never gets closed.
+      if (currentExplorerRoot) await api.unwatchDirectory?.(currentExplorerRoot)
       currentExplorerRoot = res.path
       explorerShowFullPath = false
       syncExplorerHeader()
       onExplorerRootChanged?.()
       switchToExplorerTab()
       await loadDir(res.path, getRefs().explorerTree, 0)
+      await api.watchDirectory?.(currentExplorerRoot)
     }
 
     // Session restore path: set the root and repaint the tree without switching the sidebar
@@ -213,6 +267,7 @@
       syncExplorerHeader()
       // loadDir re-applies currentActiveFilePath at the end of every render, this one included.
       await loadDir(root, getRefs().explorerTree, 0)
+      await api.watchDirectory?.(root)
     }
 
     async function loadDir(path, container, depth) {
@@ -329,6 +384,7 @@
       getCurrentExplorerRoot,
       restoreRoot,
       setActiveFilePath,
+      refreshTree,
     }
   }
 

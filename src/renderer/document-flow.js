@@ -84,6 +84,7 @@
       tab.filename = nextFilename
       tab.savedContent = tab.content
       tab.dirty = false
+      tab.deletedExternally = false
       document.title = globalScope.MDVWorkspace.stripMarkdownExtension(tab.filename)
       // A save that assigns/keeps a path is the second place (besides opening) a file
       // becomes a recent document — covers first save of a new file and "save as".

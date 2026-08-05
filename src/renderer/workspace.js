@@ -272,9 +272,12 @@
         el.tabIndex = tab.id === activeTabId ? 0 : -1
         const name = document.createElement('span')
         name.className = 'file-tab-name'
-        const marker = tab.conflictPending ? '⚠ ' : (tab.dirty ? '● ' : '')
+        const isDeleted = Boolean(tab.deletedExternally)
+        const marker = tab.conflictPending ? '⚠ ' : (!isDeleted && tab.dirty ? '● ' : '')
         name.textContent = `${marker}${tab.filename}`
+        name.classList.toggle('file-tab-name--deleted', isDeleted)
         if (tab.conflictPending) name.title = '이 파일이 외부에서 변경되었습니다. 탭을 열면 확인합니다.'
+        else if (isDeleted) name.title = '이 파일이 외부에서 삭제되었습니다. 저장하면 다시 생성됩니다.'
         const closeButton = document.createElement('button')
         closeButton.className = 'file-tab-close'
         closeButton.innerHTML = '&times;'
@@ -508,6 +511,7 @@
       tab.content = content
       tab.savedContent = content
       tab.dirty = false
+      tab.deletedExternally = false
       if (tab.id !== activeTabId) {
         // Cached renderedHTML is now stale; restoreTabState re-renders once this
         // tab is actually activated instead of paying for it while backgrounded.
@@ -591,8 +595,11 @@
       if (action === 'mark-deleted') {
         // File was removed on disk. Keep the buffer so the user can re-save it,
         // and force dirty so it survives further keystrokes and save-conflict checks.
+        // deletedExternally is tracked separately from dirty so renderTabBar can show a
+        // distinct marker instead of conflating "removed on disk" with "unsaved edits".
         tab.dirty = true
         tab.savedContent = null
+        tab.deletedExternally = true
         renderTabBar()
         return
       }

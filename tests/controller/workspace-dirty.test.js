@@ -93,3 +93,22 @@ test('a source-mode-only edit sets previewDirty and forces a fresh render on tab
   const renderedEdited = render.calls.some(args => args[0] === edited)
   assert.ok(renderedEdited, 'restore must re-render the edited content, not reuse stale HTML')
 })
+
+test('an externally deleted file gets a distinct tab marker, separate from a plain dirty edit', async () => {
+  const { refs, workspaceController } = makeHarness()
+
+  const tab = await workspaceController.createTab({ filename: 'a.md', path: '/docs/a.md', content: '# A' })
+
+  await workspaceController.handleExternalFileChange({ path: '/docs/a.md', content: null, event: 'unlink' })
+
+  assert.equal(tab.dirty, true, 'deleted tab is kept dirty so it survives further edits/checks')
+  assert.equal(tab.deletedExternally, true)
+  const nameEl = refs.tabList.querySelector(`[data-tab-id="${tab.id}"] .file-tab-name`)
+  assert.ok(nameEl.classList.contains('file-tab-name--deleted'), 'deleted tab must carry its own marker class')
+  assert.ok(!nameEl.textContent.startsWith('● '), 'deleted marker must not double up with the plain dirty dot')
+
+  // The file reappearing (e.g. re-saved, or restored) reloads its content and must clear
+  // the deleted marker, not just the dirty flag.
+  await workspaceController.handleExternalFileChange({ path: '/docs/a.md', content: '# A restored', event: 'add' })
+  assert.equal(tab.deletedExternally, false, 'content reload clears the deleted marker')
+})

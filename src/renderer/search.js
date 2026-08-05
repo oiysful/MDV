@@ -15,11 +15,61 @@
     return matches
   }
 
-  function computeScrollTopForOffset(editor, offset) {
+  // The textarea itself never scrolls vertically (overflow-y: hidden -- it grows to fit its
+  // content instead), so the real vertical scroller is the ancestor #scroll-area. The target
+  // must be computed in #scroll-area's coordinate space, not the textarea's.
+  function computeScrollTopForOffset(editor, scrollArea, offset) {
     const lineIndex = editor.value.slice(0, offset).split('\n').length - 1
     const lineHeight = parseFloat(getComputedStyle(editor).lineHeight) || 0
-    const target = lineIndex * lineHeight - editor.clientHeight / 2 + lineHeight / 2
+    const editorPaddingTop = parseFloat(getComputedStyle(editor).paddingTop) || 0
+    const editorRect = editor.getBoundingClientRect()
+    const scrollAreaRect = scrollArea.getBoundingClientRect()
+    const lineTop = (editorRect.top - scrollAreaRect.top) + scrollArea.scrollTop + editorPaddingTop + lineIndex * lineHeight
+    const target = lineTop - scrollArea.clientHeight / 2 + lineHeight / 2
     return Math.max(0, target)
+  }
+
+  function extractLinePrefix(text, offset) {
+    const lineStart = text.lastIndexOf('\n', offset - 1) + 1
+    return text.slice(lineStart, offset)
+  }
+
+  // Measures how far `prefix` renders horizontally inside `editor` using a hidden mirror
+  // element that copies the editor's font/padding/white-space/tab-size. A naive
+  // column * charWidth estimate breaks down for this app's Korean-heavy markdown: Hangul
+  // syllables render double-wide relative to Latin characters in monospace fonts, and tabs
+  // aren't fixed-width either. Measuring real layout sidesteps all of that.
+  function measureTextWidth(editor, prefix) {
+    const doc = editor.ownerDocument
+    const style = doc.defaultView.getComputedStyle(editor)
+    const mirror = doc.createElement('div')
+    const propsToCopy = [
+      'fontFamily', 'fontSize', 'fontWeight', 'fontStyle', 'letterSpacing', 'wordSpacing',
+      'textTransform', 'tabSize', 'paddingLeft', 'paddingRight', 'paddingTop', 'paddingBottom',
+      'borderLeftWidth', 'borderRightWidth', 'boxSizing',
+    ]
+    propsToCopy.forEach(prop => { mirror.style[prop] = style[prop] })
+    mirror.style.position = 'absolute'
+    mirror.style.visibility = 'hidden'
+    mirror.style.whiteSpace = 'pre'
+    mirror.style.left = '-9999px'
+    mirror.style.top = '0'
+    mirror.textContent = prefix
+    const marker = doc.createElement('span')
+    marker.textContent = '​'
+    mirror.appendChild(marker)
+    doc.body.appendChild(mirror)
+    const mirrorRect = mirror.getBoundingClientRect()
+    const markerRect = marker.getBoundingClientRect()
+    doc.body.removeChild(mirror)
+    return markerRect.left - mirrorRect.left
+  }
+
+  function computeScrollLeftForOffset(editor, offset) {
+    const prefix = extractLinePrefix(editor.value, offset)
+    const textOffset = measureTextWidth(editor, prefix)
+    const target = textOffset - editor.clientWidth / 2
+    return Math.max(0, Math.min(target, editor.scrollWidth - editor.clientWidth))
   }
 
   function createSearchController({ getRefs }) {
@@ -53,12 +103,14 @@
     }
 
     function selectEditorMatch(focusEditor) {
-      const editor = getRefs().sourceEditor
+      const refs = getRefs()
+      const editor = refs.sourceEditor
       const match = searchMatches[searchIndex]
       if (!match) return
       if (focusEditor) editor.focus()
       editor.setSelectionRange(match.start, match.end)
-      editor.scrollTop = computeScrollTopForOffset(editor, match.start)
+      if (refs.scrollArea) refs.scrollArea.scrollTop = computeScrollTopForOffset(editor, refs.scrollArea, match.start)
+      editor.scrollLeft = computeScrollLeftForOffset(editor, match.start)
     }
 
     function updateEditorCount() {
@@ -216,7 +268,7 @@
     }
   }
 
-  const api = { createSearchController, findMatches }
+  const api = { createSearchController, findMatches, extractLinePrefix }
   globalScope.MDVSearch = api
   if (typeof module !== 'undefined' && module.exports) module.exports = api
 })(typeof window !== 'undefined' ? window : globalThis)

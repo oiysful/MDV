@@ -184,3 +184,71 @@ test('expanding a folder that reveals the active tab highlights it without a roo
   assert.equal(active.length, 1, 'the newly-revealed row lights up without a separate setActiveFilePath call')
   assert.equal(active[0].querySelector('.tree-row').dataset.path, '/docs/sub/nested.md')
 })
+
+// Directory-watch wiring (docs/plans/10 2-1): openFolder/restoreRoot start a watch,
+// switching or closing the root must not leak the previous one.
+function makeWatchHarness(listDirectoryImpl) {
+  const dom = new JSDOM('<div id="layout"><div id="explorer-tree"></div></div><span id="explorer-path"></span><button id="btn-explorer-reveal"></button><button id="btn-explorer-close"></button>')
+  global.document = dom.window.document
+  const tree = dom.window.document.getElementById('explorer-tree')
+  const watchCalls = []
+  const unwatchCalls = []
+  let directoryChangedHandler = null
+  const controller = createExplorerController({
+    getRefs: () => ({
+      explorerTree: tree,
+      explorerPath: dom.window.document.getElementById('explorer-path'),
+      btnExplorerReveal: dom.window.document.getElementById('btn-explorer-reveal'),
+      btnExplorerClose: dom.window.document.getElementById('btn-explorer-close'),
+    }),
+    api: {
+      listDirectory: listDirectoryImpl,
+      openFolderDialog: async () => ({ path: '/docs' }),
+      watchDirectory: async p => { watchCalls.push(p) },
+      unwatchDirectory: async p => { unwatchCalls.push(p) },
+      onDirectoryChanged: cb => { directoryChangedHandler = cb },
+    },
+    load: () => {},
+    switchToExplorerTab: () => {},
+    showAppContextMenu: () => {},
+    revealInFinder: () => {},
+    onExplorerRootChanged: () => {},
+  })
+  return { controller, tree, watchCalls, unwatchCalls, emitDirectoryChanged: payload => directoryChangedHandler(payload) }
+}
+
+test('openFolder watches the newly opened root', async () => {
+  const { controller, watchCalls } = makeWatchHarness(async () => ({ entries: [] }))
+  await controller.openFolder()
+  assert.deepEqual(watchCalls, ['/docs'])
+})
+
+test('clearExplorerRoot unwatches the root it is closing', async () => {
+  const { controller, watchCalls, unwatchCalls } = makeWatchHarness(async () => ({ entries: [] }))
+  await controller.openFolder()
+  assert.deepEqual(watchCalls, ['/docs'])
+  controller.clearExplorerRoot()
+  assert.deepEqual(unwatchCalls, ['/docs'])
+})
+
+test('refreshTree reloads the root and restores folders that were expanded before the rebuild', async () => {
+  const listDirectory = async targetPath => {
+    if (targetPath === '/docs') return { entries: [{ type: 'dir', name: 'sub', path: '/docs/sub' }] }
+    if (targetPath === '/docs/sub') return { entries: [{ type: 'file', name: 'nested.md', path: '/docs/sub/nested.md' }] }
+    throw new Error(`unexpected listDirectory(${targetPath})`)
+  }
+  const { controller, tree } = makeWatchHarness(listDirectory)
+  await controller.openFolder()
+
+  const folderRow = tree.querySelector('.tree-row[data-path="/docs/sub"]')
+  const EventCtor = folderRow.ownerDocument.defaultView.Event
+  folderRow.dispatchEvent(new EventCtor('click'))
+  await new Promise(resolve => setImmediate(resolve))
+  assert.ok(tree.querySelector('.tree-row[data-path="/docs/sub/nested.md"]'), 'sub is expanded before the refresh')
+
+  await controller.refreshTree()
+
+  const reopenedRow = tree.querySelector('.tree-row[data-path="/docs/sub"]')
+  assert.equal(reopenedRow.getAttribute('aria-expanded'), 'true', 'refreshTree re-opens a folder that was expanded before the rebuild')
+  assert.ok(tree.querySelector('.tree-row[data-path="/docs/sub/nested.md"]'), 'the previously-expanded folder is lazily reloaded, not just marked open')
+})

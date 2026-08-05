@@ -22,7 +22,8 @@
     "@highlightjs/cdn-assets": "^11.11.1",
     "chokidar": "^5.0.0",
     "dompurify": "^3.4.11",
-    "marked": "^9.1.6"
+    "marked": "^9.1.6",
+    "mermaid": "^11.16.0"
   },
   "devDependencies": {
     "electron": "^42.3.0",
