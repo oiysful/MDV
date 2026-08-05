@@ -1,7 +1,7 @@
 # 06. 보안취약점 점검 결과 및 하드닝 계획
 
 ## 상태
-완료 (2026-07-30) — HIGH-1/LOW-4(b52ab0d), MEDIUM-2(8426c1d), MEDIUM-3/LOW-6(9f88997), LOW-7(3deb7a4) 구현. 사용자 승인 하에 allowlist를 `.docx`/`.xlsx`/`.pptx`까지 확장(계획 원안보다 넓음). 독립 보안 리뷰로 추가 결함 3건을 발견해 하드닝: `.svg`를 allowlist에서 제외(활성 콘텐츠 포맷), 마크다운 분기가 realpath 검증 전에 return하던 것을 수정(심볼릭 링크로 임의 비-마크다운 파일 읽기 방지 — 원래 v2 후보였던 항목이 여기서 해결됨), `shell.openPath`에 realpath를 넘기도록 check-then-use 수정(12355b4). LOW-5(`read-image-data-url` 경로 제한)는 계획대로 v2 보류 유지. [`docs/self-check-request.md`](../../../self-check-request.md) 6번 항목("보안취약점 점검")에 대한 조사 결과, 2026-07-22.
+완료 (2026-07-30) — HIGH-1/LOW-4(b52ab0d), MEDIUM-2(8426c1d), MEDIUM-3/LOW-6(9f88997), LOW-7(3deb7a4) 구현. 사용자 승인 하에 allowlist를 `.docx`/`.xlsx`/`.pptx`까지 확장(계획 원안보다 넓음). 독립 보안 리뷰로 추가 결함 3건을 발견해 하드닝: `.svg`를 allowlist에서 제외(활성 콘텐츠 포맷), 마크다운 분기가 realpath 검증 전에 return하던 것을 수정(심볼릭 링크로 임의 비-마크다운 파일 읽기 방지 — 원래 v2 후보였던 항목이 여기서 해결됨), `shell.openPath`에 realpath를 넘기도록 check-then-use 수정(12355b4). LOW-5(`read-image-data-url` 경로 제한)는 계획대로 v2 보류 유지. [`docs/self-check-request.md`](../2026-08-05/self-check-request.md) 6번 항목("보안취약점 점검")에 대한 조사 결과, 2026-07-22.
 
 ## 문제
 `AGENTS.md`의 "ANTI-PATTERNS" 절이 문서화한 기존 하드닝(contextIsolation/sandbox, DOMPurify 새니타이즈, 이미지 확장자 allowlist, `open-external-url`의 `^https?://` 검사, `will-navigate`/`setWindowOpenHandler` 가드 등)을 감사 기준선으로 삼아, 그 이후 추가된 경로 중 같은 규칙을 상속받지 못한 신규 격차를 점검했다. **총 7건(HIGH 1, MEDIUM 2, LOW 4)**을 확인했으며, 단순히 `.md` 파일을 여는 것만으로 발생하는 무조건적 RCE는 없다.
