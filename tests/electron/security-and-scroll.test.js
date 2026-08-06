@@ -206,7 +206,14 @@ test('opening a new document starts at the top instead of inheriting the previou
     // The tab left behind still remembers where it was — this fix must not flatten restore.
     await page.locator('#tab-list .file-tab').first().click()
     await page.waitForFunction(() => document.title === 'first')
-    const restored = await page.evaluate(() => document.getElementById('scroll-area').scrollTop)
+    // The restore write lands in a requestAnimationFrame callback (see the sibling "tab
+    // switching restores scroll position instantly" test above), so give it two frames
+    // before reading scrollTop -- otherwise this can read a stale 0 on a loaded machine.
+    const restored = await page.evaluate(() => new Promise(resolve => {
+      requestAnimationFrame(() => requestAnimationFrame(() => {
+        resolve(document.getElementById('scroll-area').scrollTop)
+      }))
+    }))
     assert.equal(restored, 1800, `the previous tab keeps its own offset, got ${restored}`)
   } finally {
     await closeApp(electronApp)

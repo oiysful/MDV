@@ -8,29 +8,8 @@ const {
   stubOpenDialog, stubSaveDialog, createTempMarkdown,
   emitFileOpened, emitRendererCommand, clickApplicationMenuItem,
   stubOpenExternal, getOpenExternalCalls,
+  armSidebarTransitionWatch, waitForSidebarTransition,
 } = require('./helpers/smoke-helpers')
-
-// Entering (and, on restore, leaving) split view force-closes/reopens #sidebar, whose width
-// transition (index.html, .25s) keeps reflowing #scroll-area's available width for the whole
-// span -- arm a transitionend watch before the toggle and wait for it before reading any
-// geometry, the same way tests/electron/smoke.test.js's TOC-scrollspy test does, so pane-width
-// assertions aren't racing a still-animating sidebar.
-async function armSidebarTransitionWatch(page) {
-  await page.evaluate(() => {
-    window.__mdvSidebarTransitionDone = false
-    const sidebar = document.getElementById('sidebar')
-    const onEnd = event => {
-      if (event.propertyName !== 'width') return
-      sidebar.removeEventListener('transitionend', onEnd)
-      window.__mdvSidebarTransitionDone = true
-    }
-    sidebar.addEventListener('transitionend', onEnd)
-  })
-}
-
-async function waitForSidebarTransition(page) {
-  await page.waitForFunction(() => window.__mdvSidebarTransitionDone === true)
-}
 
 test('entering split view force-closes the sidebar, disables its toggle, and restores it on exit', async () => {
   const { electronApp, page } = await launchApp()

@@ -75,6 +75,28 @@ async function clickApplicationMenuItem(electronApp, menuLabel, itemLabel) {
   }, { menuLabel, itemLabel })
 }
 
+// Entering (and, on restore, leaving) split view force-closes/reopens #sidebar, whose width
+// transition (index.html, .25s) keeps reflowing #scroll-area's available width for the whole
+// span -- arm a transitionend watch before the toggle and wait for it before reading any
+// geometry or touching scroll state, so those assertions aren't racing a still-animating
+// sidebar. Used by both split-view-core.test.js and split-view-async.test.js.
+async function armSidebarTransitionWatch(page) {
+  await page.evaluate(() => {
+    window.__mdvSidebarTransitionDone = false
+    const sidebar = document.getElementById('sidebar')
+    const onEnd = event => {
+      if (event.propertyName !== 'width') return
+      sidebar.removeEventListener('transitionend', onEnd)
+      window.__mdvSidebarTransitionDone = true
+    }
+    sidebar.addEventListener('transitionend', onEnd)
+  })
+}
+
+async function waitForSidebarTransition(page) {
+  await page.waitForFunction(() => window.__mdvSidebarTransitionDone === true)
+}
+
 module.exports = {
   BASIC_MD,
   EXPLORER_DIR,
@@ -87,4 +109,6 @@ module.exports = {
   emitFileOpened,
   emitRendererCommand,
   clickApplicationMenuItem,
+  armSidebarTransitionWatch,
+  waitForSidebarTransition,
 }

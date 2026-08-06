@@ -10,6 +10,7 @@ const {
   stubOpenDialog, stubSaveDialog, createTempMarkdown,
   emitFileOpened, emitRendererCommand, clickApplicationMenuItem,
   stubOpenExternal, getOpenExternalCalls,
+  armSidebarTransitionWatch, waitForSidebarTransition,
 } = require('./helpers/smoke-helpers')
 
 test('split view restores fresh preview and pane scroll after immediate tab switch', async () => {
@@ -33,8 +34,10 @@ test('split view restores fresh preview and pane scroll after immediate tab swit
 
     await page.locator('#tab-list .file-tab').first().click()
     await page.waitForFunction(() => document.title === 'a')
+    await armSidebarTransitionWatch(page)
     await emitRendererCommand(electronApp, 'toggleSplitView')
     await page.waitForFunction(() => document.getElementById('scroll-area').classList.contains('split-mode'))
+    await waitForSidebarTransition(page)
 
     await page.evaluate(() => {
       document.getElementById('content').scrollTop = 420
