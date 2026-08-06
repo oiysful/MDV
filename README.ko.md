@@ -230,7 +230,7 @@ npm run build
 현재 빌드 출력물:
 
 - `dist/mac-arm64/MDV.app`
-- `dist/MDV-1.1.0-arm64-mac.zip`
+- `dist/MDV-1.2.0-arm64-mac.zip`
 
 ## 배포 참고사항
 
