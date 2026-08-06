@@ -69,5 +69,11 @@ jobs:
       - name: Ensure Electron binary is downloaded
         run: node -e "require('electron')"
 
+      # 4 was a first guess (see AGENTS.md/CONTRIBUTING.md) and proved too aggressive: the
+      # first real run finished in ~197s (vs ~30s locally) with 2 timing-sensitive failures
+      # (a scroll-restore assertion and a 15s waitForFunction) that don't reproduce locally --
+      # both point at CPU contention from 4 concurrent Electron instances on a GitHub-hosted
+      # macOS runner's limited cores, not a real bug. Lowered to 2; revisit if CI is still
+      # flaky or if it's comfortably fast enough to try raising again later.
       - name: Electron smoke suite
-        run: npm run test:electron -- --test-concurrency=4
+        run: npm run test:electron -- --test-concurrency=2
