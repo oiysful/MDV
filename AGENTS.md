@@ -123,6 +123,7 @@ surface in the much slower Electron suite.
 - Repo is tiny by file count, but renderer complexity is concentrated in `src/renderer/index.html`.
 - Local macOS packaging emits `dist/MDV-<version>-arm64-mac.zip` (filename follows `package.json#version`; switched from `.dmg` 2026-07-20); notarization is still not configured.
 - Local Sisyphus planning files are intentionally ignored and should not be treated as tracked project documentation.
+- `README.md`, `CONTRIBUTING.md`, and `RELEASING.md` each have a Korean translation (`README.ko.md`, `CONTRIBUTING.ko.md`, `RELEASING.ko.md`) added 2026-08-06, cross-linked to each other via a language-switcher line at the top of each file. The `.ko.md` files link to each other (not back to the English originals) so a Korean reader stays in Korean docs end to end. When editing content in one of the English files, update its `.ko.md` counterpart in the same change — they're expected to stay in sync, not just exist once. `AGENTS.md` itself is intentionally excluded (project/agent-facing, not public-facing).
 
 
 ## 🔐 Security Skill Active
