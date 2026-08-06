@@ -1,5 +1,10 @@
 # Contributing
 
+<div align="center">
+
+**English** | [한국어](CONTRIBUTING.ko.md)
+</div>
+
 MDV uses [GitHub Flow](https://docs.github.com/en/get-started/using-github/github-flow): `main` is always deployable, and all changes land through short-lived branches and pull requests.
 
 ## Workflow

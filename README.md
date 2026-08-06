@@ -1,6 +1,9 @@
 # MDV
+
 <div align="center">
-  <img src="https://gist.githubusercontent.com/oiysful/9a601ec1d827116eaddb16d65df084de/raw/452f0209c31ffa69843d4a65c42733a4ff8f2dd5/MDV-icon.svg" alt="MDV App icon">
+
+**English** | [한국어](README.ko.md)
+  <img src="https://gist.githubusercontent.com/oiysful/9a601ec1d827116eaddb16d65df084de/raw/452f0209c31ffa69843d4a65c42733a4ff8f2dd5/MDV-icon.svg" alt="MDV App icon" style="max-width: 100%;display: block;margin: 0 auto;padding: 1rem;">
 </div>
 
 Claude-style desktop Markdown editor built with Electron.

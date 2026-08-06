@@ -1,5 +1,10 @@
 # Releasing
 
+<div align="center">
+
+**English** | [한국어](RELEASING.ko.md)
+</div>
+
 MDV is released by pushing a `v*` tag, which triggers `.github/workflows/release.yml`.
 
 1. Bump `version` in `package.json` and merge a `Bump version to X.Y.Z` commit to `main`.
