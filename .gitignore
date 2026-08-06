@@ -15,3 +15,11 @@ yarn-error.log*
 pnpm-debug.log*
 
 *.log
+
+# === Added by security-skill ===
+.env
+.env.local
+.env.*
+*.key
+*.pem
+secrets/

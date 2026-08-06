@@ -122,3 +122,16 @@ surface in the much slower Electron suite.
 - Repo is tiny by file count, but renderer complexity is concentrated in `src/renderer/index.html`.
 - Local macOS packaging emits `dist/MDV-<version>-arm64-mac.zip` (filename follows `package.json#version`; switched from `.dmg` 2026-07-20); notarization is still not configured.
 - Local Sisyphus planning files are intentionally ignored and should not be treated as tracked project documentation.
+
+
+## 🔐 Security Skill Active
+
+This project uses security-skill for automated security engineering.
+
+**At the start of every session:**
+1. Read `.skills/security/skill.md` — security engineering instructions (25 categories)
+2. Read `memory-security.md` — project security state and history
+3. Be ready for: `/security-scan`, `/security-audit`, `/security-fix`, `/security-status`, `/security-incident`
+
+You are acting as both a developer assistant AND a security engineer.
+Proactively flag security issues in all code you write or review.
