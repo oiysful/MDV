@@ -442,6 +442,29 @@ ipcMain.handle('reveal-in-finder', async (_, targetPath) => {
 
 ipcMain.handle('get-markdown-default-app-status', async () => {
   const appPath = getComparableAppPath(app.getPath('exe'))
+  // The real check below shells out to the OS (spawns temp files, queries Launch Services)
+  // and is unawaited by the renderer's own init (app.js's `void checkMarkdownDefaultAppStatus()`),
+  // so a test that doesn't care about the first-launch guide can still race it: on a slow/loaded
+  // machine the guide can pop up and intercept a click mid-test. Tests set this env var (via
+  // launchApp's default) to skip the real check entirely and get a deterministic "already
+  // registered" response instead, matching what a real user with MDV already set as default sees.
+  if (process.env.MDV_TEST_SKIP_DEFAULT_APP_CHECK) {
+    return {
+      ok: true,
+      registered: true,
+      needsAction: false,
+      canVerify: true,
+      canRegisterAutomatically: false,
+      platform: process.platform,
+      isPackaged: app.isPackaged,
+      appName: app.name,
+      appPath,
+      extensions: MARKDOWN_EXTENSIONS,
+      defaultHandlers: [],
+      associationConfigured: true,
+      reason: 'test-mode-check-skipped',
+    }
+  }
   try {
     const { handlers, registered } = await getDefaultMarkdownHandlers()
     return {

@@ -160,7 +160,10 @@ test('default app guide has dialog semantics, traps Tab focus, and restores focu
 })
 
 test('welcome guide is a non-blocking dialog: no focus trap, and ESC closes it before the search bar', async () => {
-  const { electronApp, page } = await launchApp()
+  // This test waits for the default-app-guide to genuinely appear (it takes ESC priority
+  // over the welcome guide below), so it needs the real OS check rather than launchApp's
+  // default deterministic stub (see helpers/launch.js).
+  const { electronApp, page } = await launchApp({ realDefaultAppStatus: true })
 
   try {
     await page.waitForSelector('#empty')

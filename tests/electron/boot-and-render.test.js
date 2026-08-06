@@ -66,7 +66,10 @@ async function waitForFile(filePath, timeoutMs = 5000) {
 }
 
 test('app boots into empty state without renderer command globals', async () => {
-  const { electronApp, page } = await launchApp()
+  // This test asserts the default-app-guide's real content and dismiss-persistence
+  // behavior below, so it needs the genuine OS check rather than launchApp's default
+  // deterministic stub (see helpers/launch.js).
+  const { electronApp, page } = await launchApp({ realDefaultAppStatus: true })
   const pageErrors = []
   page.on('pageerror', error => pageErrors.push(String(error)))
 

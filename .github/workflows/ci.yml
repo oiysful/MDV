@@ -61,5 +61,13 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
+      # `npm ci` alone doesn't always finish downloading the Electron binary (it can defer
+      # to a lazy first-require download instead). node --test spawns each test file as its
+      # own child process, so with --test-concurrency > 1 several processes would `require('electron')`
+      # for the first time at once and race to download+extract into the same node_modules/electron/dist
+      # -- this step forces that download to happen exactly once, serially, before any test runs.
+      - name: Ensure Electron binary is downloaded
+        run: node -e "require('electron')"
+
       - name: Electron smoke suite
         run: npm run test:electron -- --test-concurrency=4

@@ -11,6 +11,13 @@ const ROOT = path.resolve(__dirname, '../../..')
 // so the suite never reads stale state from — or writes session.json into — the real user's
 // profile. Pass an explicit `userDataDir` to share one across a quit+relaunch session test;
 // launchApp then leaves cleanup to the caller (closeApp only removes dirs it created).
+//
+// The default-app-status IPC round trip is real (spawns temp files, queries the OS) and
+// unawaited by the renderer's own init, so a test that doesn't care about the first-launch
+// guide can still race it under load. launchApp skips that real check by default (see
+// MDV_TEST_SKIP_DEFAULT_APP_CHECK in main.js) so ordinary tests get a deterministic
+// "already registered" response instead of an environment/timing-dependent one. A test that
+// specifically exercises the guide's real behavior passes `{ realDefaultAppStatus: true }`.
 async function launchApp(options = {}) {
   const ownsUserDataDir = !options.userDataDir
   const userDataDir = options.userDataDir || fs.mkdtempSync(path.join(os.tmpdir(), 'mdv-userdata-'))
@@ -19,7 +26,11 @@ async function launchApp(options = {}) {
     executablePath: electronBinary,
     args: ['.'],
     cwd: ROOT,
-    env: { ...process.env, MDV_USER_DATA_DIR: userDataDir },
+    env: {
+      ...process.env,
+      MDV_USER_DATA_DIR: userDataDir,
+      ...(options.realDefaultAppStatus ? {} : { MDV_TEST_SKIP_DEFAULT_APP_CHECK: '1' }),
+    },
   })
   electronApp.__userDataDir = userDataDir
   electronApp.__ownsUserDataDir = ownsUserDataDir
