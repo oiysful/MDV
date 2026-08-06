@@ -58,4 +58,4 @@ Renderer now uses an HTML/CSS shell plus multiple plain browser scripts; `app.js
 - Recent command-surface changes have clean error-level diagnostics; remaining diagnostics are mostly style/accessibility warnings.
 - If work grows beyond a focused patch, consider splitting renderer logic before adding major new UI features.
 - Print mode has custom CSS overrides; pagination fixes live in the `@media print` block.
-- Smoke coverage lives in `tests/electron/smoke.test.js`; pure helper coverage currently lives in `tests/unit/*.test.js`; cross-controller wiring coverage (real controller factories over jsdom, no Electron boot) lives in `tests/controller/*.test.js`.
+- Smoke coverage lives in `tests/electron/*.test.js` (13 files, split by topic; shared helpers in `tests/electron/helpers/smoke-helpers.js`); pure helper coverage currently lives in `tests/unit/*.test.js`; cross-controller wiring coverage (real controller factories over jsdom, no Electron boot) lives in `tests/controller/*.test.js`.

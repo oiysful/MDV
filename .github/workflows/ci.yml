@@ -24,3 +24,42 @@ jobs:
 
       - name: Controller tests
         run: npm run test:controller
+
+      - name: Audit dependencies (fail on new high/critical outside accepted risks)
+        run: |
+          npm audit --audit-level=high --json > audit-full.json || true
+          node -e '
+            const data = require("./audit-full.json");
+            const allowlist = new Set(["brace-expansion", "fast-uri"]); // memory-security.md#accepted_risks
+            const vulns = data.vulnerabilities || {};
+            const blocking = Object.entries(vulns).filter(([name, v]) =>
+              (v.severity === "high" || v.severity === "critical") && !allowlist.has(name)
+            );
+            if (blocking.length > 0) {
+              console.error("New high/critical vulnerabilities outside the accepted-risk allowlist:");
+              for (const [name, v] of blocking) console.error(` - ${name} (${v.severity})`);
+              console.error("If newly accepted, add to the allowlist above AND to memory-security.md#accepted_risks together.");
+              process.exit(1);
+            }
+            console.log("No new high/critical vulnerabilities outside memory-security.md#accepted_risks.");
+          '
+
+      - name: Audit dependencies (informational, full tree, all severities)
+        continue-on-error: true
+        run: npm audit
+
+  test-electron:
+    runs-on: macos-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Electron smoke suite
+        run: npm run test:electron -- --test-concurrency=4

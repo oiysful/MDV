@@ -100,21 +100,22 @@ npm run build
 ```bash
 npm run test:unit                   # 0.9s  — after every edit. Always run it whole.
 npm run test:controller             # ~0.5s — after every edit that touches controller wiring (workspace/editor/search/explorer)
-E2E="split view" npm run test:e2e   # ~2-18s — while iterating on one Electron-covered behavior
-npm run test:electron               # ~60-90s — once, before declaring done or committing
+E2E="split view" npm run test:e2e   # ~2-10s — while iterating on one Electron-covered behavior
+npm run test:electron               # ~30s  — once, before declaring done or committing
 ```
-`test:e2e` filters `smoke.test.js` by test name (`--test-name-pattern`). With `E2E` unset it
-falls back to the full suite, so it is never silently a no-op. `test:controller`
+`test:e2e` filters the split Electron test files (`tests/electron/*.test.js`, 13 files) by
+test name (`--test-name-pattern`). With `E2E` unset it falls back to the full suite, so it
+is never silently a no-op. `test:controller`
 (`tests/controller/*.test.js`) sits between unit and Electron: it drives 2-3 real controller
 factories together over jsdom to catch cross-controller wiring regressions (e.g. a callback
 that stops being called) that pure-helper unit tests can't see and that would otherwise only
 surface in the much slower Electron suite.
 
 ## NOTES
-- `tests/electron/smoke.test.js` covers real Electron boot/open/save/watch/explorer/shell/theme/session-restore/keyboard-nav flows and asserts removed renderer command globals/inline handlers.
+- `tests/electron/*.test.js` (13 files, split by topic from the former single `smoke.test.js` so Node's test runner parallelizes across files — see filenames for grouping: boot-and-render, tabs, editor-source-mode, split-view-core/async, file-watching, explorer-and-shell, search, menu-and-guides, links-and-toc, keyboard-and-a11y, session-and-windows, security-and-scroll) covers real Electron boot/open/save/watch/explorer/shell/theme/session-restore/keyboard-nav flows and asserts removed renderer command globals/inline handlers. Shared fixtures/helpers used by 2+ files live in `tests/electron/helpers/smoke-helpers.js`; helpers used by only one file are defined locally in it.
 - `tests/controller/*.test.js` drive real controller factories (not stubs) together over jsdom, wired via `tests/controller/helpers/harness.js`, to catch cross-controller callback wiring regressions.
 - `tests/unit/*.test.js` cover extracted pure helpers and generated command markup.
-- The Electron suite boots a fresh app per test via `tests/electron/helpers/launch.js` (each launch now gets an isolated `MDV_USER_DATA_DIR` so the suite never touches a real user profile / session.json). Do not run it after every edit — use `test:e2e` with a name pattern while iterating, and the full suite once before finishing.
+- The Electron suite boots a fresh app per test via `tests/electron/helpers/launch.js` (each launch now gets an isolated `MDV_USER_DATA_DIR` so the suite never touches a real user profile / session.json). Do not run it after every edit — use `test:e2e` with a name pattern while iterating. CI runs the full suite on every PR/push (see `.github/workflows/ci.yml`'s `test-electron` job), but it's still worth running locally once before pushing to get faster first signal than waiting on CI.
 - Do NOT build a changed-file-to-test mapper for the unit suite: unit tests run in under a second, so subsetting saves nothing and the mapping would rot on every rename. The cost is entirely Electron boots.
 - `.github/workflows/release.yml` builds and attaches release artifacts on `v*` tag push (macOS runner, unsigned `.zip` + `SHA256SUMS`) — see README's Distribution Notes for the `GITHUB_TOKEN` requirement (none; it's the default Actions token, no repo secret to configure).
 - The same workflow then runs `scripts/update-homebrew-tap.sh` to bump `oiysful/homebrew-tap`'s `Casks/mdv.rb` (`version`/`sha256`), so `brew install --cask oiysful/tap/mdv` / `brew upgrade` track releases automatically. This step needs the `HOMEBREW_TAP_TOKEN` repo secret (a PAT with write access to the tap repo — already configured); without it the step no-ops instead of failing the release. `oiysful/homebrew-tap` is a general multi-project tap (not MDV-specific) — other casks/formulae may live alongside `Casks/mdv.rb` there. Also note: Homebrew Core already ships an unrelated formula literally named `mdv` (a terminal markdown viewer), so `brew install mdv` without `--cask` installs the wrong tool — always use the full `--cask oiysful/tap/mdv` form in docs/scripts.
