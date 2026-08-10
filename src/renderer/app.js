@@ -31,6 +31,7 @@ const markdownController = window.MDVMarkdown.createMarkdownController({
   getRefs: () => $,
   markedLib: marked,
   hljsLib: hljs,
+  katexLib: katex,
   pathUtils: window.MDVPathUtils,
   api: window.api,
   onShowModeButton: () => {

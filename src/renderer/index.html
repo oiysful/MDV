@@ -12,12 +12,16 @@
 <script src="../../node_modules/@highlightjs/cdn-assets/highlight.min.js"></script>
 <script src="../../node_modules/dompurify/dist/purify.min.js"></script>
 <script src="../../node_modules/mermaid/dist/mermaid.min.js"></script>
+<script src="../../node_modules/katex/dist/katex.min.js"></script>
 
 <!-- highlight.js: light 모드 → GitHub Light, dark 모드 → One Dark -->
 <link id="hljs-light" rel="stylesheet"
   href="../../node_modules/@highlightjs/cdn-assets/styles/github.min.css">
 <link id="hljs-dark" rel="stylesheet" disabled
   href="../../node_modules/@highlightjs/cdn-assets/styles/atom-one-dark.min.css">
+
+<!-- KaTeX: light/dark 구분 없음 (currentColor 상속, 하드코딩 색상 없음) -->
+<link rel="stylesheet" href="../../node_modules/katex/dist/katex.min.css">
 
 <!-- JetBrains Mono (코드 편집기용) -->
 <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -1147,6 +1151,17 @@ kbd {
   font-size: 0.875em; line-height: 1.7;
   overflow-x: auto;
   white-space: pre;
+}
+
+/* LaTeX/math block (```latex, ```math) */
+.mdv-latex {
+  margin: 1.2em 0;
+  overflow-x: auto;
+  overflow-y: hidden;
+  padding: 0.4em 0;
+}
+.mdv-latex .katex-error {
+  cursor: help;
 }
 
 /* Table */

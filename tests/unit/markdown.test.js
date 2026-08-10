@@ -4,6 +4,7 @@ const assert = require('node:assert/strict')
 const { JSDOM } = require('jsdom')
 const marked = require('marked')
 const createDOMPurify = require('dompurify')
+const katex = require('katex')
 
 const { computeStats, createMarkdownController, slugifyHeading, extractFrontmatter } = require('../../src/renderer/markdown.js')
 
@@ -16,11 +17,12 @@ const hljsStub = {
   highlightAuto: () => ({ value: '<span class="hljs-string">auto</span>' }),
 }
 
-function makeController() {
+function makeController({ katexLib } = {}) {
   return createMarkdownController({
     getRefs: () => ({}),
     markedLib: marked,
     hljsLib: hljsStub,
+    katexLib,
     pathUtils: {},
     api: {},
     domPurify: DOMPurify,
@@ -156,6 +158,46 @@ test('renderMarkdown omits the code-lang element entirely for a fence with no la
   assert.ok(!/code-meta/.test(html), html)
   assert.ok(/data-command="copyCode"/.test(html), html)
   assert.ok(/class="copy-btn"/.test(html), html)
+})
+
+// --- latex/math fences ---
+
+const katexStub = {
+  renderToString: (tex, opts) => `<span class="katex-stub" data-display="${opts.displayMode}">${tex}</span>`,
+}
+
+test('renderMarkdown turns a latex fence into a katex-rendered block when a katex lib is present', () => {
+  const html = makeController({ katexLib: katexStub }).renderMarkdown('```latex\nx^2\n```')
+  assert.ok(/<div class="mdv-latex"><span class="katex-stub" data-display="true">x\^2<\/span><\/div>/.test(html), html)
+  assert.ok(!/class="hljs"/.test(html), html)
+  assert.ok(!/class="copy-btn"/.test(html), html)
+})
+
+test('renderMarkdown aliases a math fence to the same katex path as latex', () => {
+  const html = makeController({ katexLib: katexStub }).renderMarkdown('```math\n\\frac{1}{2}\n```')
+  assert.ok(/class="mdv-latex"/.test(html), html)
+  assert.ok(/katex-stub/.test(html), html)
+})
+
+test('renderMarkdown falls back to a normal code block when no katex lib is injected', () => {
+  const html = makeController().renderMarkdown('```latex\nx^2\n```')
+  assert.ok(!/class="mdv-latex"/.test(html), html)
+  assert.ok(/class="hljs"/.test(html), html)
+  assert.ok(/class="copy-btn"/.test(html), html)
+})
+
+test('renderMarkdown renders real KaTeX output through DOMPurify without losing the visible MathML', () => {
+  const html = makeController({ katexLib: katex }).renderMarkdown('```latex\n\\frac{1}{2}\n```')
+  assert.ok(/class="mdv-latex"/.test(html), html)
+  assert.ok(/class="katex-html"/.test(html), html)
+  assert.ok(/<mfrac>/.test(html), html)
+})
+
+test('renderMarkdown renders malformed LaTeX as an inline error span instead of throwing', () => {
+  assert.doesNotThrow(() => {
+    const html = makeController({ katexLib: katex }).renderMarkdown('```latex\n\\frac{1\n```')
+    assert.ok(/katex-error/.test(html), html)
+  })
 })
 
 // --- snapshot capture / rehydration (plan 06) ---

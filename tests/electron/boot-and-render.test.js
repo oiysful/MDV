@@ -13,6 +13,7 @@ const {
 } = require('./helpers/smoke-helpers')
 
 const MERMAID_MD = path.join(ROOT, 'tests/fixtures/mermaid.md')
+const LATEX_MD = path.join(ROOT, 'tests/fixtures/latex.md')
 
 const REMOVED_GLOBALS = [
   'openFile',
@@ -316,6 +317,34 @@ test('mermaid fence renders an actual diagram, redraws on a theme toggle, and re
     assert.equal(svgIdAfterTabSwitch, svgIdAfterThemeToggle, 'a plain tab switch must reuse the snapshot, not re-run mermaid')
 
     assert.deepEqual(consoleErrors, [], 'mermaid must not raise CSP violations or runtime errors')
+  } finally {
+    await closeApp(electronApp)
+  }
+})
+
+test('latex/math fences render via KaTeX and are unaffected by a theme toggle', async () => {
+  const { electronApp, page } = await launchApp()
+  const consoleErrors = []
+  page.on('pageerror', err => consoleErrors.push(String(err)))
+
+  try {
+    await page.waitForSelector('#empty')
+    await stubOpenDialog(electronApp, [LATEX_MD])
+    await clickApplicationMenuItem(electronApp, '파일', '파일 열기…')
+    await page.waitForFunction(() => document.title === 'latex')
+
+    await page.waitForFunction(() => document.querySelectorAll('#content .mdv-latex .katex-html').length === 2, { timeout: 8000 })
+    assert.equal(await page.locator('#content .mdv-latex').count(), 2, 'both the latex and math fences must render through the katex path')
+
+    // KaTeX's output is theme-agnostic (currentColor, no baked-in SVG fill like mermaid), so
+    // toggling theme must leave the already-rendered markup untouched -- no re-render pass exists.
+    const htmlBeforeToggle = await page.evaluate(() => document.querySelector('#content .mdv-latex').innerHTML)
+    await page.evaluate(() => document.querySelector('[data-command="toggleTheme"]').click())
+    await page.waitForFunction(() => document.documentElement.getAttribute('data-theme') === 'light')
+    const htmlAfterToggle = await page.evaluate(() => document.querySelector('#content .mdv-latex').innerHTML)
+    assert.equal(htmlAfterToggle, htmlBeforeToggle, 'a theme toggle must not re-render katex output')
+
+    assert.deepEqual(consoleErrors, [], 'katex rendering must not raise CSP violations (e.g. local webfont loading) or runtime errors')
   } finally {
     await closeApp(electronApp)
   }

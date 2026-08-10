@@ -86,7 +86,7 @@
     return `<details class="frontmatter-card"><summary>메타데이터</summary><table class="frontmatter-table"><tbody>${rows}</tbody></table></details>`
   }
 
-  function createMarkdownController({ getRefs, markedLib, hljsLib, pathUtils, api, onShowModeButton, domPurify, mermaidLib }) {
+  function createMarkdownController({ getRefs, markedLib, hljsLib, pathUtils, api, onShowModeButton, domPurify, mermaidLib, katexLib }) {
     let cachedHeadings = []
     let cachedTocLinks = []
     let prevTocLink = null
@@ -94,6 +94,7 @@
     const imageDataUrlCache = new Map()
     const purify = domPurify || globalScope.DOMPurify
     const getMermaidLib = () => mermaidLib || globalScope.mermaid
+    const getKatexLib = () => katexLib || globalScope.katex
 
     // hljs.highlightAuto over every language is slow; restrict auto-detection to
     // a common subset, filtered to the languages this build actually registers.
@@ -137,6 +138,26 @@
     const renderer = new markedLib.Renderer()
     renderer.code = (code, lang) => {
       const langId = lang ? lang.split(/[\s{]/)[0] : ''
+      // latex/math owns this block entirely, same as mermaid below -- but unlike mermaid,
+      // no base64/data-attribute dance is needed: katex.renderToString() is synchronous
+      // (the HTML is ready before this string is ever handed to sanitizeHtml/innerHTML,
+      // unlike mermaid's SVG which only exists after an async .run() pass), it does its own
+      // escaping internally, and DOMPurify's default allow-list already preserves every
+      // MathML tag the visible rendering needs (verified: only the screen-reader-only
+      // <semantics>/<annotation> wrapper is stripped -- re-allowing those via ADD_TAGS was
+      // considered and rejected, since that config applies to every sanitizeHtml() call in
+      // the app, not just latex fences, for the sake of a non-visible a11y wrapper). KaTeX's
+      // CSS also has no baked-in colors (glyphs inherit currentColor), so there's no
+      // mermaid-style theme-redraw hook needed either.
+      if (langId === 'latex' || langId === 'math') {
+        const lib = getKatexLib()
+        if (lib) {
+          const katexHtml = lib.renderToString(code, { throwOnError: false, displayMode: true, strict: false })
+          return `<div class="mdv-latex">${katexHtml}</div>`
+        }
+        // No katex lib available (e.g. jsdom unit tests, or a failed script load) --
+        // fall through to the normal hljs branch below like any other language id.
+      }
       // mermaid owns this block entirely -- no hljs highlighting, no copy button/gutter
       // chrome. The source goes into the element's text (what mermaid.run() reads on first
       // render) escaped as normal HTML, and separately into data-mermaid-src base64-encoded
