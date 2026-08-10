@@ -205,6 +205,15 @@ app.on('open-file', (event, filePath) => {
 })
 
 app.whenReady().then(() => {
+  // Without this, the native About panel (Dock right-click, or the app-menu "About MDV"
+  // role item) falls back to Electron's own defaults -- Electron's icon/name/version
+  // instead of MDV's. app.getVersion() reads package.json's "version" at build time via
+  // electron-builder, so this always matches the running app, never a hardcoded string.
+  app.setAboutPanelOptions({
+    applicationName: 'MDV',
+    applicationVersion: app.getVersion(),
+    iconPath: path.join(__dirname, '..', 'assets', 'icon.icns'),
+  })
   buildMenu()
   // An OS file-open (double-click) launch has a clear intent — restore is skipped so an
   // old session doesn't pile on top of the file the user asked to open. Restore is only
