@@ -266,6 +266,57 @@ test('Cmd+B toggles bold markers on the selection and undo reverts each step', a
   }
 })
 
+test('Cmd+Enter inserts a line below the current line without splitting it at the cursor, and undoes in one step', async () => {
+  const { electronApp, page } = await launchApp()
+
+  try {
+    await page.waitForSelector('#empty')
+    await stubOpenDialog(electronApp, [BASIC_MD])
+    await emitRendererCommand(electronApp, 'openFile')
+    await page.waitForFunction(() => document.title === 'basic')
+
+    await emitRendererCommand(electronApp, 'toggleSource')
+    await page.waitForFunction(() => document.getElementById('source-view').style.display === 'block')
+
+    const editor = page.locator('#source-editor')
+    await editor.click()
+    await page.keyboard.press('Meta+a')
+    await page.keyboard.type('abcde')
+    // Cursor between 'd' and 'e' -- the exact "abcd|e" case from the report. A plain Enter
+    // here would split into "abcd\ne"; Cmd+Enter must leave "abcde" intact and open a new
+    // line after it instead.
+    await page.evaluate(() => document.getElementById('source-editor').setSelectionRange(4, 4))
+
+    await page.keyboard.press('Meta+Enter')
+    await page.waitForFunction(() => document.getElementById('source-editor').value === 'abcde\n')
+    assert.equal(await editor.inputValue(), 'abcde\n')
+    assert.deepEqual(
+      await page.evaluate(() => {
+        const el = document.getElementById('source-editor')
+        return [el.selectionStart, el.selectionEnd]
+      }),
+      [6, 6],
+      'cursor must land on the new (last, empty) line, not stay at the split point',
+    )
+
+    // Mid-document line, not just the last line: the inserted blank line must land right
+    // after the target line, pushing the following line down rather than merging into it.
+    await page.keyboard.type('fghij')
+    await page.evaluate(() => document.getElementById('source-editor').setSelectionRange(2, 2))
+    await page.keyboard.press('Meta+Enter')
+    await page.waitForFunction(() => document.getElementById('source-editor').value === 'abcde\n\nfghij')
+    assert.equal(await editor.inputValue(), 'abcde\n\nfghij')
+
+    // Went through execCommand('insertText'), same as Tab/Enter/Cmd+B -- one Cmd+Z must
+    // revert exactly this one inserted line, not more and not less.
+    await page.keyboard.press('Meta+z')
+    await page.waitForFunction(() => document.getElementById('source-editor').value === 'abcde\nfghij')
+    assert.equal(await editor.inputValue(), 'abcde\nfghij')
+  } finally {
+    await closeApp(electronApp)
+  }
+})
+
 test('wrap toggle hides the line-number gutter and un-hides it when toggled off', async () => {
   const { electronApp, page } = await launchApp()
 

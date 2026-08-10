@@ -340,6 +340,65 @@ test('TOC scrollspy activates the clicked heading itself, and tracks the heading
   }
 })
 
+// Regression: entering pure source mode used to leave the TOC scrollspy stuck on the last
+// heading forever -- editor.js's applySourceMode() hid #content, then immediately recomputed
+// cachedHeadings against it while hidden, collapsing every offsetTop to 0. The fix tracks
+// pure source mode from the source text's own line positions instead (markdown.js's
+// rebuildSourceModeToc / editor.js's refreshSourceModeToc), since #content stays hidden and
+// stale (never re-rendered) for the whole time you're in pure source mode.
+test('TOC scrollspy tracks scroll position in pure source mode instead of sticking on the last heading', async () => {
+  const tempDir = await fs.mkdtemp(path.join(os.tmpdir(), 'mdv-smoke-toc-source-'))
+  const docPath = path.join(tempDir, 'toc-source.md')
+  const sections = Array.from({ length: 12 }, (_, i) => `## Section ${i + 1}\n\n${'Paragraph text for scroll height. '.repeat(40)}`).join('\n\n')
+  await fs.writeFile(docPath, `# TOC Source Doc\n\n${sections}\n`, 'utf-8')
+
+  const { electronApp, page } = await launchApp()
+  try {
+    await page.waitForSelector('#empty')
+    await stubOpenDialog(electronApp, [docPath])
+    await emitRendererCommand(electronApp, 'openFile')
+    await page.waitForFunction(() => document.title === 'toc-source')
+
+    await emitRendererCommand(electronApp, 'toggleSource')
+    await page.waitForFunction(() => document.getElementById('scroll-area').classList.contains('source-mode'))
+    await page.waitForFunction(() => document.querySelectorAll('#toc-list a').length === 13)
+
+    // Entering source mode focuses the textarea, and Chromium moves the cursor to the end of
+    // a freshly-assigned .value, which scrolls the view to show it -- unrelated to TOC
+    // tracking, so pin the scroll position explicitly rather than relying on that incidental
+    // starting point. This is the actual regression check: under the pre-fix code every
+    // cachedHeadings.top collapsed to the same constant, so refreshTocActive's binary search
+    // always resolved to the *last* heading no matter what scrollTop was -- scrolling to the
+    // very top must now activate the *first* heading instead.
+    await page.evaluate(() => { document.getElementById('scroll-area').scrollTop = 0 })
+    await page.waitForFunction(() => document.querySelector('#toc-list a.active')?.getAttribute('href') === '#toc-source-doc')
+
+    // Scrolling to the middle of the document must land on neither the first nor the last
+    // heading -- proves continuous line-position tracking, not just a first/last binary.
+    await page.evaluate(() => {
+      const scrollArea = document.getElementById('scroll-area')
+      scrollArea.scrollTop = (scrollArea.scrollHeight - scrollArea.clientHeight) / 2
+    })
+    await page.waitForFunction(() => {
+      const href = document.querySelector('#toc-list a.active')?.getAttribute('href')
+      return href && href !== '#toc-source-doc' && href !== '#section-12'
+    })
+
+    // Clicking a TOC entry in source mode must actually scroll #scroll-area (the click ->
+    // scrollIntoView-on-a-hidden-#content-heading no-op this replaces).
+    const scrollBeforeClick = await page.evaluate(() => document.getElementById('scroll-area').scrollTop)
+    await page.locator('#toc-list a', { hasText: 'Section 2' }).click()
+    await page.waitForFunction(
+      prev => document.getElementById('scroll-area').scrollTop !== prev,
+      scrollBeforeClick,
+    )
+    await page.waitForFunction(() => document.querySelector('#toc-list a.active')?.getAttribute('href') === '#section-2')
+  } finally {
+    await closeApp(electronApp)
+    await fs.rm(tempDir, { recursive: true, force: true })
+  }
+})
+
 // Cause B from the same plan doc: in split view #scroll-area itself stops scrolling
 // (overflow: hidden), so scrollspy needs a listener on #content, the pane that actually
 // scrolls there -- otherwise the TOC highlight never updates while split view is open.

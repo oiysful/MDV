@@ -4,6 +4,14 @@
     return Array.from({ length: count }, (_, index) => index + 1).join('\n')
   }
 
+  // Index of the end of the line containing `cursor` (i.e. the next '\n', or the end of the
+  // string on the last line) -- shared by the plain-Enter list-continuation branch and
+  // Cmd+Enter's "insert line below" branch in bindEditorEvents' keydown listener.
+  function getLineEnd(text, cursor) {
+    const lineEndIndex = text.indexOf('\n', cursor)
+    return lineEndIndex === -1 ? text.length : lineEndIndex
+  }
+
   const LIST_PREFIX_RE = /^(\s*)([-*+]|\d+[.)])(\s+\[[ xX]\])?\s+/
 
   // lineText is the full current line (both sides of the cursor), so a cursor placed
@@ -291,6 +299,9 @@
       refs.scrollArea.classList.toggle('wrap-mode', wrapMode)
       updateWrapButton()
       autoResizeEditor()
+      // geometry.trackActive flips with wrapMode -- rebuild now rather than leaving the TOC
+      // scrollspy highlight stale (shown-but-wrong, or hidden-but-should-show) until the next keystroke.
+      refreshSourceModeToc()
     }
 
     function toggleWrap() {
@@ -334,6 +345,54 @@
       splitScrollSync.sync(sourceElement, targetElement)
     }
 
+    // True only in pure source mode (not split) -- the state where #content is hidden and
+    // stale, so TOC tracking must be driven from the source text's own line positions
+    // instead of the rendered DOM. Split mode keeps #content visible and live-updated via
+    // the existing renderSplitPreview/buildToc() pipeline and is untouched by any of this.
+    function isPureSourceMode() {
+      return sourceMode && !splitMode
+    }
+
+    // getBoundingClientRect() deltas, not an offsetTop chain: the preview path's
+    // `heading.offsetTop - scrollArea.offsetTop` trick only works because both are
+    // unpositioned (static). #source-view is `position: relative` (index.html), so
+    // sourceEditor.offsetTop is relative to #source-view, not #scroll-area -- subtracting
+    // scrollArea.offsetTop from it would silently mix coordinate frames. getBoundingClientRect
+    // deltas are frame-independent. (#scroll-area.source-mode's `padding: 0` is what makes
+    // this basis line up with the preview path's offsetTop-based one -- a real, if
+    // easy-to-miss, dependency between that CSS rule and this math.)
+    function computeSourceModeGeometry(refs) {
+      const editor = refs.sourceEditor
+      const editorRect = editor.getBoundingClientRect()
+      const scrollRect = refs.scrollArea.getBoundingClientRect()
+      return {
+        baseTop: (editorRect.top - scrollRect.top) + refs.scrollArea.scrollTop,
+        lineHeight: parseFloat(getComputedStyle(editor).lineHeight),
+        paddingTop: parseFloat(getComputedStyle(editor).paddingTop),
+        // Multi-row-per-line breaks the lineIndex * lineHeight math -- same precedent as
+        // updateLineHighlight() hiding itself in wrap mode rather than showing a wrong position.
+        trackActive: !wrapMode,
+      }
+    }
+
+    // refs.sourceEditor.value, not getMarkdown()/state.md: app.js's handleSourceInput only
+    // updates state.md while split mode is active, so during pure-source typing that value
+    // is stale -- the textarea itself is always current.
+    function refreshSourceModeToc() {
+      if (!isPureSourceMode()) return
+      const refs = getRefs()
+      markdownController?.rebuildSourceModeToc(refs.sourceEditor.value, computeSourceModeGeometry(refs))
+    }
+
+    let sourceTocTimer = null
+    // Debounced like app.js's splitRenderTimer, but simpler: rebuildSourceModeToc is fully
+    // synchronous (no fetch/render pipeline to race), so no version counter is needed.
+    function scheduleSourceModeTocRebuild() {
+      if (!isPureSourceMode()) return
+      window.clearTimeout(sourceTocTimer)
+      sourceTocTimer = window.setTimeout(refreshSourceModeToc, 120)
+    }
+
     function applySourceMode() {
       const refs = getRefs()
       applySourceModeToRefs({
@@ -349,8 +408,12 @@
       // reflows #content to a different width (and source mode hides it, collapsing
       // offsetTop to 0) — every caller of applySourceMode (toggleSource, toggleSplitView,
       // restoreTabState) changes that layout, so recompute here once the mode classes
-      // applySourceModeToRefs just applied have taken effect.
-      markdownController?.refreshHeadingOffsets()
+      // applySourceModeToRefs just applied have taken effect. Pure source mode can't use
+      // #content-based offsets at all (it's hidden), so it gets its own source-text-based
+      // rebuild instead -- this is what fixes the TOC highlight being stuck on the last
+      // heading the instant source mode is entered.
+      if (isPureSourceMode()) refreshSourceModeToc()
+      else markdownController?.refreshHeadingOffsets()
     }
 
     async function toggleSource() {
@@ -451,6 +514,7 @@
       updateLineNumbers()
       autoResizeEditor()
       updateLineHighlight()
+      scheduleSourceModeTocRebuild()
       onSourceInput(value)
     }
 
@@ -461,6 +525,10 @@
       editor.addEventListener('input', () => {
         handleSourceInput(editor.value)
       })
+
+      // Runs alongside app-shell.js's own resize listener (which recomputes #content-based
+      // offsets for preview/split); each is a no-op in the mode it doesn't apply to.
+      window.addEventListener('resize', () => { refreshSourceModeToc() })
 
       // execCommand keeps the native undo stack intact (so the menu's native Undo/Redo
       // items keep working) and fires its own 'input' event, which already routes
@@ -486,11 +554,24 @@
           return
         }
 
+        // VSCode-style "insert line below": regardless of where the cursor sits within the
+        // line, jump to the end of it and open a new blank line there, rather than splitting
+        // the line at the cursor the way plain Enter does. selectionEnd (not selectionStart)
+        // is used so a held selection inserts after the line its far edge is on. Cmd+Shift+Enter
+        // ("insert above") is deliberately out of scope -- the !event.shiftKey guard leaves
+        // room for it later without this branch swallowing it silently.
+        if (event.key === 'Enter' && !event.isComposing && modifier && !event.shiftKey && !event.altKey) {
+          event.preventDefault()
+          const lineEnd = getLineEnd(editor.value, editor.selectionEnd)
+          editor.setSelectionRange(lineEnd, lineEnd)
+          replaceSelection('\n')
+          return
+        }
+
         if (event.key === 'Enter' && !event.isComposing && !modifier && !event.shiftKey && !event.altKey && editor.selectionStart === editor.selectionEnd) {
           const cursor = editor.selectionStart
           const lineStart = editor.value.lastIndexOf('\n', cursor - 1) + 1
-          const lineEndIndex = editor.value.indexOf('\n', cursor)
-          const lineEnd = lineEndIndex === -1 ? editor.value.length : lineEndIndex
+          const lineEnd = getLineEnd(editor.value, cursor)
           const continuation = computeListContinuation(editor.value.slice(lineStart, lineEnd))
           if (continuation) {
             event.preventDefault()
@@ -608,6 +689,7 @@
     setScrollRatio,
     createSplitScrollSync,
     buildLineNumberText,
+    getLineEnd,
     getModeButtonState,
     applySourceModeToRefs,
     computeListContinuation,

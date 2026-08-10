@@ -34,6 +34,59 @@
     return count ? `${slug}-${count}` : slug
   }
 
+  // Finds h1-h3 headings and their line numbers directly in raw markdown source, with no
+  // DOM involved -- used to drive TOC tracking in pure source mode, where #content (the
+  // rendered preview) is hidden and stale while typing (see markdown.js's
+  // rebuildSourceModeToc / editor.js's refreshSourceModeToc).
+  //
+  // marked.lexer() is used rather than a line-by-line regex because it's already
+  // fence-aware: a `#` inside a ```code block``` never becomes a heading token, matching
+  // what actually renders. Tokens carry no line number, so each heading's `raw` text is
+  // located in the (equally normalized) source by scanning forward from the previous
+  // match, and the line number is recovered by counting '\n' up to that point. marked
+  // normalizes CRLF/CR to LF and tabs to 4 spaces before lexing (confirmed against its own
+  // source); this function mirrors that normalization first so `raw` always matches a
+  // substring of the text being scanned -- tab-expansion never changes how many '\n'
+  // precede a given point, so line numbers stay correct despite the rewrite.
+  //
+  // Known limitation, not fixed here: marked.lexer() only returns top-level block tokens,
+  // so a heading nested inside a blockquote or list item (`> ## Quoted`) is invisible to
+  // this scan (confirmed: marked.lexer('> ## Quoted\n') has no top-level 'heading' token).
+  // The rendered preview's `#content h1,h2,h3` selector does catch those, so the source-mode
+  // TOC can legitimately diverge from the preview TOC in that narrow case. Recursing into
+  // nested tokens doesn't cleanly fix it either -- a nested token's `raw` lacks the `> `
+  // prefix and won't match the outer source.
+  function extractHeadingsFromSource(text, markedLib) {
+    const normalized = String(text == null ? '' : text)
+      .replace(/\r\n|\r/g, '\n')
+      .replace(/\t/g, '    ')
+    const tokens = markedLib.lexer(normalized)
+    const headings = []
+    let searchFrom = 0
+    for (const token of tokens) {
+      if (token.type !== 'heading' || token.depth > 3) continue
+      let idx = normalized.indexOf(token.raw, searchFrom)
+      if (idx === -1) {
+        // A preprocessing step this function doesn't mirror shifted `raw` off the literal
+        // source (e.g. a setext heading) -- fall back to locating the ATX marker itself
+        // rather than silently dropping the heading.
+        const match = new RegExp(`^#{${token.depth}}\\s`, 'm').exec(normalized.slice(searchFrom))
+        idx = match ? searchFrom + match.index : -1
+      }
+      if (idx === -1) continue
+      const line = normalized.slice(0, idx).split('\n').length - 1
+      // parseInline keeps emphasis/code-span markup out of the label; textContent-strip via
+      // regex is visual-only (never assigned as innerHTML), so raw HTML in a heading source
+      // (`## <script>x</script>Title`) can cosmetically diverge from what #content's real
+      // textContent would show -- not an XSS surface either way.
+      const html = markedLib.parseInline(token.text)
+      const plainText = html.replace(/<[^>]+>/g, '')
+      headings.push({ depth: token.depth, text: plainText, line })
+      searchFrom = idx + token.raw.length
+    }
+    return headings
+  }
+
   // btoa/atob are Latin1-only; TextEncoder/TextDecoder round-trip through them safely so
   // Korean (or any non-Latin1) mermaid label survives storage in an HTML attribute.
   function utf8ToBase64(str) {
@@ -294,6 +347,49 @@
       prevTocHref = ''
     }
 
+    // Pure-source-mode counterpart to buildToc(): #content is hidden and stale while typing
+    // in that mode (see markdown.js's extractHeadingsFromSource / editor.js's
+    // refreshSourceModeToc), so both the TOC list and the offsets refreshTocActive tracks
+    // against are built from the raw source text's line positions instead of DOM headings.
+    // `geometry` is supplied by editor.js's computeSourceModeGeometry(): { baseTop,
+    // lineHeight, paddingTop, trackActive }.
+    function rebuildSourceModeToc(text, geometry) {
+      const refs = getRefs()
+      const headings = extractHeadingsFromSource(text, markedLib)
+      const list = refs.tocList
+      list.innerHTML = ''
+      const slugCounts = new Map()
+      const built = headings.map((heading, index) => {
+        const slug = slugifyHeading(heading.text, slugCounts) || `h${index}`
+        const li = document.createElement('li')
+        li.className = `h${heading.depth}`
+        const anchor = document.createElement('a')
+        anchor.href = `#${slug}`
+        anchor.textContent = heading.text
+        const top = geometry.baseTop + geometry.paddingTop + heading.line * geometry.lineHeight
+        // No live #content heading element to scrollIntoView() while it's hidden -- scroll
+        // #scroll-area (the real scroll container in pure source mode) to the computed
+        // offset instead. Scroll-only, matching preview mode's click behavior, which also
+        // never moves focus or the caret.
+        anchor.onclick = event => {
+          event.preventDefault()
+          refs.scrollArea.scrollTo({ top, behavior: 'smooth' })
+        }
+        li.appendChild(anchor)
+        list.appendChild(li)
+        return { slug, top }
+      })
+      cachedTocLinks = Array.from(list.querySelectorAll('a')).map(anchor => ({ el: anchor, href: anchor.getAttribute('href') }))
+      // No DOM heading element backs a source-mode entry (el: null) -- refreshTocActive only
+      // reads .top/.id so this is safe there; refreshHeadingOffsets() guards against it below.
+      // In wrap mode the line-height math doesn't hold (multi-row-per-line), so rather than
+      // show a scrollspy highlight sitting on the wrong section, show none at all -- same
+      // "hide rather than mislead" precedent as updateLineHighlight()'s own wrap-mode guard.
+      cachedHeadings = geometry.trackActive ? built.map(({ slug, top }) => ({ el: null, id: slug, top })) : []
+      prevTocLink = null
+      prevTocHref = ''
+    }
+
     async function render(text, filename, docPath) {
       const refs = getRefs()
       const { frontmatter, body } = extractFrontmatter(text)
@@ -415,6 +511,10 @@
     function refreshHeadingOffsets() {
       const refs = getRefs()
       cachedHeadings.forEach(heading => {
+        // Source-mode-built entries (rebuildSourceModeToc) have no live DOM element -- this
+        // resize-triggered recompute is only meaningful for #content-backed (preview/split)
+        // headings; editor.js's own resize listener handles the source-mode case.
+        if (!heading.el) return
         heading.top = heading.el.offsetTop - refs.scrollArea.offsetTop
       })
     }
@@ -428,6 +528,7 @@
       resetEmptyStats,
       refreshTocActive,
       refreshHeadingOffsets,
+      rebuildSourceModeToc,
       clearImageCache,
       clearImageCacheEntry,
       runMermaidBlocks,
@@ -435,7 +536,7 @@
     }
   }
 
-  const api = { createMarkdownController, computeStats, slugifyHeading, extractFrontmatter }
+  const api = { createMarkdownController, computeStats, slugifyHeading, extractFrontmatter, extractHeadingsFromSource }
   globalScope.MDVMarkdown = api
   if (typeof module !== 'undefined' && module.exports) module.exports = api
 })(typeof window !== 'undefined' ? window : globalThis)

@@ -3,6 +3,7 @@ const assert = require('node:assert/strict')
 
 const {
   buildLineNumberText,
+  getLineEnd,
   getModeButtonState,
   applySourceModeToRefs,
   computeListContinuation,
@@ -139,6 +140,25 @@ test('applySourceModeToRefs shows preview and editor together in split mode', ()
   assert.equal(refs.btnSplit.getAttribute('aria-label'), '분할뷰 닫기')
   assert.equal(lineNumbersUpdated, 1)
   assert.equal(autoResized, 1)
+})
+
+test('getLineEnd finds the next newline from the cursor, mid-line', () => {
+  // cursor between 'd' and 'e' in "abcde\nfghij" -- must resolve to the end of the whole
+  // current line ("abcde"), not the cursor's own position, so Cmd+Enter never splits a line.
+  assert.equal(getLineEnd('abcde\nfghij', 4), 5)
+})
+
+test('getLineEnd returns the cursor position itself when already at the line end', () => {
+  assert.equal(getLineEnd('abcde\nfghij', 5), 5)
+})
+
+test('getLineEnd returns the string length on the last line (no trailing newline)', () => {
+  assert.equal(getLineEnd('abcde\nfghij', 8), 11)
+  assert.equal(getLineEnd('no newlines here', 4), 16)
+})
+
+test('getLineEnd handles an empty string', () => {
+  assert.equal(getLineEnd('', 0), 0)
 })
 
 test('computeListContinuation continues a bullet list on Enter', () => {

@@ -6,7 +6,7 @@ const marked = require('marked')
 const createDOMPurify = require('dompurify')
 const katex = require('katex')
 
-const { computeStats, createMarkdownController, slugifyHeading, extractFrontmatter } = require('../../src/renderer/markdown.js')
+const { computeStats, createMarkdownController, slugifyHeading, extractFrontmatter, extractHeadingsFromSource } = require('../../src/renderer/markdown.js')
 
 const DOMPurify = createDOMPurify(new JSDOM('').window)
 
@@ -100,6 +100,46 @@ test('extractFrontmatter ignores a --- that is not on the document\'s first line
   const result = extractFrontmatter(text)
   assert.equal(result.frontmatter, null)
   assert.equal(result.body, text)
+})
+
+// --- extractHeadingsFromSource (pure-source-mode TOC tracking) ---
+
+test('extractHeadingsFromSource finds ATX headings and their correct line numbers', () => {
+  const text = 'intro line\n\n# One\n\nbody\n\n## Two\n\nmore body\ntwo lines\n\n### Three\n'
+  const headings = extractHeadingsFromSource(text, marked)
+  assert.deepEqual(headings.map(h => ({ depth: h.depth, text: h.text, line: h.line })), [
+    { depth: 1, text: 'One', line: 2 },
+    { depth: 2, text: 'Two', line: 6 },
+    { depth: 3, text: 'Three', line: 11 },
+  ])
+})
+
+test('extractHeadingsFromSource ignores a "#" inside a fenced code block', () => {
+  const text = '# Real Heading\n\n```bash\n# not a heading, just a shell comment\necho hi\n```\n\n## Also Real\n'
+  const headings = extractHeadingsFromSource(text, marked)
+  assert.deepEqual(headings.map(h => h.text), ['Real Heading', 'Also Real'])
+})
+
+test('extractHeadingsFromSource strips inline markup from the heading label', () => {
+  const text = '## **Bold** and `code` heading\n'
+  const headings = extractHeadingsFromSource(text, marked)
+  assert.equal(headings[0].text, 'Bold and code heading')
+})
+
+test('extractHeadingsFromSource excludes h4 and deeper', () => {
+  const text = '# One\n\n#### Four\n\n###### Six\n\n## Two\n'
+  const headings = extractHeadingsFromSource(text, marked)
+  assert.deepEqual(headings.map(h => h.text), ['One', 'Two'])
+})
+
+test('extractHeadingsFromSource does not find a heading nested inside a blockquote (documented limitation)', () => {
+  // marked.lexer() only returns top-level block tokens; a heading nested inside a
+  // blockquote is buried in that token's own .tokens and invisible to the flat scan here,
+  // unlike the rendered preview's `#content h1,h2,h3` selector, which does catch it. This
+  // test pins that known, accepted divergence rather than leaving it silently undiscovered.
+  const text = '> ## Quoted Heading\n\n## Real Heading\n'
+  const headings = extractHeadingsFromSource(text, marked)
+  assert.deepEqual(headings.map(h => h.text), ['Real Heading'])
 })
 
 function decodeBase64Utf8(b64) {
