@@ -18,5 +18,10 @@ MDV는 `v*` 태그를 푸시하는 방식으로 릴리스되며, 이는 `.github
    ```
    gh release edit vX.Y.Z --notes-file <노트-파일-경로.md>
    ```
-5. 이어서 워크플로는 `scripts/update-homebrew-tap.sh`를 실행해서 [`oiysful/homebrew-tap`](https://github.com/oiysful/homebrew-tap)의 `Casks/mdv.rb`에서 `version`/`sha256`을 올리고 그 변경을 `main`에 푸시합니다. 이렇게 해서 `brew upgrade --cask oiysful/tap/mdv`가 새 릴리스를 받아가게 됩니다. 이 단계에는 `HOMEBREW_TAP_TOKEN` 저장소 시크릿이 필요합니다(README의 배포 참고사항 참고). 설정되어 있지 않으면 이 단계는 건너뛰어지고 cask는 수동으로 올려야 합니다.
+5. 이어서 워크플로는 `scripts/update-homebrew-tap.sh`를 실행해서 [`oiysful/homebrew-tap`](https://github.com/oiysful/homebrew-tap)의 `Casks/mdv.rb`에서 `version`/`sha256`을 올리고 그 변경을 `main`에 푸시합니다. 이렇게 해서 `brew upgrade --cask oiysful/tap/mdv`가 새 릴리스를 받아가게 됩니다. 이 단계에는 `HOMEBREW_TAP_TOKEN` 저장소 시크릿이 필요합니다(아래 [필요한 시크릿](#필요한-시크릿) 참고). 설정되어 있지 않으면 이 단계는 건너뛰어지고 cask는 수동으로 올려야 합니다.
 6. 릴리스를 확인합니다: GitHub Release 페이지에서 `MDV-*.zip`, `SHA256SUMS`, 릴리스 노트를 확인하고, `oiysful/homebrew-tap`의 `Casks/mdv.rb`에 새 버전이 반영되었는지 확인합니다.
+
+## 필요한 시크릿
+
+- **`GITHUB_TOKEN`**(`env: GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}`)은 직접 만들어야 하는 저장소 시크릿이 **아닙니다** — GitHub Actions가 모든 워크플로 실행마다 자동으로 주입하는, 해당 실행 범위로 한정된 토큰입니다. 확인해야 할 유일한 사항은 저장소의 **Settings → Actions → General → Workflow permissions**가 "Read and write permissions"(또는 최소한 워크플로 상단에 이미 선언된 `contents: write`에 해당하는 "read" 이상)로 설정되어 있는지입니다 — Actions 권한이 기본값인 read-only로 되어 있는 저장소라면 토큰 자체는 별도 설정이 필요 없더라도 `softprops/action-gh-release`의 업로드 단계가 403으로 실패합니다.
+- `GITHUB_TOKEN`과 달리, **`HOMEBREW_TAP_TOKEN`**은 직접 만들어야 하는 저장소 시크릿**입니다**: `oiysful/homebrew-tap`에 쓰기 권한이 있는 fine-grained PAT를 만들어 이 저장소의 **Settings → Secrets and variables → Actions**에 추가해야 합니다. 없으면 `scripts/update-homebrew-tap.sh`가 안내 메시지를 출력하고 종료 코드 0으로 끝납니다(릴리스 자체는 계속 성공하고, tap 업데이트만 건너뜁니다).
