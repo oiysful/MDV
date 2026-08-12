@@ -31,7 +31,6 @@ const markdownController = window.MDVMarkdown.createMarkdownController({
   getRefs: () => $,
   markedLib: marked,
   hljsLib: hljs,
-  katexLib: katex,
   pathUtils: window.MDVPathUtils,
   api: window.api,
   onShowModeButton: () => {
@@ -39,6 +38,16 @@ const markdownController = window.MDVMarkdown.createMarkdownController({
       $.btnMode.style.display = ''
       if (editorController) editorController.updateModeButton()
     }
+  },
+  // mermaid is lazy-loaded (see markdown.js's ensureMermaidLoaded) instead of being present
+  // from boot, so themeController's own startup call below -- historically mermaid's one
+  // guaranteed init point -- runs before mermaid exists and silently no-ops (it already
+  // guards on `typeof mermaid !== 'undefined'`). This is the actual init point once mermaid's
+  // script has finished loading, using whatever theme is current at that moment; referencing
+  // themeController here is safe even though it's declared further down this file -- this
+  // callback only ever runs later, well after both controllers exist.
+  onMermaidLoaded: () => {
+    mermaid.initialize({ startOnLoad: false, securityLevel: 'strict', theme: themeController.getIsDark() ? 'dark' : 'default' })
   },
 })
 
@@ -195,6 +204,7 @@ document.addEventListener('DOMContentLoaded', () => {
     showAppContextMenu: (x, y, items) => runtimeController.showAppContextMenu(x, y, items),
     revealInFinder: path => runtimeController.revealInFinder(path),
     onExplorerRootChanged: () => notifySessionState(),
+    showToast: message => runtimeController.showToast(message),
   })
 
   rendererCommands = createRendererCommands()
@@ -369,7 +379,11 @@ async function restoreSession(payload) {
     try {
       const data = await window.api.readFile(filePath)
       if (data.error) continue
-      const tab = await documentFlowController.load(data)
+      // createBackgroundTab (not documentFlowController.load/createTab) -- restoring N tabs
+      // shouldn't fully render N documents just to immediately bury N-1 of them behind the
+      // active one. Each background tab renders lazily via its previewDirty flag the first
+      // time it's actually switched to (see restoreTabState).
+      const tab = await workspaceController.createBackgroundTab(data)
       if (tab) created.push(tab)
     } catch {
       // Unreadable/moved file — skip it, don't interrupt the rest of the restore.
@@ -377,11 +391,13 @@ async function restoreSession(payload) {
   }
 
   if (created.length) {
-    // activeIndex points into the saved paths; if that exact tab survived, re-activate it,
-    // otherwise fall back to the last tab createTab already left active.
+    // activeIndex points into the saved paths; if that exact tab survived, activate it,
+    // otherwise fall back to the last restored tab (createTab used to leave that one active
+    // as a side effect of the old per-tab render loop; now it needs an explicit switch since
+    // createBackgroundTab never touches activeTabId).
     const activePath = savedPaths[payload.activeIndex]
-    const target = created.find(tab => tab.path === activePath)
-    if (target) workspaceController.switchToTab(target.id)
+    const target = created.find(tab => tab.path === activePath) || created[created.length - 1]
+    await workspaceController.switchToTab(target.id)
   }
 
   const skipped = savedPaths.length - created.length

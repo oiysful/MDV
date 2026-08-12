@@ -424,6 +424,42 @@
       return tab
     }
 
+    // Session restore's counterpart to createTab: builds the tab and registers its file
+    // watch, but skips the render() call (and everything downstream of it -- scroll reset,
+    // snapshot capture, tab bar repaint) since a tab restored in the background is never
+    // shown until switchToTab activates it. previewDirty: true reuses restoreTabState's
+    // existing "cached preview is stale, re-render before showing" path (originally built
+    // for a background tab picking up an external change) to do that render on demand --
+    // renderedHTML: null is a safe input to it (hydrateFromDom falls back to '').
+    // createTab itself is left untouched: existing controller/unit tests call it expecting
+    // an immediately-rendered tab, and that contract must keep holding for every other caller.
+    async function createBackgroundTab(data) {
+      if (data.path) addRecentDocument?.(data.path)
+      if (data.path) {
+        const existing = findTabByPath(data.path)
+        if (existing) return existing
+      }
+      const tab = {
+        id: ++tabIdCounter,
+        filename: data.filename || 'untitled.md',
+        path: data.path || null,
+        content: data.content,
+        savedContent: data.content,
+        dirty: false,
+        scrollTop: 0,
+        renderedHTML: null,
+        tocHTML: null,
+        sourceMode: false,
+        splitMode: false,
+        previewDirty: true,
+        previewScrollTop: 0,
+        sourceScrollTop: 0,
+      }
+      tabs.push(tab)
+      if (tab.path) watchPath(tab.path)
+      return tab
+    }
+
     async function switchToTab(tabId) {
       if (tabId === activeTabId) return
       const target = tabs.find(tab => tab.id === tabId)
@@ -633,6 +669,7 @@
 
     return {
       createTab,
+      createBackgroundTab,
       switchToTab,
       closeTab,
       closeOtherTabs,

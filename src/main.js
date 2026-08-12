@@ -14,6 +14,12 @@ if (process.env.MDV_USER_DATA_DIR) {
 
 const watchers = new Map() // path → { watcher: chokidar.FSWatcher, subscribers: Set<WebContents> }
 const dirWatchers = new Map() // dirPath → { watcher: chokidar.FSWatcher, subscribers: Set<WebContents>, debounceTimer }
+// Test-only introspection: a test asserting exactly which paths a directory watch actually
+// covers (depth/ignore behavior) needs real chokidar state, not simulated IPC -- and live
+// fs-event delivery timing under the Electron test harness is not reliable enough to assert
+// against directly. Only exposed under the same env var launchApp() already uses to mark an
+// isolated test run (never set for a real user launch).
+if (process.env.MDV_USER_DATA_DIR) globalThis.__mdvDirWatchers = dirWatchers
 const dirtyState = new Map() // BrowserWindow.id → boolean (미저장 변경 존재 여부)
 const sessionState = new Map() // BrowserWindow.id → { tabs, activeIndex, explorerRoot } (렌더러가 통지한 최신 상태)
 let lastFocusedWindowId = null
@@ -574,12 +580,48 @@ function registerWatchSweep(wc) {
   })
 }
 
-// node_modules/.git and any dot-prefixed directory (matching list-directory's own display
-// filter) are excluded so opening a large repo root doesn't spin up tens of thousands of
-// watchers -- that would make the debounce below meaningless under real event volume.
-const DIR_WATCH_IGNORED = /(^|[\\/])(node_modules|\.[^\\/]+)([\\/]|$)/
+// node_modules/.git/any dot-prefixed directory, plus common build/output directories, are
+// excluded so opening a large repo root doesn't spin up tens of thousands of watchers --
+// that would make the debounce below meaningless under real event volume. chokidar has no
+// fsevents fast path here (confirmed against node_modules/chokidar/handler.js: it keys a
+// plain FsWatchInstances map and calls fs.watch() per directory on every platform, macOS
+// included), so an unfiltered deep tree means one native watch handle per directory found.
+const DIR_WATCH_IGNORED = /(^|[\\/])(node_modules|dist|build|out|coverage|target|vendor|\.[^\\/]+)([\\/]|$)/
 const DIR_WATCH_DEBOUNCE_MS = 300
-const DIR_WATCH_DEPTH = 10
+// The explorer tree already re-reads a folder's contents on demand when it's expanded
+// (list-directory, one level per call) -- this watcher only needs to catch changes shallow
+// enough that the user is likely looking at them without having to toggle the folder.
+// Deeper external changes are picked up the next time that folder is collapsed/re-expanded.
+const DIR_WATCH_DEPTH = 1
+// Safety net for a pathologically flat/large root (e.g. a photo library, or a container
+// directory like ~/projects holding several repos) that DIR_WATCH_IGNORED/DEPTH don't catch.
+// Once the number of distinct paths chokidar has looked at while watching a root crosses
+// this, watching that root is abandoned entirely rather than let the scan keep growing.
+// Overridable so a test can trip the guard without actually creating tens of thousands of
+// files, matching the MDV_TEST_SKIP_DEFAULT_APP_CHECK precedent below.
+const DIR_WATCH_MAX_PATHS = Number(process.env.MDV_TEST_DIR_WATCH_MAX_PATHS) || 20000
+
+// chokidar's `ignored` option accepts a function `(path, stats) => boolean` alongside
+// regex/glob/string forms (see its own watch() JSDoc) and is queried for both the initial
+// recursive scan and later fs events -- a directory this returns true for is never
+// recursed into (readdirp's directoryFilter), so it doubles as the recursion cutoff the
+// count guard needs. `seen` dedupes because the same path can be re-queried across the
+// initial scan and subsequent watch events, which would otherwise inflate a raw call count.
+function makeGuardedIgnore(baseRegex, maxPaths, onOverflow) {
+  const seen = new Set()
+  let overflowed = false
+  return (candidatePath) => {
+    if (baseRegex.test(candidatePath)) return true
+    if (overflowed) return true
+    seen.add(candidatePath)
+    if (seen.size > maxPaths) {
+      overflowed = true
+      onOverflow()
+      return true
+    }
+    return false
+  }
+}
 
 ipcMain.handle('watch-directory', async (event, dirPath) => {
   try {
@@ -597,7 +639,7 @@ ipcMain.handle('watch-directory', async (event, dirPath) => {
     return {}
   }
 
-  const entry = { watcher: null, subscribers: new Set([wc]), debounceTimer: null }
+  const entry = { watcher: null, subscribers: new Set([wc]), debounceTimer: null, ready: false }
   const notify = () => {
     for (const sub of entry.subscribers) {
       if (!sub.isDestroyed()) sub.send('directory-changed', { path: dirPath })
@@ -607,16 +649,30 @@ ipcMain.handle('watch-directory', async (event, dirPath) => {
     clearTimeout(entry.debounceTimer)
     entry.debounceTimer = setTimeout(notify, DIR_WATCH_DEBOUNCE_MS)
   }
+  const onOverflow = () => {
+    clearTimeout(entry.debounceTimer)
+    entry.watcher.close()
+    dirWatchers.delete(dirPath)
+    for (const sub of entry.subscribers) {
+      if (!sub.isDestroyed()) sub.send('directory-watch-unavailable', { path: dirPath })
+    }
+  }
 
   const watcher = chokidar.watch(dirPath, {
     ignoreInitial: true,
-    ignored: DIR_WATCH_IGNORED,
+    ignored: makeGuardedIgnore(DIR_WATCH_IGNORED, DIR_WATCH_MAX_PATHS, onOverflow),
     depth: DIR_WATCH_DEPTH,
   })
   watcher.on('add', scheduleNotify)
   watcher.on('unlink', scheduleNotify)
   watcher.on('addDir', scheduleNotify)
   watcher.on('unlinkDir', scheduleNotify)
+  // This handler's own IPC response doesn't wait for the initial scan to settle (chokidar's
+  // depth-limited readdirp walk can take a moment on a large root, and there's nothing the
+  // caller needs to block on) -- entry.ready records it anyway so anything that does care
+  // whether the scan has finished (e.g. a test asserting exactly which paths ended up
+  // watched) has something deterministic to poll for.
+  watcher.once('ready', () => { entry.ready = true })
 
   entry.watcher = watcher
   dirWatchers.set(dirPath, entry)

@@ -25,6 +25,7 @@ contextBridge.exposeInMainWorld('api', {
 
   onFileChanged: (cb) => ipcRenderer.on('file-changed', (_, data) => cb(data)),
   onDirectoryChanged: (cb) => ipcRenderer.on('directory-changed', (_, data) => cb(data)),
+  onDirectoryWatchUnavailable: (cb) => ipcRenderer.on('directory-watch-unavailable', (_, data) => cb(data)),
   onFileOpened:  (cb) => ipcRenderer.on('file-opened',  (_, path) => cb(path)),
   onRestoreSession:(cb) => ipcRenderer.on('restore-session', (_, data) => cb(data)),
   onRendererCommand:(cb) => ipcRenderer.on('renderer-command', (_, command) => cb(command)),

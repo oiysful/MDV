@@ -68,6 +68,57 @@ test('session restore reopens saved tabs and the explorer root after relaunch', 
   }
 })
 
+// Session restore only fully renders the tab that was active when the session was saved
+// (createBackgroundTab, plan 12-A/C-2) -- every other restored tab is lazily rendered the
+// first time it's actually switched to. This exercises that from the outside: correctness
+// after switching, not the internal previewDirty flag, is the real contract.
+test('a background tab restored from a saved session renders correctly the first time it is switched to', async () => {
+  const dir = await fs.mkdtemp(path.join(os.tmpdir(), 'mdv-lazy-restore-'))
+  const files = {
+    A: path.join(dir, 'doc-a.md'),
+    B: path.join(dir, 'doc-b.md'),
+    C: path.join(dir, 'doc-c.md'),
+  }
+  await fs.writeFile(files.A, '# Doc A\n\nAAAA-marker\n')
+  await fs.writeFile(files.B, '# Doc B\n\nBBBB-marker\n')
+  await fs.writeFile(files.C, '# Doc C\n\nCCCC-marker\n')
+  const userDataDir = await fs.mkdtemp(path.join(os.tmpdir(), 'mdv-lazy-restore-userdata-'))
+
+  try {
+    let { electronApp, page } = await launchApp({ userDataDir })
+    await page.waitForSelector('#empty')
+    await openRealFiles(electronApp, page, [files.A, files.B, files.C], 3)
+    // Make B the active tab (the one saved as activeIndex, and the only one that will be
+    // eagerly rendered on the next launch) -- A and C are the ones exercising the lazy path.
+    await page.locator('#tab-list .file-tab').filter({ hasText: 'doc-b.md' }).click()
+    await page.waitForFunction(() => document.querySelector('#tab-list .file-tab.active .file-tab-name')?.textContent.includes('doc-b.md'))
+    await page.waitForTimeout(SESSION_DEBOUNCE_WAIT)
+    await closeApp(electronApp)
+
+    ;({ electronApp, page } = await launchApp({ userDataDir }))
+    try {
+      await page.waitForFunction(() => document.querySelectorAll('#tab-list .file-tab').length === 3)
+      await page.waitForFunction(() => document.querySelector('#tab-list .file-tab.active .file-tab-name')?.textContent.includes('doc-b.md'))
+      assert.match(await page.textContent('#content'), /BBBB-marker/)
+
+      await page.locator('#tab-list .file-tab').filter({ hasText: 'doc-a.md' }).click()
+      await page.waitForFunction(() => document.getElementById('content').textContent.includes('AAAA-marker'))
+
+      await page.locator('#tab-list .file-tab').filter({ hasText: 'doc-c.md' }).click()
+      await page.waitForFunction(() => document.getElementById('content').textContent.includes('CCCC-marker'))
+
+      // And back to A -- proves the now-rendered cache is used, not re-triggering previewDirty forever.
+      await page.locator('#tab-list .file-tab').filter({ hasText: 'doc-a.md' }).click()
+      await page.waitForFunction(() => document.getElementById('content').textContent.includes('AAAA-marker'))
+    } finally {
+      await closeApp(electronApp)
+    }
+  } finally {
+    await fs.rm(dir, { recursive: true, force: true })
+    await fs.rm(userDataDir, { recursive: true, force: true })
+  }
+})
+
 test('session restore skips a deleted file without an alert and restores the survivor', async () => {
   const survivor = await createTempMarkdown(BASIC_MD, 'survivor.md')
   const doomed = await createTempMarkdown(ROOT_MD, 'doomed.md')

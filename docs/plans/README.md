@@ -7,6 +7,11 @@
 - [done/2026-07-30/](./done/2026-07-30/) — 아래 2026-07-22 배치 중 01/02/03/05/06, 2026-07-30 전부 구현·독립 리뷰 2회(코드/보안)·검증 완료.
 - [done/2026-08-04/](./done/2026-08-04/) — [08](./done/2026-08-04/08-search-highlight-and-ime-fixes.md) 편집모드 검색 하이라이팅 + 한글 IME Enter 중복 입력, 2026-08-04 구현·검증 완료.
 - [done/2026-08-05/](./done/2026-08-05/) — [04](./done/2026-08-05/04-split-view-scroll-boundary-latch.md) 분할뷰 스크롤 경계 래칭(Ian 실사용 재확인 완료), [07](./done/2026-08-05/07-usability-roadmap-followup-gaps.md) 사용성 로드맵 후속 갭 A/B/C/D 전부, [09](./done/2026-08-05/09-code-block-copy-gutter-redesign.md) 코드블럭 복사버튼 gutter 재설계, [10](./done/2026-08-05/10-mermaid-support-and-usability-fixes.md) mermaid 지원 + 표 정렬/검색 가로스크롤/탐색기 watch + 프론트매터 메타 블록 + 복사버튼 오버레이 회귀(6항목) — 2026-08-05 구현·검증 완료.
+- [done/2026-08-12/](./done/2026-08-12/) — [11](./done/2026-08-12/11-blockquote-github-alerts.md) GitHub 스타일 블록쿼트 Alert(`[!NOTE]` 등 5종) 렌더링, [13](./done/2026-08-12/13-performance-diet.md) 성능 개선(대용량 폴더 열기 중단·Cmd+Q 종료 지연 — 단일 근본 원인인 디렉토리 워처 과다 프로비저닝 해결, mermaid/katex 지연 로딩, 세션 복원 lazy 탭 렌더링) — 2026-08-12 구현·검증 완료.
+
+## [`12-i18n-feasibility-assessment.md`](./12-i18n-feasibility-assessment.md) — 전체 UI i18n 적용 타당성 검토 (2026-08-12 조사)
+
+착수 계획이 아니라 조사 보고서. 하드코딩된 한국어 UI 문자열 규모(~171줄, 13개 파일)와 테스트 커플링(21개 테스트 파일이 한국어 리터럴을 직접 assert)을 근거로, 전면 착수보다 단계적 축소 착수를 권장. 실행 여부는 사용자 결정 대기.
 
 ## [`docs/self-check-request.md`](./done/2026-08-05/self-check-request.md) 기반 (2026-07-22 조사)
 

@@ -17,7 +17,7 @@
     return showFullPath ? root : root.split('/').pop() || root
   }
 
-  function createExplorerController({ getRefs, api, load, switchToExplorerTab, showAppContextMenu, revealInFinder, onExplorerRootChanged }) {
+  function createExplorerController({ getRefs, api, load, switchToExplorerTab, showAppContextMenu, revealInFinder, onExplorerRootChanged, showToast }) {
     let currentExplorerRoot = null
     let explorerShowFullPath = false
     let treeKeyboardBound = false
@@ -138,6 +138,14 @@
 
     api.onDirectoryChanged?.(payload => {
       if (payload?.path === currentExplorerRoot) refreshTree()
+    })
+
+    // main.js abandons a directory watch outright if the tree under it is too large to
+    // watch safely (see DIR_WATCH_MAX_PATHS) -- the tree itself keeps working via on-demand
+    // list-directory calls, only live auto-refresh on external changes is gone, so this is
+    // informational rather than an error.
+    api.onDirectoryWatchUnavailable?.(payload => {
+      if (payload?.path === currentExplorerRoot) showToast?.('폴더가 너무 커서 실시간 변경 감지를 껐습니다')
     })
 
     async function openFileRow(row, event) {

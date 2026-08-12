@@ -12,6 +12,13 @@
   ]
   const IMAGE_CACHE_LIMIT = 100
 
+  // Rough presence checks, not real fence parsers -- a false positive (e.g. the literal text
+  // ` ```mermaid` appearing inside an unrelated code block) only costs one unnecessary lazy
+  // load, which is harmless. A false negative would mean the diagram/math silently never
+  // renders, which is the failure mode worth avoiding, so these stay deliberately loose.
+  const MERMAID_FENCE_RE = /```\s*mermaid\b/
+  const LATEX_FENCE_RE = /```\s*(latex|math)\b/
+
   // Turns heading text into a GitHub-Flavored-Markdown-style anchor slug, so that a
   // `[텍스트](#헤더-슬러그)` link written by hand (the convention this repo's own docs
   // already use — see docs/plans/README.md) actually resolves to a rendered heading.
@@ -139,7 +146,7 @@
     return `<details class="frontmatter-card"><summary>메타데이터</summary><table class="frontmatter-table"><tbody>${rows}</tbody></table></details>`
   }
 
-  function createMarkdownController({ getRefs, markedLib, hljsLib, pathUtils, api, onShowModeButton, domPurify, mermaidLib, katexLib }) {
+  function createMarkdownController({ getRefs, markedLib, hljsLib, pathUtils, api, onShowModeButton, domPurify, mermaidLib, katexLib, onMermaidLoaded }) {
     let cachedHeadings = []
     let cachedTocLinks = []
     let prevTocLink = null
@@ -148,6 +155,55 @@
     const purify = domPurify || globalScope.DOMPurify
     const getMermaidLib = () => mermaidLib || globalScope.mermaid
     const getKatexLib = () => katexLib || globalScope.katex
+
+    // Appends a <script src> and resolves once it's loaded, caching the in-flight/settled
+    // promise so a second document needing the same library reuses it instead of re-fetching
+    // and re-executing a multi-MB file. A load failure clears the cache so the next render
+    // gets a fresh attempt rather than being stuck rejected forever.
+    const scriptLoadCache = new Map()
+    function loadScriptOnce(src) {
+      const cached = scriptLoadCache.get(src)
+      if (cached) return cached
+      const promise = new Promise((resolve, reject) => {
+        const el = document.createElement('script')
+        el.src = src
+        el.onload = () => resolve()
+        el.onerror = () => reject(new Error(`script load failed: ${src}`))
+        document.head.appendChild(el)
+      }).catch(e => {
+        scriptLoadCache.delete(src)
+        throw e
+      })
+      scriptLoadCache.set(src, promise)
+      return promise
+    }
+
+    // A test harness (or an embedder) that already injected mermaidLib/katexLib via the
+    // constructor options never needs a dynamic <script> at all -- getMermaidLib()/
+    // getKatexLib() being truthy short-circuits both of these before touching the DOM,
+    // which is also what keeps this a no-op under jsdom (no real script loading there).
+    // A failed load (corrupted install, blocked file read, etc.) must not take the whole
+    // render() down with it -- getMermaidLib()/getKatexLib() simply stay falsy afterward, and
+    // the existing no-lib fallbacks below (runMermaidBlocks' early return, renderer.code's
+    // "fall through to a plain code block") take over exactly as if the library had never
+    // been present at all, same as before this was made lazy.
+    async function ensureMermaidLoaded() {
+      if (getMermaidLib()) return
+      try {
+        await loadScriptOnce('../../node_modules/mermaid/dist/mermaid.min.js')
+        onMermaidLoaded?.()
+      } catch (e) {
+        console.error('mermaid 로드 실패:', e)
+      }
+    }
+    async function ensureKatexLoaded() {
+      if (getKatexLib()) return
+      try {
+        await loadScriptOnce('../../node_modules/katex/dist/katex.min.js')
+      } catch (e) {
+        console.error('katex 로드 실패:', e)
+      }
+    }
 
     // hljs.highlightAuto over every language is slow; restrict auto-detection to
     // a common subset, filtered to the languages this build actually registers.
@@ -232,6 +288,53 @@
       const langRow = langId ? `<div class="code-lang-row"><span class="code-lang">${escapeHtml(langId)}</span></div>` : ''
       const copyIcon = '<svg class="icon-copy" aria-hidden="true" width="12" height="12" viewBox="0 0 13 13" fill="none"><rect x="4.5" y="4.5" width="8" height="8" rx="1" stroke="currentColor" stroke-width="1.3"/><path d="M2.5 10.5V2.5h8" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"/></svg>'
       return `<div class="code-wrapper">${langRow}<pre><code class="hljs">${hl}</code></pre><button class="copy-btn" type="button" data-command="copyCode" data-command-element="true" aria-label="코드 복사">${copyIcon}</button></div>`
+    }
+
+    // GitHub-style alert blockquotes (`> [!NOTE]` etc, docs.github.com "Alerts"). Icons match
+    // this app's existing line-icon style (viewBox 16, stroke-width 1.3, fill="none" outline +
+    // filled dots) rather than GitHub's filled octicons, so they sit visually consistent with
+    // the rest of the toolbar (see e.g. #btn-sidebar's SVG in index.html).
+    const ALERT_TYPES = {
+      NOTE: {
+        label: 'Note',
+        icon: '<svg aria-hidden="true" width="14" height="14" viewBox="0 0 16 16" fill="none"><circle cx="8" cy="8" r="6.5" stroke="currentColor" stroke-width="1.3"/><line x1="8" y1="7.2" x2="8" y2="11" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/><circle cx="8" cy="4.8" r="0.9" fill="currentColor"/></svg>',
+      },
+      TIP: {
+        label: 'Tip',
+        icon: '<svg aria-hidden="true" width="14" height="14" viewBox="0 0 16 16" fill="none"><path d="M8 1.8c-2.3 0-4 1.7-4 3.9 0 1.5.8 2.4 1.5 3.2.4.5.7 1 .8 1.6h3.4c.1-.6.4-1.1.8-1.6.7-.8 1.5-1.7 1.5-3.2 0-2.2-1.7-3.9-4-3.9z" stroke="currentColor" stroke-width="1.3" stroke-linejoin="round"/><line x1="6.3" y1="13" x2="9.7" y2="13" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/><line x1="6.7" y1="14.6" x2="9.3" y2="14.6" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/></svg>',
+      },
+      IMPORTANT: {
+        label: 'Important',
+        icon: '<svg aria-hidden="true" width="14" height="14" viewBox="0 0 16 16" fill="none"><path d="M2 3.5c0-.8.7-1.5 1.5-1.5h9c.8 0 1.5.7 1.5 1.5v6c0 .8-.7 1.5-1.5 1.5H8l-2.8 2.6c-.2.2-.5 0-.5-.3V11H3.5C2.7 11 2 10.3 2 9.5v-6z" stroke="currentColor" stroke-width="1.3" stroke-linejoin="round"/><line x1="8" y1="4.6" x2="8" y2="7.4" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/><circle cx="8" cy="9.2" r="0.9" fill="currentColor"/></svg>',
+      },
+      WARNING: {
+        label: 'Warning',
+        icon: '<svg aria-hidden="true" width="14" height="14" viewBox="0 0 16 16" fill="none"><path d="M8 2.2 14.3 13c.3.6-.1 1.3-.8 1.3H2.5c-.7 0-1.1-.7-.8-1.3L8 2.2z" stroke="currentColor" stroke-width="1.3" stroke-linejoin="round"/><line x1="8" y1="6.5" x2="8" y2="9.8" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/><circle cx="8" cy="11.8" r="0.9" fill="currentColor"/></svg>',
+      },
+      CAUTION: {
+        label: 'Caution',
+        icon: '<svg aria-hidden="true" width="14" height="14" viewBox="0 0 16 16" fill="none"><path d="M5.2 1.8h5.6l3.4 3.4v5.6l-3.4 3.4H5.2l-3.4-3.4V5.2l3.4-3.4z" stroke="currentColor" stroke-width="1.3" stroke-linejoin="round"/><line x1="8" y1="5.4" x2="8" y2="9" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/><circle cx="8" cy="11" r="0.9" fill="currentColor"/></svg>',
+      },
+    }
+    // marked's renderer.blockquote(quote) is handed the already-rendered inner HTML (not a
+    // token), e.g. '<p>[!NOTE]<br>body</p>\n' when the marker and body share one paragraph
+    // (no blank line between them), or '<p>[!NOTE]</p>\n<p>body</p>\n' when a blank line
+    // separates them (breaks:true turns the shared-paragraph newline into <br>). Both forms
+    // are matched and the marker is stripped in favor of the alert box's own title row. A
+    // marker followed by more text on the same line (`[!NOTE] extra`) intentionally falls
+    // through to a plain blockquote -- GitHub doesn't treat that as an alert either, and the
+    // regex only accepts `<br>`/`</p>` immediately after `]`.
+    renderer.blockquote = (quote) => {
+      const match = /^\s*<p>\[!(NOTE|TIP|IMPORTANT|WARNING|CAUTION)\](?:<br\s*\/?>\s*|\s*<\/p>\s*)/i.exec(quote)
+      if (match) {
+        const type = match[1].toUpperCase()
+        const config = ALERT_TYPES[type]
+        const consumedWholeParagraph = /<\/p>\s*$/.test(match[0])
+        const rest = quote.slice(match[0].length)
+        const body = consumedWholeParagraph ? rest : `<p>${rest}`
+        return `<div class="markdown-alert markdown-alert-${type.toLowerCase()}"><p class="markdown-alert-title">${config.icon}${config.label}</p>${body}</div>\n`
+      }
+      return `<blockquote>\n${quote}</blockquote>\n`
     }
     markedLib.setOptions({ renderer, breaks: true, gfm: true })
 
@@ -393,6 +496,13 @@
     async function render(text, filename, docPath) {
       const refs = getRefs()
       const { frontmatter, body } = extractFrontmatter(text)
+      // Load only what this document actually needs before parsing -- renderer.code's
+      // mermaid/latex branches (above) run synchronously inside markedLib.parse() and can't
+      // themselves await a script tag, so the check has to happen up front here instead.
+      const pending = []
+      if (MERMAID_FENCE_RE.test(body)) pending.push(ensureMermaidLoaded())
+      if (LATEX_FENCE_RE.test(body)) pending.push(ensureKatexLoaded())
+      if (pending.length) await Promise.all(pending)
       const frontmatterHtml = frontmatter ? sanitizeHtml(renderFrontmatterCard(frontmatter)) : ''
       refs.content.innerHTML = frontmatterHtml + renderMarkdown(body)
       await runMermaidBlocks(refs.content)

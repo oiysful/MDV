@@ -7,12 +7,13 @@
   content="default-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; script-src 'self'; img-src 'self' data:; form-action 'none'; base-uri 'none'; object-src 'none';">
 <title>MDV</title>
 
-<!-- marked.js, highlight.js, DOMPurify & mermaid (locally bundled) -->
+<!-- marked.js, highlight.js & DOMPurify (locally bundled) -- always needed, every document
+     goes through markdown parsing/highlighting/sanitizing. mermaid (3.4MB) and katex are
+     loaded lazily by markdown.js's ensureMermaidLoaded/ensureKatexLoaded, only when a
+     document actually contains a ```mermaid or ```latex/```math fence. -->
 <script src="../../node_modules/marked/marked.min.js"></script>
 <script src="../../node_modules/@highlightjs/cdn-assets/highlight.min.js"></script>
 <script src="../../node_modules/dompurify/dist/purify.min.js"></script>
-<script src="../../node_modules/mermaid/dist/mermaid.min.js"></script>
-<script src="../../node_modules/katex/dist/katex.min.js"></script>
 
 <!-- highlight.js: light 모드 → GitHub Light, dark 모드 → One Dark -->
 <link id="hljs-light" rel="stylesheet"
@@ -1075,6 +1076,34 @@ kbd {
   color: var(--text-muted);
 }
 #content blockquote p { margin: 0; }
+
+/* GitHub-style alert blockquote (`> [!NOTE]` etc) — fixed accent colors per type, not
+   theme-derived, matching GitHub's own convention that alert colors stay recognizable
+   across themes. Body text keeps #content's normal color (only the title row is tinted),
+   unlike a plain blockquote which mutes its whole body via --text-muted above. */
+.markdown-alert {
+  margin: 1.2em 0; padding: var(--sp-sm) var(--sp-md);
+  border-left: 3px solid var(--alert-color);
+  background: color-mix(in srgb, var(--alert-color) 8%, transparent);
+  border-radius: 0 var(--radius-md) var(--radius-md) 0;
+}
+.markdown-alert p { margin: 0; }
+.markdown-alert p + p { margin-top: .6em; }
+.markdown-alert-title {
+  display: flex; align-items: center; gap: 6px;
+  font-weight: 600; color: var(--alert-color);
+  margin-bottom: .4em;
+}
+.markdown-alert-note      { --alert-color: #0969da; }
+.markdown-alert-tip       { --alert-color: #1a7f37; }
+.markdown-alert-important { --alert-color: #8250df; }
+.markdown-alert-warning   { --alert-color: #9a6700; }
+.markdown-alert-caution   { --alert-color: #cf222e; }
+[data-theme="dark"] .markdown-alert-note      { --alert-color: #58a6ff; }
+[data-theme="dark"] .markdown-alert-tip       { --alert-color: #3fb950; }
+[data-theme="dark"] .markdown-alert-important { --alert-color: #a371f7; }
+[data-theme="dark"] .markdown-alert-warning   { --alert-color: #d29922; }
+[data-theme="dark"] .markdown-alert-caution   { --alert-color: #f85149; }
 
 /* Inline code — Claude signature red text */
 #content code {

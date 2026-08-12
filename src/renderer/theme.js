@@ -45,11 +45,21 @@
       return theme
     }
 
+    // Pure read of the same isDark calculation applyTheme() makes, with none of its side
+    // effects (DOM attribute, icon/label refresh, onThemeApplied redraw callback). Exists so
+    // something that needs the current theme *outside* an actual theme-change event -- e.g. a
+    // lazily-loaded library initializing itself for the first time -- can ask without
+    // triggering a full re-apply.
+    function getIsDark() {
+      return theme === 'dark' || (theme === 'auto' && matchMedia.matches)
+    }
+
     return {
       applyTheme,
       toggleTheme,
       handleSystemThemeChange,
       getTheme,
+      getIsDark,
     }
   }
 

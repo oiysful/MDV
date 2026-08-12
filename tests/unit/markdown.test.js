@@ -240,6 +240,50 @@ test('renderMarkdown renders malformed LaTeX as an inline error span instead of 
   })
 })
 
+// --- GitHub-style alert blockquotes (plan 11) ---
+
+test('renderMarkdown renders each alert type with its class and label', () => {
+  for (const type of ['NOTE', 'TIP', 'IMPORTANT', 'WARNING', 'CAUTION']) {
+    const html = makeController().renderMarkdown(`> [!${type}]\n> body text`)
+    assert.ok(new RegExp(`class="markdown-alert markdown-alert-${type.toLowerCase()}"`).test(html), html)
+    assert.ok(new RegExp(`class="markdown-alert-title">.*${type[0]}${type.slice(1).toLowerCase()}`).test(html), html)
+    assert.ok(/body text/.test(html), html)
+    assert.ok(!/<blockquote>/.test(html), html)
+  }
+})
+
+test('renderMarkdown recognizes a lowercase alert marker', () => {
+  const html = makeController().renderMarkdown('> [!note]\n> body text')
+  assert.ok(/class="markdown-alert markdown-alert-note"/.test(html), html)
+})
+
+test('renderMarkdown renders a blank-line-separated alert body across multiple paragraphs', () => {
+  const html = makeController().renderMarkdown('> [!WARNING]\n>\n> first\n> second')
+  assert.ok(/class="markdown-alert markdown-alert-warning"/.test(html), html)
+  assert.ok(/<p>first<br>second<\/p>/.test(html), html)
+  // The marker paragraph itself must not survive as a second copy of "[!WARNING]" in the body.
+  assert.ok(!/\[!WARNING\]/.test(html), html)
+})
+
+test('renderMarkdown leaves a plain blockquote untouched', () => {
+  const html = makeController().renderMarkdown('> just a quote')
+  assert.ok(/<blockquote>/.test(html), html)
+  assert.ok(!/markdown-alert/.test(html), html)
+})
+
+test('renderMarkdown does not treat a marker followed by same-line text as an alert', () => {
+  const html = makeController().renderMarkdown('> [!NOTE] extra text on the same line')
+  assert.ok(/<blockquote>/.test(html), html)
+  assert.ok(!/markdown-alert/.test(html), html)
+})
+
+test('renderMarkdown sanitizes script content inside an alert body', () => {
+  const html = makeController().renderMarkdown('> [!NOTE]\n> <script>alert(1)</script>safe text')
+  assert.ok(/class="markdown-alert markdown-alert-note"/.test(html), html)
+  assert.ok(!/<script/i.test(html), html)
+  assert.ok(/safe text/.test(html), html)
+})
+
 // --- snapshot capture / rehydration (plan 06) ---
 
 const IMAGE_DATA_URL = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg=='
@@ -248,12 +292,44 @@ const LOCAL_PATH = '/docs/assets/pic.png'
 // Build a real jsdom-backed refs object plus a spied api. resolveRenderedImagePaths
 // walks refs.content for img[src]; buildToc/updateStats need the id="content" node
 // attached and the stats elements present.
-function makeSnapshotHarness({ mermaidLib } = {}) {
+function makeSnapshotHarness({ mermaidLib, simulateScriptLoad = 'fail', onMermaidLoaded } = {}) {
   const dom = new JSDOM('<!DOCTYPE html><body><div id="scroll-area"><div id="content"></div></div><ul id="toc"></ul><div id="stats"></div><span id="sw"></span><span id="st"></span></body>')
   const prevDocument = global.document
   const prevWindow = global.window
   global.document = dom.window.document
   global.window = dom.window
+  // jsdom never fires load/error for an externally-sourced <script> (no resource loading by
+  // default -- confirmed empirically, not just per its docs), so ensureMermaidLoaded/
+  // ensureKatexLoaded's dynamic <script> path would hang this suite forever on any render()
+  // call with a mermaid/latex fence and no lib injected. Simulate a load instead of letting it
+  // hang: 'fail' (the default -- matches what a real broken/missing bundle path would do) or
+  // 'succeed', which also defines window.mermaid/window.katex right before onload fires, same
+  // as what actually executing the real bundle would do. Tests that want the lib available
+  // without exercising this dynamic-load path at all still just inject mermaidLib directly.
+  const appendedScriptSrcs = []
+  const globalsToClean = []
+  const originalAppendChild = dom.window.document.head.appendChild.bind(dom.window.document.head)
+  dom.window.document.head.appendChild = node => {
+    const result = originalAppendChild(node)
+    if (node.tagName === 'SCRIPT' && node.src) {
+      appendedScriptSrcs.push(node.src)
+      setTimeout(() => {
+        if (simulateScriptLoad === 'succeed') {
+          // getMermaidLib/getKatexLib read `globalScope`, which markdown.js closes over once
+          // at require() time (this test file's process, before any test runs) -- not
+          // `dom.window`, which is per-harness and never what that closure actually sees.
+          // globalThis is the real target here; clean it up so a later test in this same
+          // process/file doesn't inherit it.
+          if (node.src.includes('mermaid')) { globalThis.mermaid = mermaidLib || makeMermaidStub(); globalsToClean.push('mermaid') }
+          if (node.src.includes('katex')) { globalThis.katex = { renderToString: tex => `<span class="katex-stub">${tex}</span>` }; globalsToClean.push('katex') }
+          node.onload?.()
+        } else {
+          node.onerror?.(new Error('jsdom does not load external scripts'))
+        }
+      }, 0)
+    }
+    return result
+  }
   const refs = {
     scrollArea: dom.window.document.getElementById('scroll-area'),
     content: dom.window.document.getElementById('content'),
@@ -279,13 +355,19 @@ function makeSnapshotHarness({ mermaidLib } = {}) {
     api,
     domPurify: DOMPurify,
     mermaidLib,
+    onMermaidLoaded,
   })
   return {
     controller,
     refs,
     getReadCalls: () => readCalls,
     resetReadCalls: () => { readCalls = 0 },
-    restore: () => { global.document = prevDocument; global.window = prevWindow },
+    getAppendedScriptSrcs: () => appendedScriptSrcs,
+    restore: () => {
+      global.document = prevDocument
+      global.window = prevWindow
+      for (const key of globalsToClean) delete globalThis[key]
+    },
   }
 }
 
@@ -428,6 +510,66 @@ test('render without a mermaid library leaves the placeholder untouched instead 
     const node = h.refs.content.querySelector('.mermaid')
     assert.ok(node, 'mermaid placeholder still renders')
     assert.equal(node.querySelector('svg'), null, 'no mermaid ran, so no svg was produced')
+  } finally {
+    h.restore()
+  }
+})
+
+// --- lazy mermaid/katex loading (plan 12-C-1) ---
+
+test('render never attempts a dynamic script load for a document with no mermaid/latex fence', async () => {
+  const h = makeSnapshotHarness()
+  try {
+    await h.controller.render('# Just a heading\n\nSome text, no fences at all.\n', 'doc.md', null)
+    assert.deepEqual(h.getAppendedScriptSrcs(), [])
+  } finally {
+    h.restore()
+  }
+})
+
+test('render dynamically loads mermaid only for a document that actually has a mermaid fence', async () => {
+  const h = makeSnapshotHarness()
+  try {
+    await h.controller.render('```mermaid\ngraph TD; A-->B\n```\n', 'doc.md', null)
+    const srcs = h.getAppendedScriptSrcs()
+    assert.equal(srcs.length, 1)
+    assert.match(srcs[0], /mermaid\.min\.js$/)
+  } finally {
+    h.restore()
+  }
+})
+
+test('render dynamically loads katex only for a document that actually has a latex/math fence', async () => {
+  const h = makeSnapshotHarness()
+  try {
+    await h.controller.render('```latex\nx^2\n```\n', 'doc.md', null)
+    const srcs = h.getAppendedScriptSrcs()
+    assert.equal(srcs.length, 1)
+    assert.match(srcs[0], /katex\.min\.js$/)
+  } finally {
+    h.restore()
+  }
+})
+
+test('render runs a mermaid diagram through a successfully lazy-loaded library and fires onMermaidLoaded', async () => {
+  let onMermaidLoadedCalls = 0
+  const h = makeSnapshotHarness({ simulateScriptLoad: 'succeed', onMermaidLoaded: () => { onMermaidLoadedCalls += 1 } })
+  try {
+    await h.controller.render('```mermaid\ngraph TD; A-->B\n```\n', 'doc.md', null)
+    const node = h.refs.content.querySelector('.mermaid')
+    assert.ok(node.querySelector('svg[data-fake-mermaid-output]'), 'the dynamically-loaded mermaid stub actually ran')
+    assert.equal(onMermaidLoadedCalls, 1)
+  } finally {
+    h.restore()
+  }
+})
+
+test('render reuses an in-flight/loaded script instead of appending a second one for a later document', async () => {
+  const h = makeSnapshotHarness({ simulateScriptLoad: 'succeed' })
+  try {
+    await h.controller.render('```mermaid\ngraph TD; A-->B\n```\n', 'doc.md', null)
+    await h.controller.render('```mermaid\ngraph LR; C-->D\n```\n', 'doc2.md', null)
+    assert.equal(h.getAppendedScriptSrcs().length, 1, 'mermaid.min.js should only be appended once across both renders')
   } finally {
     h.restore()
   }
