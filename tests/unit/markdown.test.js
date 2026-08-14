@@ -73,11 +73,74 @@ test('renderMarkdown preserves GFM table alignment attributes', () => {
 
 test('extractFrontmatter parses key: value pairs delimited by --- on the very first line', () => {
   const result = extractFrontmatter('---\ntitle: Hello\ndate: 2026-08-05\n---\n\n# Body\n')
-  assert.deepEqual(result.frontmatter, [
-    { key: 'title', value: 'Hello' },
-    { key: 'date', value: '2026-08-05' },
-  ])
+  assert.equal(result.frontmatter[0].key, 'title')
+  assert.equal(result.frontmatter[0].value, 'Hello')
+  assert.equal(result.frontmatter[1].key, 'date')
+  assert.ok(result.frontmatter[1].value instanceof Date, 'unquoted ISO dates parse as Date')
+  assert.equal(result.frontmatter[1].value.toISOString().slice(0, 10), '2026-08-05')
   assert.equal(result.body, '\n# Body\n')
+})
+
+test('extractFrontmatter parses an inline flow array', () => {
+  const result = extractFrontmatter('---\ntags: [a, b, c]\n---\nBody\n')
+  assert.deepEqual(result.frontmatter, [{ key: 'tags', value: ['a', 'b', 'c'] }])
+})
+
+test('extractFrontmatter parses a block-style array', () => {
+  const result = extractFrontmatter('---\ntags:\n  - a\n  - b\n---\nBody\n')
+  assert.deepEqual(result.frontmatter, [{ key: 'tags', value: ['a', 'b'] }])
+})
+
+test('extractFrontmatter parses an array of objects', () => {
+  const text = '---\nitems:\n  - name: x\n    value: y\n  - name: z\n    value: w\n---\nBody\n'
+  const result = extractFrontmatter(text)
+  assert.deepEqual(result.frontmatter, [
+    { key: 'items', value: [{ name: 'x', value: 'y' }, { name: 'z', value: 'w' }] },
+  ])
+})
+
+test('extractFrontmatter parses a nested object', () => {
+  const text = '---\nauthor:\n  name: Jane\n  email: jane@x.com\n---\nBody\n'
+  const result = extractFrontmatter(text)
+  assert.deepEqual(result.frontmatter, [
+    { key: 'author', value: { name: 'Jane', email: 'jane@x.com' } },
+  ])
+})
+
+test('extractFrontmatter preserves newlines from a literal block scalar', () => {
+  const text = '---\nnote: |\n  line1\n  line2\n---\nBody\n'
+  const result = extractFrontmatter(text)
+  assert.equal(result.frontmatter[0].value, 'line1\nline2\n')
+})
+
+test('extractFrontmatter folds newlines into spaces from a folded block scalar', () => {
+  const text = '---\nnote: >\n  line1\n  line2\n---\nBody\n'
+  const result = extractFrontmatter(text)
+  assert.equal(result.frontmatter[0].value, 'line1 line2\n')
+})
+
+test('extractFrontmatter parses numbers, booleans, and null with real types', () => {
+  const text = '---\ncount: 5\npublished: true\ndeleted:\n---\nBody\n'
+  const result = extractFrontmatter(text)
+  assert.deepEqual(result.frontmatter, [
+    { key: 'count', value: 5 },
+    { key: 'published', value: true },
+    { key: 'deleted', value: null },
+  ])
+})
+
+test('extractFrontmatter falls back to no-frontmatter on malformed YAML', () => {
+  const text = '---\ntitle: "unterminated\n---\n# Body\n'
+  const result = extractFrontmatter(text)
+  assert.equal(result.frontmatter, null)
+  assert.equal(result.body, text)
+})
+
+test('extractFrontmatter falls back to no-frontmatter when the top level is not a mapping', () => {
+  const text = '---\n- a\n- b\n---\n# Body\n'
+  const result = extractFrontmatter(text)
+  assert.equal(result.frontmatter, null)
+  assert.equal(result.body, text)
 })
 
 test('extractFrontmatter returns null frontmatter when the document has none', () => {
@@ -474,6 +537,57 @@ test('render does not add a frontmatter card for a document with none', async ()
   try {
     await h.controller.render('# Just a heading\n\nSome text.\n', 'doc.md', null)
     assert.equal(h.refs.content.querySelector('details.frontmatter-card'), null)
+  } finally {
+    h.restore()
+  }
+})
+
+test('render shows a simple array field as a list', async () => {
+  const h = makeSnapshotHarness()
+  try {
+    await h.controller.render('---\ntags: [a, b, c]\n---\n\nBody\n', 'doc.md', null)
+    const list = h.refs.content.querySelector('details.frontmatter-card ul.frontmatter-list')
+    assert.ok(list, 'array value renders as a list')
+    assert.deepEqual(Array.from(list.querySelectorAll('li')).map(li => li.textContent), ['a', 'b', 'c'])
+  } finally {
+    h.restore()
+  }
+})
+
+test('render shows an array of objects and a nested object as nested tables', async () => {
+  const h = makeSnapshotHarness()
+  try {
+    const text = '---\nitems:\n  - name: x\n    value: y\nauthor:\n  name: Jane\n---\n\nBody\n'
+    await h.controller.render(text, 'doc.md', null)
+    const card = h.refs.content.querySelector('details.frontmatter-card')
+    const nestedTables = card.querySelectorAll('table.frontmatter-nested')
+    assert.equal(nestedTables.length, 2, 'one nested table for the object-array item, one for author')
+    assert.match(card.innerHTML, /name/)
+    assert.match(card.innerHTML, /Jane/)
+  } finally {
+    h.restore()
+  }
+})
+
+test('render preserves newlines from a literal block scalar in a multiline div', async () => {
+  const h = makeSnapshotHarness()
+  try {
+    await h.controller.render('---\nnote: |\n  line1\n  line2\n---\n\nBody\n', 'doc.md', null)
+    const multiline = h.refs.content.querySelector('details.frontmatter-card div.frontmatter-multiline')
+    assert.ok(multiline, 'multiline value renders in a preserved-whitespace div')
+    assert.equal(multiline.textContent, 'line1\nline2\n')
+  } finally {
+    h.restore()
+  }
+})
+
+test('render escapes malicious strings nested inside frontmatter arrays/objects', async () => {
+  const h = makeSnapshotHarness()
+  try {
+    const text = '---\nitems:\n  - name: "<script>window.__pwned = true</script>"\n---\n\nBody\n'
+    await h.controller.render(text, 'doc.md', null)
+    assert.equal(h.refs.content.querySelector('details.frontmatter-card script'), null)
+    assert.match(h.refs.content.querySelector('details.frontmatter-card').innerHTML, /&lt;script&gt;/)
   } finally {
     h.restore()
   }

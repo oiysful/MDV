@@ -7,13 +7,15 @@
   content="default-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; script-src 'self'; img-src 'self' data:; form-action 'none'; base-uri 'none'; object-src 'none';">
 <title>MDV</title>
 
-<!-- marked.js, highlight.js & DOMPurify (locally bundled) -- always needed, every document
-     goes through markdown parsing/highlighting/sanitizing. mermaid (3.4MB) and katex are
-     loaded lazily by markdown.js's ensureMermaidLoaded/ensureKatexLoaded, only when a
-     document actually contains a ```mermaid or ```latex/```math fence. -->
+<!-- marked.js, highlight.js, DOMPurify & js-yaml (locally bundled) -- always needed, every
+     document goes through markdown parsing/highlighting/sanitizing, and frontmatter detection
+     runs unconditionally at the top of render(). mermaid (3.4MB) and katex are loaded lazily
+     by markdown.js's ensureMermaidLoaded/ensureKatexLoaded, only when a document actually
+     contains a ```mermaid or ```latex/```math fence. -->
 <script src="../../node_modules/marked/marked.min.js"></script>
 <script src="../../node_modules/@highlightjs/cdn-assets/highlight.min.js"></script>
 <script src="../../node_modules/dompurify/dist/purify.min.js"></script>
+<script src="../../node_modules/js-yaml/dist/js-yaml.min.js"></script>
 
 <!-- highlight.js: light 모드 → GitHub Light, dark 모드 → One Dark -->
 <link id="hljs-light" rel="stylesheet"
@@ -1229,6 +1231,9 @@ kbd {
   border: none;
 }
 .frontmatter-table th { color: var(--text-muted); font-weight: 600; white-space: nowrap; width: 1%; }
+.frontmatter-list { list-style: none; margin: 0.2em 0; padding-left: 0.9em; border-left: 2px solid var(--border); }
+.frontmatter-table.frontmatter-nested { margin: 0.2em 0; font-size: 0.95em; }
+.frontmatter-multiline { white-space: pre-wrap; }
 
 #content img {
   max-width: 100%; border-radius: var(--radius-md); border: 1px solid var(--border);

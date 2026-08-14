@@ -1,4 +1,9 @@
 (function (globalScope) {
+  // Browser (nodeIntegration:false): index.html's <script> tag puts the UMD build on
+  // globalScope.jsyaml. Node (unit tests via require()): no such script tag ran, so fall
+  // back to a real require -- mirrors sanitizeHtml's DOMPurify-or-escape degrade pattern.
+  const yamlLib = globalScope.jsyaml || (typeof require === 'function' ? require('js-yaml') : null)
+
   function computeStats(text) {
     if (!text || !text.trim()) return { words: 0, minutes: 0 }
     const words = text.trim().split(/\s+/).filter(Boolean).length
@@ -129,19 +134,55 @@
       if (lines[i].trim() === '---') { closingIndex = i; break }
     }
     if (closingIndex === -1) return { frontmatter: null, body: text }
-    const fields = []
-    for (let i = 1; i < closingIndex; i++) {
-      const match = lines[i].match(/^([^:\s][^:]*):\s?(.*)$/)
-      if (match) fields.push({ key: match[1].trim(), value: match[2].trim() })
-    }
     const body = lines.slice(closingIndex + 1).join('\n')
+    if (!yamlLib) return { frontmatter: null, body: text }
+    let parsed
+    try {
+      parsed = yamlLib.load(lines.slice(1, closingIndex).join('\n'))
+    } catch {
+      // Malformed YAML inside otherwise-valid delimiters -- same "when ambiguous, leave it
+      // alone" fallback as the no-closing-delimiter case above, rather than eating content.
+      return { frontmatter: null, body: text }
+    }
+    if (parsed === null || parsed === undefined) return { frontmatter: [], body }
+    // Frontmatter is conventionally a mapping; a bare scalar/array up top isn't one.
+    if (typeof parsed !== 'object' || Array.isArray(parsed)) return { frontmatter: null, body: text }
+    const fields = Object.entries(parsed).map(([key, value]) => ({ key, value }))
     return { frontmatter: fields, body }
+  }
+
+  function formatFrontmatterDate(date) {
+    const midnightUtc = date.getUTCHours() === 0 && date.getUTCMinutes() === 0
+      && date.getUTCSeconds() === 0 && date.getUTCMilliseconds() === 0
+    return midnightUtc ? date.toISOString().slice(0, 10) : date.toISOString()
+  }
+
+  function renderFrontmatterValue(value) {
+    if (value === null || value === undefined) return ''
+    if (value instanceof Date) return escapeHtml(formatFrontmatterDate(value))
+    if (Array.isArray(value)) {
+      if (!value.length) return ''
+      const items = value.map(item => `<li>${renderFrontmatterValue(item)}</li>`).join('')
+      return `<ul class="frontmatter-list">${items}</ul>`
+    }
+    if (typeof value === 'object') return renderFrontmatterObject(value)
+    const text = escapeHtml(String(value))
+    return text.includes('\n') ? `<div class="frontmatter-multiline">${text}</div>` : text
+  }
+
+  function renderFrontmatterObject(obj) {
+    const entries = Object.entries(obj)
+    if (!entries.length) return ''
+    const rows = entries.map(([key, value]) => (
+      `<tr><th>${escapeHtml(key)}</th><td>${renderFrontmatterValue(value)}</td></tr>`
+    )).join('')
+    return `<table class="frontmatter-table frontmatter-nested"><tbody>${rows}</tbody></table>`
   }
 
   function renderFrontmatterCard(fields) {
     if (!fields.length) return ''
     const rows = fields.map(({ key, value }) => (
-      `<tr><th>${escapeHtml(key)}</th><td>${escapeHtml(value)}</td></tr>`
+      `<tr><th>${escapeHtml(key)}</th><td>${renderFrontmatterValue(value)}</td></tr>`
     )).join('')
     return `<details class="frontmatter-card"><summary>메타데이터</summary><table class="frontmatter-table"><tbody>${rows}</tbody></table></details>`
   }

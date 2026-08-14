@@ -8,6 +8,7 @@
 - [done/2026-08-04/](./done/2026-08-04/) — [08](./done/2026-08-04/08-search-highlight-and-ime-fixes.md) 편집모드 검색 하이라이팅 + 한글 IME Enter 중복 입력, 2026-08-04 구현·검증 완료.
 - [done/2026-08-05/](./done/2026-08-05/) — [04](./done/2026-08-05/04-split-view-scroll-boundary-latch.md) 분할뷰 스크롤 경계 래칭(Ian 실사용 재확인 완료), [07](./done/2026-08-05/07-usability-roadmap-followup-gaps.md) 사용성 로드맵 후속 갭 A/B/C/D 전부, [09](./done/2026-08-05/09-code-block-copy-gutter-redesign.md) 코드블럭 복사버튼 gutter 재설계, [10](./done/2026-08-05/10-mermaid-support-and-usability-fixes.md) mermaid 지원 + 표 정렬/검색 가로스크롤/탐색기 watch + 프론트매터 메타 블록 + 복사버튼 오버레이 회귀(6항목) — 2026-08-05 구현·검증 완료.
 - [done/2026-08-12/](./done/2026-08-12/) — [11](./done/2026-08-12/11-blockquote-github-alerts.md) GitHub 스타일 블록쿼트 Alert(`[!NOTE]` 등 5종) 렌더링, [13](./done/2026-08-12/13-performance-diet.md) 성능 개선(대용량 폴더 열기 중단·Cmd+Q 종료 지연 — 단일 근본 원인인 디렉토리 워처 과다 프로비저닝 해결, mermaid/katex 지연 로딩, 세션 복원 lazy 탭 렌더링) — 2026-08-12 구현·검증 완료.
+- [done/2026-08-14/](./done/2026-08-14/) — [14](./done/2026-08-14/14-frontmatter-yaml-structures.md) 프론트매터 YAML 구조 전면 지원(정규식 라인 스캐너 → `js-yaml` 기반 파싱, 단순/객체 배열·중첩 객체·블록 스칼라 개행·타입 인식 재귀 렌더러) — 2026-08-14 구현·검증 완료.
 
 ## [`12-i18n-feasibility-assessment.md`](./12-i18n-feasibility-assessment.md) — 전체 UI i18n 적용 타당성 검토 (2026-08-12 조사)
 
