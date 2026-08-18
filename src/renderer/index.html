@@ -1131,6 +1131,13 @@ kbd {
   border: 1px solid color-mix(in srgb, var(--border) 85%, transparent);
   background: color-mix(in srgb, var(--bg) 84%, transparent);
 }
+/* 한 줄짜리 코드블럭은 wrapper 높이가 낮아서, 복사 버튼 아래로 뻗는 ::after 툴팁이
+   위 overflow:hidden(모서리 둥글게 유지용)에 잘려 안 보인다. 버튼을 hover하는
+   순간에만 overflow를 풀어 툴팁이 wrapper 밖으로 자연스럽게 나오게 한다 — 평소
+   상태(모서리 클리핑, 코드 가로 스크롤)에는 영향 없음. */
+.code-wrapper:has(.copy-btn:hover) {
+  overflow: visible;
+}
 
 .code-lang-row {
   padding: 0.32rem 0.85rem 0.18rem;
@@ -1164,7 +1171,7 @@ kbd {
 
 .copy-btn::after {
   content: '복사';
-  position: absolute; top: calc(100% + 6px); right: 0;
+  position: absolute; top: calc(100% + 6px); right: 0; z-index: 2;
   padding: 4px 8px; border-radius: 6px;
   background: #1f2328; color: #fff;
   font-size: 11px; font-family: var(--font); white-space: nowrap;
