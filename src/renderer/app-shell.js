@@ -70,6 +70,8 @@
       btnExplorerReveal: documentRef.getElementById('btn-explorer-reveal'),
       btnExplorerClose: documentRef.getElementById('btn-explorer-close'),
       toast: documentRef.getElementById('toast'),
+      updateBanner: documentRef.getElementById('update-banner'),
+      updateBannerText: documentRef.getElementById('update-banner-text'),
       welcomeGuide: documentRef.getElementById('welcome-guide'),
       defaultAppGuide: documentRef.getElementById('default-app-guide'),
       shortcutsGuide: documentRef.getElementById('shortcuts-guide'),

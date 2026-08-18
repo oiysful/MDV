@@ -18,6 +18,12 @@ const ROOT = path.resolve(__dirname, '../../..')
 // MDV_TEST_SKIP_DEFAULT_APP_CHECK in main.js) so ordinary tests get a deterministic
 // "already registered" response instead of an environment/timing-dependent one. A test that
 // specifically exercises the guide's real behavior passes `{ realDefaultAppStatus: true }`.
+//
+// Same reasoning for MDV_TEST_SKIP_UPDATE_CHECK: without it, every launchApp() call would
+// fire a real GitHub Releases request from main.js after its 5s startup delay. A test that
+// exercises the real check passes `{ realUpdateCheck: true }` and should point
+// MDV_REPO_OWNER/MDV_REPO_NAME (also read by main.js) at a repo/tag it controls rather than
+// hitting the real oiysful/MDV repo.
 async function launchApp(options = {}) {
   const ownsUserDataDir = !options.userDataDir
   const userDataDir = options.userDataDir || fs.mkdtempSync(path.join(os.tmpdir(), 'mdv-userdata-'))
@@ -30,6 +36,7 @@ async function launchApp(options = {}) {
       ...process.env,
       MDV_USER_DATA_DIR: userDataDir,
       ...(options.realDefaultAppStatus ? {} : { MDV_TEST_SKIP_DEFAULT_APP_CHECK: '1' }),
+      ...(options.realUpdateCheck ? {} : { MDV_TEST_SKIP_UPDATE_CHECK: '1' }),
     },
   })
   electronApp.__userDataDir = userDataDir

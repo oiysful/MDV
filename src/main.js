@@ -1,10 +1,11 @@
-const { app, BrowserWindow, ipcMain, dialog, nativeTheme, Menu, shell } = require('electron')
+const { app, BrowserWindow, ipcMain, dialog, nativeTheme, Menu, shell, net } = require('electron')
 const path = require('path')
 const fs   = require('fs')
 const os = require('os')
 const { pathToFileURL } = require('url')
 const chokidar = require('chokidar')
 const { isEmptySession } = require('./renderer/session-state')
+const { normalizeTag, shouldNotify } = require('./update-checker')
 
 // Tests point this at a throwaway directory so the suite never reads or clobbers the
 // real user's session.json. Must run before app 'ready', which module-load time satisfies.
@@ -66,6 +67,134 @@ function persistSession() {
   writeSession(state)
 }
 
+// ── Update check (notify-only) ───────────────────────────────────
+// See docs/plans/15-in-app-update-notification.md. This checks GitHub Releases and shows
+// an in-app banner pointing at `brew upgrade --cask oiysful/tap/mdv` — it never downloads
+// or applies an update itself (the app is unsigned, so Electron's autoUpdater can't apply
+// one anyway; see the plan doc for why).
+const GITHUB_REPO_OWNER = process.env.MDV_REPO_OWNER || 'oiysful'
+const GITHUB_REPO_NAME = process.env.MDV_REPO_NAME || 'MDV'
+const UPDATE_CHECK_URL = `https://api.github.com/repos/${GITHUB_REPO_OWNER}/${GITHUB_REPO_NAME}/releases/latest`
+const UPDATE_CHECK_MAX_BODY_BYTES = 1_000_000
+const UPDATE_CHECK_TIMEOUT_MS = 10_000
+const UPDATE_CHECK_STARTUP_DELAY_MS = 5000
+const UPDATE_CHECK_INTERVAL_MS = 24 * 60 * 60 * 1000 // 24h -- throttles the network call, not the banner (see maybeCheckForUpdate)
+
+let cachedUpdateInfo = null // { version, tagName, releaseUrl } | null -- process-lifetime only, re-sent to windows created after the startup check
+
+function getUpdateCheckFilePath() {
+  return path.join(app.getPath('userData'), 'update-check.json')
+}
+
+function readUpdateCheckState() {
+  try {
+    const parsed = JSON.parse(fs.readFileSync(getUpdateCheckFilePath(), 'utf-8'))
+    if (!parsed || typeof parsed !== 'object') return { lastCheckedAt: 0, latestVersion: null, latestTag: null, dismissedVersion: null }
+    return {
+      lastCheckedAt: Number.isFinite(parsed.lastCheckedAt) ? parsed.lastCheckedAt : 0,
+      latestVersion: typeof parsed.latestVersion === 'string' ? parsed.latestVersion : null,
+      // The raw GitHub tag string (e.g. "v1.3.0", or "1.3.0" with no prefix on a repo that
+      // doesn't use one) -- kept alongside the normalized latestVersion so the release URL
+      // can be built from the tag GitHub actually published, not a reconstructed guess.
+      latestTag: typeof parsed.latestTag === 'string' ? parsed.latestTag : null,
+      dismissedVersion: typeof parsed.dismissedVersion === 'string' ? parsed.dismissedVersion : null,
+    }
+  } catch {
+    return { lastCheckedAt: 0, latestVersion: null, latestTag: null, dismissedVersion: null }
+  }
+}
+
+function writeUpdateCheckState(state) {
+  try {
+    fs.writeFileSync(getUpdateCheckFilePath(), JSON.stringify(state), 'utf-8')
+  } catch {
+    // 업데이트 체크 상태 저장 실패는 조용히 무시 -- session.json과 동일 정책.
+  }
+}
+
+function releaseUrlForTag(tagName) {
+  return `https://github.com/${GITHUB_REPO_OWNER}/${GITHUB_REPO_NAME}/releases/tag/${tagName}`
+}
+
+// Every failure path (offline, non-200, timeout, oversized body, malformed JSON, missing
+// tag_name) resolves null -- a background check must never surface an error to the user.
+function fetchLatestReleaseTag() {
+  return new Promise(resolve => {
+    let settled = false
+    const finish = value => { if (!settled) { settled = true; resolve(value) } }
+    try {
+      const request = net.request({ method: 'GET', url: UPDATE_CHECK_URL })
+      request.setHeader('User-Agent', `MDV/${app.getVersion()}`)
+      request.setHeader('Accept', 'application/vnd.github+json')
+      const timer = setTimeout(() => { request.abort(); finish(null) }, UPDATE_CHECK_TIMEOUT_MS)
+      request.on('response', response => {
+        if (response.statusCode !== 200) { clearTimeout(timer); response.destroy?.(); finish(null); return }
+        let body = ''
+        let overflowed = false
+        response.on('data', chunk => {
+          if (overflowed) return
+          body += chunk
+          if (body.length > UPDATE_CHECK_MAX_BODY_BYTES) { overflowed = true; request.abort() }
+        })
+        response.on('end', () => {
+          clearTimeout(timer)
+          if (overflowed) { finish(null); return }
+          try {
+            const parsed = JSON.parse(body)
+            finish(typeof parsed?.tag_name === 'string' ? { tagName: parsed.tag_name } : null)
+          } catch {
+            finish(null)
+          }
+        })
+      })
+      request.on('error', () => { clearTimeout(timer); finish(null) })
+      request.end()
+    } catch {
+      finish(null)
+    }
+  })
+}
+
+function broadcastUpdateAvailable(info) {
+  BrowserWindow.getAllWindows().forEach(w => {
+    if (!w.webContents.isDestroyed()) w.webContents.send('update-available', info)
+  })
+}
+
+async function maybeCheckForUpdate() {
+  if (process.env.MDV_TEST_SKIP_UPDATE_CHECK) return
+  const state = readUpdateCheckState()
+  const now = Date.now()
+
+  if (now - state.lastCheckedAt < UPDATE_CHECK_INTERVAL_MS) {
+    // Throttled: skip the network call, but still re-evaluate the last known result so the
+    // banner reappears on every relaunch inside the 24h window, not just the one that fetched.
+    if (state.latestVersion && state.latestTag && shouldNotify({ latestVersion: state.latestVersion, currentVersion: app.getVersion(), dismissedVersion: state.dismissedVersion })) {
+      cachedUpdateInfo = { version: state.latestVersion, tagName: state.latestTag, releaseUrl: releaseUrlForTag(state.latestTag) }
+      broadcastUpdateAvailable(cachedUpdateInfo)
+    }
+    return
+  }
+
+  // lastCheckedAt is written before the fetch: a crash/hang mid-request must not turn into
+  // an every-launch retry -- losing one day's check to a transient network blip is fine.
+  writeUpdateCheckState({ ...state, lastCheckedAt: now })
+
+  const release = await fetchLatestReleaseTag()
+  if (!release) return
+  const latestVersion = normalizeTag(release.tagName)
+  if (!latestVersion) return
+
+  writeUpdateCheckState({ lastCheckedAt: now, latestVersion, latestTag: release.tagName, dismissedVersion: state.dismissedVersion })
+
+  if (!shouldNotify({ latestVersion, currentVersion: app.getVersion(), dismissedVersion: state.dismissedVersion })) return
+  // The release page URL is built from the tag GitHub actually published (release.tagName),
+  // not a reconstructed "v" + version -- a repo without a "v" prefix (confirmed against
+  // sass/dart-sass's "1.102.0" tag during manual verification) would otherwise 404.
+  cachedUpdateInfo = { version: latestVersion, tagName: release.tagName, releaseUrl: releaseUrlForTag(release.tagName) }
+  broadcastUpdateAvailable(cachedUpdateInfo)
+}
+
 // ── Window factory ──────────────────────────────────────────────
 function createWindow(filePath = null, restoredSession = null) {
   const win = new BrowserWindow({
@@ -106,6 +235,7 @@ function createWindow(filePath = null, restoredSession = null) {
   let sessionRestored = false
   win.webContents.on('did-finish-load', () => {
     win.webContents.send('theme-changed', nativeTheme.shouldUseDarkColors)
+    if (cachedUpdateInfo) win.webContents.send('update-available', cachedUpdateInfo)
     if (filePath) {
       sendFile(win, filePath)
     } else if (restoredSession && !sessionRestored) {
@@ -227,6 +357,11 @@ app.whenReady().then(() => {
   const restoredSession = pendingFilePath ? null : readSavedSession()
   createWindow(pendingFilePath, restoredSession)
   pendingFilePath = null
+
+  // Deferred well past first paint (see docs/plans/15-in-app-update-notification.md) --
+  // this app's own performance-diet history (mermaid/katex/session-tab lazy loading) is the
+  // reason nothing runs synchronously here. Once per app launch, not per window.
+  setTimeout(() => { maybeCheckForUpdate().catch(() => {}) }, UPDATE_CHECK_STARTUP_DELAY_MS)
 
   nativeTheme.on('updated', () => {
     BrowserWindow.getAllWindows().forEach(w => {
@@ -724,6 +859,15 @@ ipcMain.handle('unwatch-file', async (event, filePath) => {
 ipcMain.on('set-dirty-state', (event, isDirty) => {
   const win = BrowserWindow.fromWebContents(event.sender)
   if (win) dirtyState.set(win.id, !!isDirty)
+})
+
+// Dismissing in one window hides the banner in every window (null payload = hide).
+ipcMain.on('dismiss-update-notice', (_event, version) => {
+  if (typeof version !== 'string') return
+  const state = readUpdateCheckState()
+  writeUpdateCheckState({ ...state, dismissedVersion: version })
+  cachedUpdateInfo = null
+  broadcastUpdateAvailable(null)
 })
 
 // The renderer pushes its latest session shape here (debounced on its side). Main only

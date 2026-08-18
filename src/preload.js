@@ -20,6 +20,7 @@ contextBridge.exposeInMainWorld('api', {
   unwatchDirectory:(p)    => ipcRenderer.invoke('unwatch-directory', p),
   setDirtyState:   (isDirty) => ipcRenderer.send('set-dirty-state', isDirty),
   saveSessionState:(state) => ipcRenderer.send('session-state-changed', state),
+  dismissUpdateNotice: (version) => ipcRenderer.send('dismiss-update-notice', version),
   addRecentDocument:(p)   => ipcRenderer.invoke('add-recent-document', p),
   getPathForFile:  (file) => webUtils.getPathForFile(file),
 
@@ -30,4 +31,5 @@ contextBridge.exposeInMainWorld('api', {
   onRestoreSession:(cb) => ipcRenderer.on('restore-session', (_, data) => cb(data)),
   onRendererCommand:(cb) => ipcRenderer.on('renderer-command', (_, command) => cb(command)),
   onThemeChanged:(cb) => ipcRenderer.on('theme-changed', (_, dark) => cb(dark)),
+  onUpdateAvailable:(cb) => ipcRenderer.on('update-available', (_, data) => cb(data)),
 })

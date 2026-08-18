@@ -76,6 +76,13 @@ const searchController = window.MDVSearch.createSearchController({
   getRefs: () => $,
 })
 
+const updateNoticeController = window.MDVUpdateNotice.createUpdateNoticeController({
+  getRefs: () => $,
+  api: window.api,
+  showToast: message => onboardingController.showToast(message),
+  isBlockedByModal: () => onboardingController.isDefaultAppGuideOpen(),
+})
+
 document.addEventListener('DOMContentLoaded', () => {
   $ = window.MDVAppShell.collectAppShellRefs(document)
 
@@ -107,6 +114,7 @@ document.addEventListener('DOMContentLoaded', () => {
     getShellActionsController: () => shellActionsController,
     getContextMenuController: () => contextMenuController,
     ensurePreviewRendered,
+    onDefaultAppGuideDismissed: () => updateNoticeController.recheckVisibility(),
   })
 
   documentFlowController = window.MDVDocumentFlow.createDocumentFlowController({
@@ -228,6 +236,7 @@ document.addEventListener('DOMContentLoaded', () => {
   editorController.bindEditorEvents()
   runtimeController.bindGlobalEvents()
   window.api.onRestoreSession?.(payload => { void restoreSession(payload) })
+  window.api.onUpdateAvailable?.(data => updateNoticeController.handleUpdateAvailable(data))
   void runtimeController.checkMarkdownDefaultAppStatus()
   document.documentElement.dataset.rendererReady = 'true'
 })
@@ -265,6 +274,9 @@ function createRendererCommands() {
     hideAddMenu: () => runtimeController.hideAddMenu(),
     dismissWelcomeGuide: () => runtimeController.dismissWelcomeGuide(),
     dismissDefaultAppGuide: () => runtimeController.dismissDefaultAppGuide(),
+    dismissUpdateBanner: () => updateNoticeController.dismiss(),
+    openUpdateReleaseNotes: () => updateNoticeController.openReleaseNotes(),
+    copyUpdateCommand: () => updateNoticeController.copyUpgradeCommand(),
     openFromGuide: kind => runtimeController.openFromGuide(kind),
     searchPrev: () => runtimeController.searchPrev(),
     searchNext: () => runtimeController.searchNext(),

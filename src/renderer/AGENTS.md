@@ -16,6 +16,7 @@ Renderer now uses an HTML/CSS shell plus multiple plain browser scripts; `app.js
 | Search | `search.js` | In-document search controller |
 | Theme | `theme.js` | Auto/light/dark cycle and hljs stylesheet switching |
 | Onboarding / empty state | `onboarding.js`, `app-runtime.js` | First-launch guide, entry affordance, toast, empty-state actions |
+| Update-available banner | `update-notice.js`, `#update-banner` in `index.html`, `app.js` wiring | Dismissible bottom-right notice pointing at `brew upgrade`; no auto-update |
 | Pure helpers | `path-utils.js`, `roving.js`, `session-state.js` | URL/path helpers, roving-tabindex index math, session-shape/empty-session guard — all usable from tests |
 | Keyboard accessibility | `roving.js` (shared math) + `workspace.js` (tab bar) + `explorer.js` (tree) | Roving tabindex, manual activation (arrows move focus only, Enter/Space acts) |
 | Session restore | `app.js#collectSessionState`/`restoreSession`, `session-state.js` | Debounced push to main on tab/explorer-root change; restore only on first-window startup |

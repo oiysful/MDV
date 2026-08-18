@@ -814,6 +814,20 @@ mark.search-hl.current {
 body.empty-entry-emphasis #open-entry-hint {
   display: inline-flex;
 }
+#update-banner {
+  position: fixed;
+  bottom: 18px;
+  right: 18px;
+  z-index: 480;
+  width: 300px;
+  padding: 14px 14px 12px;
+  border-radius: 16px;
+  border: 1px solid color-mix(in srgb, var(--brand) 18%, var(--border));
+  background: color-mix(in srgb, var(--surface) 98%, transparent);
+  box-shadow: 0 18px 42px rgba(0,0,0,0.12);
+  display: none;
+}
+#update-banner.show { display: block; }
 #welcome-guide {
   position: fixed;
   top: 72px;
@@ -1253,7 +1267,7 @@ kbd {
 #btn-copy-all.copied { color: var(--success) !important; }
 
 @media print {
-  #toolbar, #search-bar, #sidebar, #tab-strip, #go-top, #source-view, #split-divider, .copy-btn { display: none !important; }
+  #toolbar, #search-bar, #sidebar, #tab-strip, #go-top, #source-view, #split-divider, .copy-btn, #update-banner { display: none !important; }
   html, body, #layout, #main-pane, #scroll-area, #content {
     height: auto !important;
     min-height: 0 !important;
@@ -1460,6 +1474,16 @@ kbd {
 
 <div id="app-context-menu" class="ctx-menu ctx-menu-floating" style="display:none"></div>
 <div id="toast" role="status" aria-live="polite"></div>
+<div id="update-banner" role="status" aria-live="polite">
+  <div class="guide-title">
+    <strong id="update-banner-text"></strong>
+    <button type="button" class="guide-close" data-command="dismissUpdateBanner" title="안내 닫기" aria-label="안내 닫기">×</button>
+  </div>
+  <div class="guide-actions">
+    <button type="button" class="guide-btn" data-command="openUpdateReleaseNotes">릴리스 노트</button>
+    <button type="button" class="guide-btn secondary" data-command="copyUpdateCommand">brew upgrade 명령어 복사</button>
+  </div>
+</div>
 <div id="welcome-guide" role="dialog" aria-labelledby="welcome-guide-title">
   <div class="guide-title">
     <strong id="welcome-guide-title">처음 시작하기</strong>
@@ -1639,6 +1663,7 @@ kbd {
 <script src="./markdown.js"></script>
 <script src="./theme.js"></script>
 <script src="./onboarding.js"></script>
+<script src="./update-notice.js"></script>
 <script src="./search.js"></script>
 <script src="./document-flow.js"></script>
 <script src="./editor.js"></script>

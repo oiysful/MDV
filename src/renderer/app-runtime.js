@@ -41,6 +41,7 @@
     getShellActionsController,
     getContextMenuController,
     ensurePreviewRendered,
+    onDefaultAppGuideDismissed,
   }) {
     let untitledCounter = 0
 
@@ -105,6 +106,9 @@
 
     function dismissDefaultAppGuide() {
       onboardingController.dismissDefaultAppGuide()
+      // The guide is the only element the update banner defers to (see update-notice.js's
+      // isBlockedByModal) -- closing it may reveal a banner that was suppressed underneath.
+      onDefaultAppGuideDismissed?.()
     }
 
     function showShortcuts() {
