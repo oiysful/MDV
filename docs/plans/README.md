@@ -10,6 +10,7 @@
 - [done/2026-08-12/](./done/2026-08-12/) — [11](./done/2026-08-12/11-blockquote-github-alerts.md) GitHub 스타일 블록쿼트 Alert(`[!NOTE]` 등 5종) 렌더링, [13](./done/2026-08-12/13-performance-diet.md) 성능 개선(대용량 폴더 열기 중단·Cmd+Q 종료 지연 — 단일 근본 원인인 디렉토리 워처 과다 프로비저닝 해결, mermaid/katex 지연 로딩, 세션 복원 lazy 탭 렌더링) — 2026-08-12 구현·검증 완료.
 - [done/2026-08-14/](./done/2026-08-14/) — [14](./done/2026-08-14/14-frontmatter-yaml-structures.md) 프론트매터 YAML 구조 전면 지원(정규식 라인 스캐너 → `js-yaml` 기반 파싱, 단순/객체 배열·중첩 객체·블록 스칼라 개행·타입 인식 재귀 렌더러) — 2026-08-14 구현·검증 완료.
 - [done/2026-08-18/](./done/2026-08-18/) — [15](./done/2026-08-18/15-in-app-update-notification.md) 인앱 업데이트 알림(notify-only) 기능 — Electron `autoUpdater`는 unsigned 앱이라 macOS에서 적용 불가함을 확인, GitHub Releases 폴링 + `brew upgrade` 안내 배너 방식으로 확정·구현. 실제 GitHub API 대상 수동 검증까지 완료. 2026-08-18 구현·검증 완료.
+- [done/2026-08-21/](./done/2026-08-21/) — [16](./done/2026-08-21/16-mermaid-hidden-render-and-print-palette.md) mermaid 렌더링 버그 2건 — 소스 모드(⌘U) 왕복 시 다이어그램이 빈 공간으로 남는 문제(`display:none` 중 `getBBox()`가 0을 반환), 다크 모드 인쇄/PDF에서 다이어그램만 검게 남는 문제(mermaid가 팔레트를 SVG에 구워 넣어 `@media print`의 CSS 변수 강제를 따라오지 않음). advisor + code-reviewer 리뷰로 계획서 범위 밖 레이스 3건(인쇄 복원 시 테마 재확인, 동시 재렌더 직렬화, 파킹 중 스냅샷 자체복구)도 함께 반영. 2026-08-21 구현·검증 완료.
 
 ## [`12-i18n-feasibility-assessment.md`](./12-i18n-feasibility-assessment.md) — 전체 UI i18n 적용 타당성 검토 (2026-08-12 조사)
 

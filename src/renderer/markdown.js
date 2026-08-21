@@ -379,6 +379,55 @@
     }
     markedLib.setOptions({ renderer, breaks: true, gfm: true })
 
+    // mermaid measures the DOM it just drew (getBBox()/getBoundingClientRect()) to size the
+    // final SVG. Inside a display:none subtree (e.g. #content while source mode is showing
+    // the editor) those measurements collapse to a zero rect, so the diagram bakes in a
+    // near-zero max-width and never recovers -- mermaid marks the node data-processed after
+    // one attempt and never retries it. If the container isn't laid out, park the nodes in an
+    // offscreen-but-laid-out host for the duration of run() so getBBox() sees real geometry,
+    // then put them back. Returns null (no-op restore) when the container is already visible,
+    // so the normal/split/first-render path is untouched.
+    function parkNodesForMeasurement(container, nodes) {
+      if (container.getClientRects().length) return null
+      const doc = container.ownerDocument
+      const host = doc.createElement('div')
+      host.setAttribute('aria-hidden', 'true')
+      // #content's rendered width is capped at 720px (index.html) minus #scroll-area's own
+      // horizontal padding, since #content sits inside that padding box, not flush against
+      // #scroll-area's clientWidth -- reading the padding instead of hardcoding it means this
+      // still matches if that CSS ever changes. (Split view never reaches this function: it's
+      // full-width but also visible, so getClientRects() above already short-circuits it.)
+      const scrollArea = container.parentElement
+      const scrollAreaStyle = scrollArea && doc.defaultView?.getComputedStyle(scrollArea)
+      const paddingX = scrollAreaStyle
+        ? (parseFloat(scrollAreaStyle.paddingLeft) || 0) + (parseFloat(scrollAreaStyle.paddingRight) || 0)
+        : 0
+      const contentBoxWidth = scrollArea ? scrollArea.clientWidth - paddingX : 0
+      const width = Math.min(720, contentBoxWidth || 720)
+      host.style.cssText =
+        `position:fixed;top:0;left:-10000px;width:${width}px;overflow:hidden;pointer-events:none`
+      doc.body.appendChild(host)
+      // The placeholder left in the node's place is a full clone (attributes + text), not a
+      // bare comment -- if something snapshots #content while a node is parked (e.g. a tab
+      // switch mid-flight, see workspace.js's saveTabState), the clone still carries
+      // data-mermaid-src and the "mermaid" class, so it's picked up by both runMermaidBlocks'
+      // :not([data-processed]) selector on the next render and rerenderMermaidTheme's
+      // [data-mermaid-src] selector -- the snapshot self-heals instead of losing the diagram.
+      const anchors = nodes.map(node => {
+        const anchor = node.cloneNode(true)
+        node.replaceWith(anchor)
+        host.appendChild(node)
+        return anchor
+      })
+      return () => {
+        // If the anchor's parent is already gone, replaceWith() is a no-op -- a newer render()
+        // replaced #content.innerHTML while this run() was still in flight, and these nodes
+        // are meant to be discarded along with the host in that case.
+        anchors.forEach((anchor, index) => anchor.replaceWith(nodes[index]))
+        host.remove()
+      }
+    }
+
     // No-op in any environment without a global mermaid (e.g. the jsdom unit-test suite),
     // so tests never need to stub it just to exercise render().
     async function runMermaidBlocks(container) {
@@ -386,12 +435,15 @@
       if (!lib) return
       const nodes = Array.from(container.querySelectorAll('.mermaid:not([data-processed])'))
       if (!nodes.length) return
+      const unpark = parkNodesForMeasurement(container, nodes)
       try {
         await lib.run({ nodes })
       } catch {
         // mermaid.run() already renders a per-node error SVG for a syntax error in the
         // diagram itself; this only guards against a harder failure (e.g. a bug in mermaid)
         // taking the whole render down with it.
+      } finally {
+        unpark?.()
       }
     }
 
@@ -407,6 +459,36 @@
         node.textContent = base64ToUtf8(node.dataset.mermaidSrc)
       })
       await runMermaidBlocks(container)
+    }
+
+    const MERMAID_BASE_CONFIG = { startOnLoad: false, securityLevel: 'strict' }
+
+    // Single init entry point -- was duplicated as an inline literal in app.js (once at
+    // mermaid-load time, once on every theme toggle). Kept synchronous: init alone has
+    // nothing to await.
+    function initMermaidTheme(isDark) {
+      const lib = getMermaidLib()
+      if (!lib) return
+      lib.initialize({ ...MERMAID_BASE_CONFIG, theme: isDark ? 'dark' : 'default' })
+    }
+
+    // mermaid's theme switch is init-then-redraw, and callers that need to know the redraw
+    // has actually finished (e.g. printing, which must not fire until the light-palette
+    // diagram is on screen) need that as one awaitable step. Calls are chained through
+    // mermaidThemeChain rather than left to run concurrently: rerenderMermaidTheme mutates
+    // each node's textContent before awaiting mermaid.run(), so an overlapping call (a theme
+    // toggle firing while withPrintPalette's own redraw is still in flight, say) could reset a
+    // node out from under an in-progress run() or resolve out of order. Chaining makes the
+    // last call to actually run always win, whatever order they were issued in.
+    let mermaidThemeChain = Promise.resolve()
+    async function applyMermaidTheme(container, isDark) {
+      if (!getMermaidLib()) return
+      const run = mermaidThemeChain.then(() => {
+        initMermaidTheme(isDark)
+        return rerenderMermaidTheme(container)
+      })
+      mermaidThemeChain = run.catch(() => {})
+      return run
     }
 
     async function resolveRenderedImagePaths(docPath) {
@@ -684,6 +766,8 @@
       clearImageCacheEntry,
       runMermaidBlocks,
       rerenderMermaidTheme,
+      initMermaidTheme,
+      applyMermaidTheme,
     }
   }
 

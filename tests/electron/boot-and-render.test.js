@@ -322,6 +322,131 @@ test('mermaid fence renders an actual diagram, redraws on a theme toggle, and re
   }
 })
 
+test('mermaid diagram keeps its intrinsic size after a source-mode round trip (plan 16)', async () => {
+  // mermaid sizes itself off getBBox() of what it just drew. #content is display:none while
+  // source mode is showing the editor, and toggleSource's exit path re-renders (fresh,
+  // unprocessed mermaid nodes) before unhiding #content -- so without the measurement-parking
+  // fix, the diagram bakes in a near-zero max-width and never recovers. The existence check
+  // this repo used to run (`#content .mermaid svg` present) passes even on the broken output,
+  // so this asserts the actual intrinsic width mermaid wrote into style.maxWidth.
+  const { electronApp, page } = await launchApp()
+  const consoleErrors = []
+  page.on('pageerror', err => consoleErrors.push(String(err)))
+
+  try {
+    await page.waitForSelector('#empty')
+    await stubOpenDialog(electronApp, [MERMAID_MD])
+    await clickApplicationMenuItem(electronApp, '파일', '파일 열기…')
+    await page.waitForFunction(() => document.title === 'mermaid')
+    await page.waitForFunction(() => !!document.querySelector('#content .mermaid svg'), { timeout: 8000 })
+
+    const intrinsicWidth = () => page.evaluate(() =>
+      parseFloat(document.querySelector('#content .mermaid svg').style.maxWidth))
+    const before = await intrinsicWidth()
+    // tests/fixtures/mermaid.md's diagram is tiny (~85px intrinsic) -- the collapsed-by-the-bug
+    // value observed in practice is ~16px (padding only), so 50 sits well clear of both without
+    // assuming a specific fixture size.
+    assert.ok(before > 50, `sanity check on the first render's own width: ${before}`)
+
+    await emitRendererCommand(electronApp, 'toggleSource')
+    await page.waitForFunction(() => document.getElementById('scroll-area').classList.contains('source-mode'))
+    await emitRendererCommand(electronApp, 'toggleSource')
+    await page.waitForFunction(() => !document.getElementById('scroll-area').classList.contains('source-mode'))
+    await page.waitForFunction(() => !!document.querySelector('#content .mermaid svg'), { timeout: 8000 })
+
+    const after = await intrinsicWidth()
+    assert.ok(after > 50, `diagram must not collapse to a near-zero width after the round trip, got ${after}`)
+    assert.ok(Math.abs(after - before) < 2, `width must not drift between the visible and parked renders: before=${before} after=${after}`)
+
+    assert.deepEqual(consoleErrors, [], 'mermaid must not raise CSP violations or runtime errors')
+  } finally {
+    await closeApp(electronApp)
+  }
+})
+
+test('print/PDF export temporarily redraws a dark-mode mermaid diagram and hljs tokens in light palette, then restores dark (plan 16)', async () => {
+  const { electronApp, page } = await launchApp()
+  const consoleErrors = []
+  page.on('pageerror', err => consoleErrors.push(String(err)))
+
+  try {
+    await page.waitForSelector('#empty')
+    await stubOpenDialog(electronApp, [MERMAID_MD])
+    await clickApplicationMenuItem(electronApp, '파일', '파일 열기…')
+    await page.waitForFunction(() => document.title === 'mermaid')
+    await page.waitForFunction(() => !!document.querySelector('#content .mermaid svg'), { timeout: 8000 })
+
+    const styleFingerprint = () => page.evaluate(() => {
+      const svg = document.querySelector('#content .mermaid svg')
+      const style = svg?.querySelector('style')
+      return style ? style.textContent.replaceAll(svg.id, 'ID') : null
+    })
+
+    // toggleTheme cycles auto -> light -> dark -> auto from a stored default of 'auto' --
+    // drive explicitly to each target instead of assuming a click count.
+    const setTheme = async target => {
+      for (let i = 0; i < 3 && (await page.evaluate(() => document.documentElement.getAttribute('data-theme'))) !== target; i++) {
+        await page.evaluate(() => document.querySelector('[data-command="toggleTheme"]').click())
+        await page.waitForFunction(() => !!document.querySelector('#content .mermaid svg'))
+      }
+      assert.equal(await page.evaluate(() => document.documentElement.getAttribute('data-theme')), target)
+    }
+
+    await setTheme('light')
+    const lightPrint = await styleFingerprint()
+    await setTheme('dark')
+    const darkPrint = await styleFingerprint()
+    assert.notEqual(lightPrint, darkPrint, 'sanity check: the fingerprint actually distinguishes theme')
+
+    await page.evaluate(() => {
+      const fp = () => {
+        const svg = document.querySelector('#content .mermaid svg')
+        const style = svg?.querySelector('style')
+        return style ? style.textContent.replaceAll(svg.id, 'ID') : null
+      }
+      window.__atPrint = null
+      window.__afterDelay = null
+      window.print = () => {
+        window.__atPrint = fp()
+        window.__atPrintHljsDarkDisabled = document.getElementById('hljs-dark').disabled
+        // Simulate the print job still painting after window.print() returns and afterprint
+        // fires -- a restore keyed off print()'s own return (instead of afterprint) would flip
+        // back to dark during this window, which is exactly the bug this covers.
+        setTimeout(() => {
+          window.__afterDelay = fp()
+          window.__afterDelayHljsDarkDisabled = document.getElementById('hljs-dark').disabled
+          window.dispatchEvent(new Event('afterprint'))
+        }, 50)
+      }
+    })
+
+    await emitRendererCommand(electronApp, 'printDoc')
+    await page.waitForFunction(() => window.__afterDelay !== null, { timeout: 5000 })
+
+    assert.equal(await page.evaluate(() => window.__atPrint), lightPrint, 'diagram was redrawn light before window.print() was called')
+    assert.equal(await page.evaluate(() => window.__afterDelay), lightPrint, 'diagram stayed light through the delayed/still-painting print job')
+    assert.equal(await page.evaluate(() => window.__atPrintHljsDarkDisabled), true, 'hljs dark stylesheet is disabled for the print job')
+    assert.equal(await page.evaluate(() => window.__afterDelayHljsDarkDisabled), true, 'hljs stays light through the delayed print job too')
+
+    // printDoc()'s restore runs in the async command handler after `afterprint`, which
+    // emitRendererCommand doesn't wait on -- poll for it instead of asserting immediately.
+    await page.waitForFunction(expected => {
+      const svg = document.querySelector('#content .mermaid svg')
+      const style = svg?.querySelector('style')
+      const fp = style ? style.textContent.replaceAll(svg.id, 'ID') : null
+      return fp === expected
+    }, darkPrint, { timeout: 5000 })
+    const restoredFingerprint = await styleFingerprint()
+    assert.equal(restoredFingerprint, darkPrint, 'screen is restored to dark after the print job finishes')
+    assert.equal(await page.evaluate(() => document.getElementById('hljs-dark').disabled), false, 'hljs restored to dark on screen')
+    assert.equal(await page.evaluate(() => document.documentElement.getAttribute('data-theme')), 'dark', 'stored theme setting was never touched')
+
+    assert.deepEqual(consoleErrors, [], 'print palette swap must not raise CSP violations or runtime errors')
+  } finally {
+    await closeApp(electronApp)
+  }
+})
+
 test('latex/math fences render via KaTeX and are unaffected by a theme toggle', async () => {
   const { electronApp, page } = await launchApp()
   const consoleErrors = []

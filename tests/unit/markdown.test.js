@@ -710,6 +710,104 @@ test('rerenderMermaidTheme resets processed nodes back to source and re-runs the
   }
 })
 
+// --- runMermaidBlocks measurement parking (plan 16) ---
+//
+// jsdom's getClientRects() always returns an empty array (no real layout engine), so the
+// harness's #content is "hidden" by this check's definition by default -- every test below
+// takes the parking path unless it explicitly stubs getClientRects to look visible.
+
+test('runMermaidBlocks parks nodes in an offscreen host while #content looks unlaid-out', async () => {
+  let sawParkedParent = null
+  const mermaidLib = {
+    run: async ({ nodes }) => {
+      sawParkedParent = nodes[0].parentNode
+      nodes.forEach(node => {
+        node.innerHTML = '<svg data-fake-mermaid-output="true"></svg>'
+        node.setAttribute('data-processed', 'true')
+      })
+    },
+  }
+  const h = makeSnapshotHarness({ mermaidLib })
+  try {
+    await h.controller.render('```mermaid\ngraph TD; A-->B\n```\n', 'doc.md', null)
+
+    assert.notEqual(sawParkedParent, h.refs.content, 'mermaid.run() saw the node under the parking host, not #content')
+    assert.equal(sawParkedParent.getAttribute('aria-hidden'), 'true')
+
+    const node = h.refs.content.querySelector('.mermaid')
+    assert.ok(node, 'node was restored to #content in its original place after run() resolved')
+    assert.ok(node.querySelector('svg[data-fake-mermaid-output]'))
+    assert.equal(h.refs.content.ownerDocument.querySelector('[aria-hidden="true"]'), null, 'parking host was removed from the document')
+  } finally {
+    h.restore()
+  }
+})
+
+test('runMermaidBlocks does not park nodes when the container already reports a layout', async () => {
+  let sawParentDuringRun = null
+  const mermaidLib = {
+    run: async ({ nodes }) => {
+      sawParentDuringRun = nodes[0].parentNode
+      nodes.forEach(node => {
+        node.innerHTML = '<svg data-fake-mermaid-output="true"></svg>'
+        node.setAttribute('data-processed', 'true')
+      })
+    },
+  }
+  const h = makeSnapshotHarness({ mermaidLib })
+  h.refs.content.getClientRects = () => [{ width: 720, height: 100 }]
+  try {
+    await h.controller.render('```mermaid\ngraph TD; A-->B\n```\n', 'doc.md', null)
+    assert.equal(sawParentDuringRun, h.refs.content, 'a visible container is left untouched -- no parking')
+  } finally {
+    h.restore()
+  }
+})
+
+test('runMermaidBlocks tolerates #content being replaced while mermaid.run() is still pending', async () => {
+  const h = makeSnapshotHarness({
+    mermaidLib: {
+      run: async ({ nodes }) => {
+        // Simulate a newer render() clobbering #content.innerHTML mid-flight -- the anchor
+        // comment the parking swap left behind is destroyed along with everything else.
+        h.refs.content.innerHTML = ''
+        nodes.forEach(node => node.setAttribute('data-processed', 'true'))
+      },
+    },
+  })
+  try {
+    await assert.doesNotReject(h.controller.render('```mermaid\ngraph TD; A-->B\n```\n', 'doc.md', null))
+    assert.equal(h.refs.content.ownerDocument.querySelector('[aria-hidden="true"]'), null, 'parking host is still cleaned up')
+  } finally {
+    h.restore()
+  }
+})
+
+test('applyMermaidTheme initializes with the requested theme and re-renders before resolving', async () => {
+  const initCalls = []
+  const mermaidLib = {
+    initialize: config => initCalls.push(config),
+    run: async ({ nodes }) => nodes.forEach(node => {
+      node.innerHTML = '<svg data-fake-mermaid-output="true"></svg>'
+      node.setAttribute('data-processed', 'true')
+    }),
+  }
+  const h = makeSnapshotHarness({ mermaidLib })
+  try {
+    await h.controller.render('```mermaid\ngraph TD; A-->B\n```\n', 'doc.md', null)
+    assert.equal(initCalls.length, 0, 'render() itself never calls initialize -- that is init/theme-toggle territory')
+
+    await h.controller.applyMermaidTheme(h.refs.content, true)
+    assert.equal(initCalls.length, 1)
+    assert.equal(initCalls[0].theme, 'dark')
+
+    const node = h.refs.content.querySelector('.mermaid')
+    assert.equal(node.getAttribute('data-processed'), 'true', 'rerenderMermaidTheme ran after initialize, not before')
+  } finally {
+    h.restore()
+  }
+})
+
 // buildToc used to assign positional ids (`h0`, `h1`, ...), so a hand-written
 // `[텍스트](#헤더-슬러그)` anchor -- the convention this repo's own docs use -- pointed at
 // an element that never existed and the jump silently did nothing. slugifyHeading is the

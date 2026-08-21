@@ -2,14 +2,21 @@
   function createThemeController({ matchMedia, storage, documentRef, getRefs, onThemeApplied }) {
     let theme = storage.getItem('theme') || 'auto'
 
-    function applyTheme() {
-      const isDark = theme === 'dark' || (theme === 'auto' && matchMedia.matches)
-      documentRef.documentElement.setAttribute('data-theme', isDark ? 'dark' : 'light')
-
+    // Split out so print/PDF export can force the light hljs stylesheet for the duration of
+    // the job and restore it afterward without touching the stored theme setting or re-running
+    // applyTheme()'s other side effects (icon labels, mermaid redraw).
+    function applyCodeTheme(isDark) {
       const hlDark = documentRef.getElementById('hljs-dark')
       const hlLight = documentRef.getElementById('hljs-light')
       if (hlDark) hlDark.disabled = !isDark
       if (hlLight) hlLight.disabled = isDark
+    }
+
+    function applyTheme() {
+      const isDark = theme === 'dark' || (theme === 'auto' && matchMedia.matches)
+      documentRef.documentElement.setAttribute('data-theme', isDark ? 'dark' : 'light')
+
+      applyCodeTheme(isDark)
 
       const refs = getRefs ? getRefs() : null
       if (refs) {
@@ -56,6 +63,7 @@
 
     return {
       applyTheme,
+      applyCodeTheme,
       toggleTheme,
       handleSystemThemeChange,
       getTheme,

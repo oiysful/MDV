@@ -202,9 +202,58 @@
       getRefs().scrollArea.scrollTo({ top: 0, behavior: 'smooth' })
     }
 
+    const PRINT_RESTORE_TIMEOUT_MS = 5000
+
+    // Both `#content`'s @media print rules (index.html) and mermaid's baked-in SVG palette
+    // and hljs's stylesheet swap need to be light for the duration of a print/PDF job, even
+    // when the screen is in dark mode -- the @media print CSS variables handle the body, but
+    // mermaid bakes its colors into the SVG at draw time and hljs is a stylesheet toggle, so
+    // both need to be redrawn/swapped for real, then put back. themeController's stored theme
+    // is never touched, so the screen's own state is unaffected once this resolves.
+    async function withPrintPalette(run) {
+      // Always return a promise -- a function whose whole job is sequencing must not sometimes
+      // return a bare value and sometimes a promise, or callers desync.
+      if (!themeController.getIsDark()) return await run()
+      const refs = getRefs()
+      themeController.applyCodeTheme(false)
+      await markdownController.applyMermaidTheme(refs.content, false)
+      try {
+        return await run()
+      } finally {
+        // Re-read the live theme rather than assuming dark: the renderer isn't blocked while
+        // the print/PDF job runs (the save dialog and printToPDF both live in the main
+        // process), so a stored theme of 'auto' can flip light mid-job via
+        // handleSystemThemeChange. Restoring to a stale "dark" in that case would reintroduce
+        // this exact bug in the opposite direction. Swallow a restore failure (e.g. corrupt
+        // data-mermaid-src) rather than let it replace the job's own result/error.
+        try {
+          const stillDark = themeController.getIsDark()
+          themeController.applyCodeTheme(stillDark)
+          await markdownController.applyMermaidTheme(refs.content, stillDark)
+        } catch {}
+      }
+    }
+
+    // windowRef.print() in Electron doesn't block on a system dialog like stock Chrome --
+    // it hands off to the print job and returns immediately. Restoring on that return would
+    // flip the palette back to dark before the job has actually captured the page, recreating
+    // the same bug this is fixing. Restoration is instead driven by `afterprint`, with a timer
+    // as a safety net in case some environment never fires it.
     async function printDoc() {
       if (ensurePreviewRendered) await ensurePreviewRendered()
-      windowRef.print()
+      await withPrintPalette(() => new Promise(resolve => {
+        let done = false
+        const finish = () => {
+          if (done) return
+          done = true
+          windowRef.clearTimeout(timer)
+          windowRef.removeEventListener('afterprint', finish)
+          resolve()
+        }
+        const timer = windowRef.setTimeout(finish, PRINT_RESTORE_TIMEOUT_MS)
+        windowRef.addEventListener('afterprint', finish, { once: true })
+        windowRef.print()
+      }))
     }
 
     async function exportPdf() {
@@ -212,7 +261,7 @@
       if (!tab) return
       if (ensurePreviewRendered) await ensurePreviewRendered()
       const suggestedName = `${(tab.filename || 'untitled.md').replace(/\.(md|markdown)$/i, '')}.pdf`
-      const res = await api.exportPdf(suggestedName)
+      const res = await withPrintPalette(() => api.exportPdf(suggestedName))
       if (res.error) {
         alert(`PDF 내보내기 실패: ${res.error}`)
         return
@@ -375,16 +424,11 @@
         themeController.handleSystemThemeChange()
       })
 
-      windowRef.addEventListener('beforeprint', () => {
-        documentRef.getElementById('hljs-dark').disabled = true
-        documentRef.getElementById('hljs-light').disabled = false
-      })
-
-      windowRef.addEventListener('afterprint', () => {
-        const isDark = documentRef.documentElement.getAttribute('data-theme') === 'dark'
-        documentRef.getElementById('hljs-dark').disabled = !isDark
-        documentRef.getElementById('hljs-light').disabled = isDark
-      })
+      // hljs (and mermaid) palette for print/PDF is owned entirely by withPrintPalette now --
+      // it awaits the actual redraw and restores via this same `afterprint` event, so a second
+      // independent beforeprint/afterprint listener pair here would race it (this one used to
+      // flip hljs back to dark on `afterprint` with no coordination, which could land before
+      // withPrintPalette's own restore, or paper over its results).
 
       // ⌘O/⌘N/⌘S/⌘⇧S/⌘T/⌘W/⌘U/⌘\/⌘F/⌘P/⌘⇧]/⌘⇧[ are handled by native menu
       // accelerators (src/main.js#buildMenu) so they aren't duplicated here — a

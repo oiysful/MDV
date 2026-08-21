@@ -46,9 +46,7 @@ const markdownController = window.MDVMarkdown.createMarkdownController({
   // script has finished loading, using whatever theme is current at that moment; referencing
   // themeController here is safe even though it's declared further down this file -- this
   // callback only ever runs later, well after both controllers exist.
-  onMermaidLoaded: () => {
-    mermaid.initialize({ startOnLoad: false, securityLevel: 'strict', theme: themeController.getIsDark() ? 'dark' : 'default' })
-  },
+  onMermaidLoaded: () => markdownController.initMermaidTheme(themeController.getIsDark()),
 })
 
 const themeController = window.MDVTheme.createThemeController({
@@ -57,10 +55,7 @@ const themeController = window.MDVTheme.createThemeController({
   documentRef: document,
   getRefs: () => $,
   onThemeApplied: isDark => {
-    if (typeof mermaid !== 'undefined') {
-      mermaid.initialize({ startOnLoad: false, securityLevel: 'strict', theme: isDark ? 'dark' : 'default' })
-    }
-    if ($ && $.content) markdownController.rerenderMermaidTheme($.content)
+    if ($ && $.content) void markdownController.applyMermaidTheme($.content, isDark)
   },
 })
 
