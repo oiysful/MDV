@@ -614,6 +614,12 @@
       cachedHeadings = geometry.trackActive ? built.map(({ slug, top }) => ({ el: null, id: slug, top })) : []
       prevTocLink = null
       prevTocHref = ''
+      // Re-derive the highlight now rather than waiting for the next scroll event. A rebuild
+      // (entering source mode, the debounced rebuild while typing, a window resize) replaces
+      // every link, and if #scroll-area doesn't scroll afterwards -- e.g. it is already at the
+      // position it's about to be set to, as on CI, where entering source mode doesn't scroll
+      // the caret into view -- no scroll event fires and the TOC shows no active entry at all.
+      refreshTocActive(refs.scrollArea.scrollTop)
     }
 
     async function render(text, filename, docPath) {

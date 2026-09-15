@@ -399,6 +399,44 @@ test('TOC scrollspy tracks scroll position in pure source mode instead of sticki
   }
 })
 
+// Why the test above failed on CI only (2026-08-18 onward): on a GitHub-hosted runner entering
+// source mode doesn't scroll the view, so #scroll-area was already at 0 and that test's
+// `scrollTop = 0` fired no scroll event -- while rebuildSourceModeToc() had just replaced every
+// TOC link without re-deriving the active one. Locally the entry scroll masked it. Reproduce it
+// deterministically: rebuild while parked at the top, with no scroll afterwards.
+test('source-mode TOC rebuild keeps the active entry without waiting for a scroll event', async () => {
+  const tempDir = await fs.mkdtemp(path.join(os.tmpdir(), 'mdv-smoke-toc-rebuild-'))
+  const docPath = path.join(tempDir, 'toc-rebuild.md')
+  const sections = Array.from({ length: 12 }, (_, i) => `## Section ${i + 1}\n\n${'Paragraph text for scroll height. '.repeat(40)}`).join('\n\n')
+  await fs.writeFile(docPath, `# TOC Rebuild Doc\n\n${sections}\n`, 'utf-8')
+
+  const { electronApp, page } = await launchApp()
+  try {
+    await page.waitForSelector('#empty')
+    await stubOpenDialog(electronApp, [docPath])
+    await emitRendererCommand(electronApp, 'openFile')
+    await page.waitForFunction(() => document.title === 'toc-rebuild')
+
+    await emitRendererCommand(electronApp, 'toggleSource')
+    await page.waitForFunction(() => document.getElementById('scroll-area').classList.contains('source-mode'))
+    await page.waitForFunction(() => document.querySelectorAll('#toc-list a').length === 13)
+
+    await page.evaluate(() => { document.getElementById('scroll-area').scrollTop = 0 })
+    await page.waitForFunction(() => document.querySelector('#toc-list a.active')?.getAttribute('href') === '#toc-rebuild-doc')
+
+    // editor.js's resize listener runs refreshSourceModeToc() -> rebuildSourceModeToc()
+    // synchronously, replacing every link while #scroll-area stays at 0 -- no scroll follows.
+    await page.evaluate(() => window.dispatchEvent(new Event('resize')))
+    assert.equal(
+      await page.evaluate(() => document.querySelector('#toc-list a.active')?.getAttribute('href') ?? null),
+      '#toc-rebuild-doc',
+    )
+  } finally {
+    await closeApp(electronApp)
+    await fs.rm(tempDir, { recursive: true, force: true })
+  }
+})
+
 // Cause B from the same plan doc: in split view #scroll-area itself stops scrolling
 // (overflow: hidden), so scrollspy needs a listener on #content, the pane that actually
 // scrolls there -- otherwise the TOC highlight never updates while split view is open.
