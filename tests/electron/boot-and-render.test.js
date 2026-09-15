@@ -566,6 +566,49 @@ test('long code lines scroll under the copy button and it stays clickable', asyn
   }
 })
 
+test('long unbroken inline code in a table cell wraps instead of widening the table past #content', async () => {
+  const { electronApp, page } = await launchApp()
+
+  try {
+    await page.waitForSelector('#empty')
+
+    // No hyphens: a hyphen is a normal line-break opportunity, which would shrink the
+    // path's min-content even under break-word and hide the overflow this guards against.
+    const longPath = 'src/renderer/components/very/deeply/nested/directory/structure/with/a/really/long/filename/that/keeps/going/forever.js'
+    const html = await page.evaluate(longPath => {
+      const ctrl = window.MDVMarkdown.createMarkdownController({
+        getRefs: () => ({}),
+        markedLib: window.marked,
+        hljsLib: window.hljs,
+        pathUtils: window.MDVPathUtils,
+        api: window.api,
+      })
+      return ctrl.renderMarkdown(`| 이름 | 경로 | 비고 |\n| --- | --- | --- |\n| 파일 | \`${longPath}\` | 일반 텍스트 설명 |`)
+    }, longPath)
+
+    await page.evaluate(htmlStr => {
+      const content = document.getElementById('content')
+      content.classList.remove('is-empty')
+      content.innerHTML = htmlStr
+    }, html)
+
+    // Table auto layout sizes each column from its min-content width. Under
+    // overflow-wrap: break-word the path's wrap points don't count toward min-content, so
+    // the path column locked to the full path width and the table overflowed #content.
+    const sizes = await page.locator('#content').evaluate(el => ({
+      contentWidth: el.clientWidth,
+      contentScrollWidth: el.scrollWidth,
+      tableWidth: el.querySelector('table').getBoundingClientRect().width,
+      codeLines: el.querySelector('td code').getClientRects().length,
+    }))
+    assert.ok(sizes.contentScrollWidth <= sizes.contentWidth, JSON.stringify(sizes))
+    assert.ok(sizes.tableWidth <= sizes.contentWidth + 1, JSON.stringify(sizes))
+    assert.ok(sizes.codeLines > 1, `expected the long path to wrap: ${JSON.stringify(sizes)}`)
+  } finally {
+    await closeApp(electronApp)
+  }
+})
+
 test('PDF export button sits right of print and saves a PDF', async () => {
   const tempDir = await fs.mkdtemp(path.join(os.tmpdir(), 'mdv-smoke-'))
   const pdfPath = path.join(tempDir, 'basic.pdf')
