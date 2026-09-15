@@ -12,6 +12,17 @@
 - [done/2026-08-18/](./done/2026-08-18/) — [15](./done/2026-08-18/15-in-app-update-notification.md) 인앱 업데이트 알림(notify-only) 기능 — Electron `autoUpdater`는 unsigned 앱이라 macOS에서 적용 불가함을 확인, GitHub Releases 폴링 + `brew upgrade` 안내 배너 방식으로 확정·구현. 실제 GitHub API 대상 수동 검증까지 완료. 2026-08-18 구현·검증 완료.
 - [done/2026-08-21/](./done/2026-08-21/) — [16](./done/2026-08-21/16-mermaid-hidden-render-and-print-palette.md) mermaid 렌더링 버그 2건 — 소스 모드(⌘U) 왕복 시 다이어그램이 빈 공간으로 남는 문제(`display:none` 중 `getBBox()`가 0을 반환), 다크 모드 인쇄/PDF에서 다이어그램만 검게 남는 문제(mermaid가 팔레트를 SVG에 구워 넣어 `@media print`의 CSS 변수 강제를 따라오지 않음). advisor + code-reviewer 리뷰로 계획서 범위 밖 레이스 3건(인쇄 복원 시 테마 재확인, 동시 재렌더 직렬화, 파킹 중 스냅샷 자체복구)도 함께 반영. 2026-08-21 구현·검증 완료.
 
+## [`17-shortcuts-and-fullscreen-toolbar.md`](./17-shortcuts-and-fullscreen-toolbar.md) — ⌘B 좌측 패널·⌘⇧O 폴더 열기 단축키, + 메뉴 단축키 안내, 전체화면 툴바 좌측 여백 (2026-09-15 조사)
+
+Ian이 요청한 4건을 조사한 계획서이며, 4건 모두 구현할 수 있다. ⌘B는 소스 편집기의 "굵게"와
+충돌하는데, 메뉴 단축키는 렌더러가 `preventDefault()`해도 함께 발동한다(fb2284d의 ⌘T 이중 실행이
+근거). 그래서 Ian의 결정(포커스로 구분)대로 `triggeredByAccelerator`와 포커스를 함께 검사하는
+가드를 둔다. 전체화면에서 비는 자리는 `.traffic-gap` 70px 여백이다. CSS만으로는 전체화면을 감지할
+수 없음을 실측으로 확인했으므로, main → renderer IPC로 알려준다. 전체화면 이벤트는 전환 애니메이션이
+끝난 뒤에야 온다. 그래서 신호등과 + 버튼이 겹치지 않도록, 진입은 `enter-full-screen`을 기다리고
+해제는 전환이 시작될 때 오는 `resize`에서 바로 알린다. 실제 키보드 동작은 자동 테스트로 재현할 수
+없어 수동 검증 항목으로 남겼다. 구현 대기.
+
 ## [`12-i18n-feasibility-assessment.md`](./12-i18n-feasibility-assessment.md) — 전체 UI i18n 적용 타당성 검토 (2026-08-12 조사)
 
 착수 계획이 아니라 조사 보고서. 하드코딩된 한국어 UI 문자열 규모(~171줄, 13개 파일)와 테스트 커플링(21개 테스트 파일이 한국어 리터럴을 직접 assert)을 근거로, 전면 착수보다 단계적 축소 착수를 권장. 실행 여부는 사용자 결정 대기.
