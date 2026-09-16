@@ -140,6 +140,16 @@ Ian의 요청 원문:
   없는 값에 의존하지 않게 되고, `app.js` 명령 추가도 필요 없다. "포커스로 구분"이라는 결정도 그대로
   지켜진다. 1차 설계는 현재 안으로 두고, 수동 검증에서 실패하면 이 대비책으로 바꾼다.
 
+  **전환할 때 같이 고쳐야 하는 것** (구현 후 추가). 코드는 `main.js`의 메뉴 항목 `click` **한 줄**이
+  전부지만, 테스트 두 개가 현재 2-명령 구조를 고정하고 있어 함께 바뀌어야 한다. 둘 다
+  `menu-and-guides.test.js`에 있다.
+  - `보기 > 좌측 패널 표시/숨기기 still toggles when the source editor holds focus` — 마우스 클릭이
+    편집기 포커스와 무관하게 토글한다는 단언. 대비책에서는 성립하지 않으므로 기대값을 뒤집는다.
+  - `the ⌘B menu item routes the accelerator and the mouse click to different commands` — 두 분기가
+    서로 **다른** 명령으로 간다는 단언. 대비책에서는 분기 자체가 없어지므로 제거한다.
+
+  이 두 개만 빨개지고 나머지는 초록으로 남는다. 그게 정상이며 버그 신호가 아니다.
+
 ## 테스트
 - `menu-and-guides.test.js`
   - "보기 > 좌측 패널 표시/숨기기" 항목이 있고 `accelerator === 'CmdOrCtrl+B'`인지 확인한다

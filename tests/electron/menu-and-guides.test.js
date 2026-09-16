@@ -391,6 +391,18 @@ test('split view blocks both sidebar commands, not just the disabled toolbar but
     // state the precondition it depends on as an assertion rather than letting it time out.
     assert.equal(await sidebarClosed(), false, 'the sidebar should be open before split view force-closes it')
 
+    const sidebarBadge = () => page.evaluate(() => {
+      document.body.classList.add('cmd-held')
+      const content = getComputedStyle(document.getElementById('btn-sidebar'), '::after').content
+      document.body.classList.remove('cmd-held')
+      return content
+    })
+    // Read the badge while the button is still enabled. Without this, the 'none' asserted after
+    // entering split view would be indistinguishable from a badge that never rendered at all --
+    // getComputedStyle reports 'none' both when the :disabled rule suppresses the pseudo-element
+    // and when no rule ever generated one.
+    assert.equal(await sidebarBadge(), '"⌘B"', 'an enabled #btn-sidebar shows its ⌘B badge while Cmd is held')
+
     await armSidebarTransitionWatch(page)
     await emitRendererCommand(electronApp, 'toggleSplitView')
     await page.waitForFunction(() => document.getElementById('scroll-area').classList.contains('split-mode'))
@@ -412,13 +424,8 @@ test('split view blocks both sidebar commands, not just the disabled toolbar but
 
     // ...and while ⌘B does nothing here, the button must not keep advertising it. #btn-sidebar
     // is disabled but still visible in split view, unlike #btn-split which goes display:none.
-    const badge = await page.evaluate(() => {
-      document.body.classList.add('cmd-held')
-      const content = getComputedStyle(document.getElementById('btn-sidebar'), '::after').content
-      document.body.classList.remove('cmd-held')
-      return content
-    })
-    assert.equal(badge, 'none', 'a disabled #btn-sidebar must not show a ⌘B badge it cannot honour')
+    // The enabled-state read above is what makes this assertion mean something.
+    assert.equal(await sidebarBadge(), 'none', 'a disabled #btn-sidebar must not show a ⌘B badge it cannot honour')
   } finally {
     await closeApp(electronApp)
   }
