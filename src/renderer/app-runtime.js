@@ -194,8 +194,25 @@
       getRefs().sidebar.classList.toggle('closed', !open)
     }
 
+    // Split view force-closes the sidebar and disables its button (editor.js#setSplitMode),
+    // but the command path (menu accelerator, renderer-command IPC) never passed through that
+    // block -- without this guard ⌘B reopens the panel split view just closed. It belongs here
+    // and not in applySidebarOpen: setSplitMode drives that function (handed in as
+    // setSidebarOpen) to do the force-close/restore itself, so guarding there would break
+    // split view's own sidebar handling.
     function toggleSidebar() {
+      if (getEditorController()?.getSplitMode()) return
       applySidebarOpen(!getSidebarOpen())
+    }
+
+    // ⌘B is also the source editor's "bold" shortcut (editor.js), and the menu accelerator
+    // fires alongside it regardless of the editor's preventDefault() (fb2284d's ⌘T
+    // double-fire). With the editor focused, do nothing -- its own keydown already applied
+    // the markers. Only the accelerator routes here; a mouse click on the menu item goes to
+    // toggleSidebar and toggles unconditionally.
+    function toggleSidebarFromShortcut() {
+      if (documentRef.activeElement === getRefs().sourceEditor) return
+      toggleSidebar()
     }
 
     function goTop() {
@@ -292,7 +309,13 @@
       documentRef.querySelectorAll('.stab').forEach(button => {
         button.classList.toggle('active', button.dataset.commandArg === tab)
       })
-      if (!getSidebarOpen()) {
+      // Sibling of toggleSidebar's split-view guard, and it has to be here rather than in
+      // applySidebarOpen for the same reason (setSplitMode drives that function). Without it
+      // openFolder's switchToExplorerTab() reopens the sidebar split view force-closed, and
+      // nothing can close it again: #btn-sidebar stays disabled (editor.js#setSplitMode is the
+      // only thing that sets it) and both sidebar commands hit their own guard, so the only
+      // way out is toggling split view twice. ⌘⇧O made that trap a single keystroke away.
+      if (!getSidebarOpen() && !getEditorController()?.getSplitMode()) {
         setSidebarOpen(true)
         refs.sidebar.classList.remove('closed')
       }
@@ -490,6 +513,7 @@
       switchToNextTab,
       switchToPrevTab,
       toggleSidebar,
+      toggleSidebarFromShortcut,
       setSidebarOpen: applySidebarOpen,
       goTop,
       printDoc,
