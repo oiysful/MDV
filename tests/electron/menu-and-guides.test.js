@@ -315,6 +315,14 @@ test('toggleSidebarFromShortcut skips the toggle only while the source editor ha
 
     await emitRendererCommand(electronApp, 'toggleSource')
     await page.waitForFunction(() => document.getElementById('source-view').style.display === 'block')
+    // Entering source mode schedules requestAnimationFrame(focusEditor) (editor.js#toggleSource),
+    // and #source-view is already display:block by the time that frame is queued -- so the wait
+    // above can return with the focus call still pending. On an occluded CI window frames are
+    // deferred, and this one landed after the test had moved focus to #btn-theme, pulling focus
+    // back to the editor so the command below correctly did nothing and the final wait timed out.
+    // Drain the pending frame here (two nested rAFs: the second runs a frame after the first,
+    // by which point anything queued earlier has run) so the app's own focus settles first.
+    await page.evaluate(() => new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve))))
     await page.evaluate(() => document.getElementById('source-editor').focus())
     await page.waitForFunction(() => document.activeElement?.id === 'source-editor')
 
