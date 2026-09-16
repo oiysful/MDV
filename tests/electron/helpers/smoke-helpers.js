@@ -63,6 +63,17 @@ async function emitUpdateAvailable(electronApp, payload) {
   }, payload)
 }
 
+// Drives the main→renderer fullscreen channel directly instead of win.setFullScreen(true):
+// a real fullscreen toggle moves the window to its own macOS Space and takes ~0.6s of
+// animation, which is flaky on CI macOS runners. This sends exactly what main.js's
+// enter/leave-full-screen handlers send, so the renderer side stays deterministic.
+async function emitFullScreenChanged(electronApp, fullScreen) {
+  await electronApp.evaluate(async ({ BrowserWindow }, nextFullScreen) => {
+    const win = BrowserWindow.getAllWindows()[0]
+    win.webContents.send('fullscreen-changed', nextFullScreen)
+  }, fullScreen)
+}
+
 async function emitRendererCommand(electronApp, command) {
   await electronApp.evaluate(async ({ BrowserWindow }, nextCommand) => {
     const win = BrowserWindow.getAllWindows()[0]
@@ -115,6 +126,7 @@ module.exports = {
   createTempMarkdown,
   emitFileOpened,
   emitUpdateAvailable,
+  emitFullScreenChanged,
   emitRendererCommand,
   clickApplicationMenuItem,
   armSidebarTransitionWatch,

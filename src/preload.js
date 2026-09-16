@@ -31,5 +31,6 @@ contextBridge.exposeInMainWorld('api', {
   onRestoreSession:(cb) => ipcRenderer.on('restore-session', (_, data) => cb(data)),
   onRendererCommand:(cb) => ipcRenderer.on('renderer-command', (_, command) => cb(command)),
   onThemeChanged:(cb) => ipcRenderer.on('theme-changed', (_, dark) => cb(dark)),
+  onFullScreenChanged:(cb) => ipcRenderer.on('fullscreen-changed', (_, fullScreen) => cb(Boolean(fullScreen))),
   onUpdateAvailable:(cb) => ipcRenderer.on('update-available', (_, data) => cb(data)),
 })

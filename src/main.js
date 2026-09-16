@@ -230,11 +230,29 @@ function createWindow(filePath = null, restoredSession = null) {
     if (url !== win.webContents.getURL()) event.preventDefault()
   })
 
+  // Native fullscreen hides the traffic lights, so the renderer drops .traffic-gap.
+  let lastFullScreen = null
+  const sendFullScreenState = (force = false) => {
+    const fullScreen = win.isFullScreen()
+    if (!force && fullScreen === lastFullScreen) return
+    lastFullScreen = fullScreen
+    win.webContents.send('fullscreen-changed', fullScreen)
+  }
+  win.on('enter-full-screen', () => sendFullScreenState())
+  win.on('leave-full-screen', () => sendFullScreenState())
+  // resize arrives ~30-40ms into the transition with isFullScreen() already flipped, while
+  // enter/leave-full-screen only fire after the ~0.6s macOS animation. Hook it for the leave
+  // direction only: the gap must be restored before the traffic lights reappear. Entering,
+  // the lights are still drawn through the animation, so an early collapse would overlap
+  // #btn-add for ~0.6s.
+  win.on('resize', () => { if (!win.isFullScreen()) sendFullScreenState() })
+
   // did-finish-load fires on every load (including page.reload()), so restore is gated
   // behind a one-shot flag — otherwise a reload would resurrect tabs closed since launch.
   let sessionRestored = false
   win.webContents.on('did-finish-load', () => {
     win.webContents.send('theme-changed', nativeTheme.shouldUseDarkColors)
+    sendFullScreenState(true)
     if (cachedUpdateInfo) win.webContents.send('update-available', cachedUpdateInfo)
     if (filePath) {
       sendFile(win, filePath)
@@ -914,6 +932,7 @@ function buildMenu() {
         },
         {
           label: '폴더 열기…',
+          accelerator: 'CmdOrCtrl+Shift+O',
           click: (_, win) => sendRendererCommand('openFolder', win),
         },
         { type: 'separator' },
@@ -986,6 +1005,16 @@ function buildMenu() {
           label: '분할뷰',
           accelerator: 'CmdOrCtrl+\\',
           click: (_, win) => sendRendererCommand('toggleSplitView', win),
+        },
+        {
+          label: '좌측 패널 표시/숨기기',
+          accelerator: 'CmdOrCtrl+B',
+          // A real ⌘B press also reaches the source editor's own keydown (bold) -- menu
+          // accelerators fire even when the renderer preventDefault()s (fb2284d's ⌘T
+          // double-fire). The shortcut variant lets the renderer skip the toggle when the
+          // editor owns the key; a mouse click on the menu item always toggles.
+          click: (_, win, event) => sendRendererCommand(
+            event?.triggeredByAccelerator ? 'toggleSidebarFromShortcut' : 'toggleSidebar', win),
         },
         {
           label: '테마 전환',

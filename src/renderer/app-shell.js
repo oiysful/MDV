@@ -100,6 +100,12 @@
         }
       })
 
+      // Optional-called so an older preload (or any build where this bridge is absent) still
+      // gets every other handler registered -- fullscreen chrome is cosmetic and must not be
+      // the thing that takes IPC registration down. The unguarded calls around it are the
+      // channels the app cannot run without, so they are deliberately allowed to throw.
+      api.onFullScreenChanged?.(fullScreen => documentRef.body.classList.toggle('is-fullscreen', fullScreen))
+
       api.onFileOpened(async payload => {
         await handleFileOpened(payload)
       })

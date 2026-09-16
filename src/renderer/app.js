@@ -251,6 +251,7 @@ function createRendererCommands() {
 
     // Static shell commands: toolbar, search bar, guide, sidebar, and explorer controls.
     toggleSidebar: () => runtimeController.toggleSidebar(),
+    toggleSidebarFromShortcut: () => runtimeController.toggleSidebarFromShortcut(),
     toggleSource: () => runtimeController.toggleSource(),
     toggleSplitView: () => runtimeController.toggleSplitView(),
     toggleWrap: () => runtimeController.toggleWrap(),
