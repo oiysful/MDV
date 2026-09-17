@@ -130,7 +130,7 @@ npm install
 npm start
 ```
 
-Branching, PR, and CI conventions are in [CONTRIBUTING.md](CONTRIBUTING.md); the release process is in [RELEASING.md](RELEASING.md). For the full architecture, module map, and test-tier breakdown, see [AGENTS.md](AGENTS.md).
+Branching, PR, and CI conventions are in [CONTRIBUTING.md](CONTRIBUTING.md); the release process is in [RELEASING.md](RELEASING.md). For the full architecture, module map, and test-tier breakdown, see [AGENTS.md](AGENTS.md). Rendered architecture, release, sequence, data-flow, and lifecycle diagrams live in [docs/diagrams/](docs/diagrams/).
 
 ## Build a distributable app
 

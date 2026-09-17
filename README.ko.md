@@ -130,7 +130,7 @@ npm install
 npm start
 ```
 
-브랜치, PR, CI 관례는 [CONTRIBUTING.ko.md](CONTRIBUTING.ko.md)에, 릴리스 프로세스는 [RELEASING.ko.md](RELEASING.ko.md)에 있습니다. 전체 아키텍처, 모듈 맵, 테스트 티어 상세는 [AGENTS.md](AGENTS.md)를 참고하세요.
+브랜치, PR, CI 관례는 [CONTRIBUTING.ko.md](CONTRIBUTING.ko.md)에, 릴리스 프로세스는 [RELEASING.ko.md](RELEASING.ko.md)에 있습니다. 전체 아키텍처, 모듈 맵, 테스트 티어 상세는 [AGENTS.md](AGENTS.md)를 참고하세요. 아키텍처·릴리스·시퀀스·데이터 흐름·생명주기 다이어그램은 [docs/diagrams/](docs/diagrams/)에 있습니다.
 
 ## 배포용 앱 빌드
 

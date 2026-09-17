@@ -10,6 +10,7 @@ Main stack: Electron main/preload + split renderer HTML/CSS/JS modules.
 ```text
 ./
 ├── src/              # app code: Electron main, preload bridge, renderer
+├── docs/             # plans (`docs/plans/`) and rendered diagrams (`docs/diagrams/`)
 ├── assets/           # packaged desktop assets (icon only right now)
 ├── scripts/          # build/install/update shell scripts (see scripts/AGENTS.md)
 ├── package.json      # app entry, npm scripts, electron-builder config
@@ -25,6 +26,7 @@ Main stack: Electron main/preload + split renderer HTML/CSS/JS modules.
 | Packaging | `package.json#build` | `electron-builder` config lives inline |
 | Distribution artifact | `dist/` | `MDV.app` + macOS `.zip` output after build (switched from `.dmg` 2026-07-20) |
 | App icon | `assets/icon.icns` | macOS build asset |
+| Visual overview of a flow | `docs/diagrams/` | 5 standalone HTML views (architecture, release workflow, open+watch sequence, render data flow, tab lifecycle); generated from the sibling `*.json` specs, never hand-edited |
 
 ## CODE MAP
 | Symbol / Area | Location | Role |
@@ -132,6 +134,7 @@ surface in the much slower Electron suite.
 - Local macOS packaging emits `dist/MDV-<version>-arm64-mac.zip` (filename follows `package.json#version`; switched from `.dmg` 2026-07-20); notarization is still not configured.
 - Local Sisyphus planning files are intentionally ignored and should not be treated as tracked project documentation.
 - `README.md`, `CONTRIBUTING.md`, and `RELEASING.md` each have a Korean translation (`README.ko.md`, `CONTRIBUTING.ko.md`, `RELEASING.ko.md`) added 2026-08-06, cross-linked to each other via a language-switcher line at the top of each file. The `.ko.md` files link to each other (not back to the English originals) so a Korean reader stays in Korean docs end to end. When editing content in one of the English files, update its `.ko.md` counterpart in the same change — they're expected to stay in sync, not just exist once. `AGENTS.md` itself is intentionally excluded (project/agent-facing, not public-facing).
+- `docs/diagrams/` holds five standalone HTML diagram views, each generated from the `*.json` spec beside it: architecture, release workflow, open+watch sequence, render data flow, and tab lifecycle. Their content is derived from this file plus `src/AGENTS.md`, `src/renderer/AGENTS.md`, `README.md`, and `RELEASING.md` — so a structural change in any of those (a new IPC channel, a changed release step, a new render stage, a new tab state) should update the matching spec and regenerate in the same change, the same way `.ko.md` counterparts are kept in sync. Never hand-edit the HTML: it is fully regenerated from the spec and manual edits are silently lost on the next render. `docs/diagrams/README.md` carries the per-type regeneration commands, and the `*.visual-check.*` receipts/captures the render tooling emits are gitignored as regenerable evidence. The diagrams are authored in Korean; the viewer's own chrome and legend stay English because the renderer's locale support does not include Korean.
 
 
 ## 🔐 Security Skill Active
