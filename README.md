@@ -143,7 +143,7 @@ npm run build
 Current build outputs:
 
 - `dist/mac-arm64/MDV.app`
-- `dist/MDV-1.2.0-arm64-mac.zip`
+- `dist/MDV-1.3.0-arm64-mac.zip`
 
 ## Distribution Notes
 
