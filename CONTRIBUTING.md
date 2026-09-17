@@ -18,6 +18,24 @@ MDV uses [GitHub Flow](https://docs.github.com/en/get-started/using-github/githu
    ```
 5. Merge the PR (merge commit, matching existing history). The branch is deleted automatically on merge.
 
+## Dependencies
+
+`.npmrc` sets `min-release-age=7`: npm will not install a package version published less than seven days ago.
+
+The attack this guards against is a maintainer account takeover followed by a malicious patch release. Those are usually caught and unpublished within hours, so nearly all of the risk sits in the first days after a version appears. This project has no reason to take a release the day it ships, so waiting out that window costs nothing and closes it.
+
+What you will actually notice: `npm install` and `npm audit fix` skip a fix whose patched version is still inside the cooldown, and print
+
+```
+npm warn audit ... left at a vulnerable version because a fix is newer than the release-age cutoff
+```
+
+It warns rather than failing, and the line is easy to lose in scrollback — so if an advisory looks unfixable, check for that warning before concluding it is blocked upstream. Re-run the audit once the cooldown passes.
+
+Do not reach for `npm audit fix --force`, and do not lower the number to get a green audit; either one trades the guard for exactly the days it exists to cover. If a fix is urgent enough to skip the wait, make that call deliberately and record it in `memory-security.md`.
+
+CI is unaffected: `npm ci` installs the pinned versions in `package-lock.json` and never consults the cooldown. The setting matters when dependencies are *changed*, which happens on a contributor's machine.
+
 ## Releasing
 
 See [RELEASING.md](RELEASING.md).
