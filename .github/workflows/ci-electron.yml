@@ -1,0 +1,84 @@
+name: CI (Electron)
+
+# Split out of ci.yml on 2026-09-17. `Electron smoke suite` alone is ~226s of this job's
+# ~250s, and it was running on every docs-only push to main. The cheap job left in ci.yml
+# (~15s total: unit 2s, controller 2s, plus the dependency audit gate) is deliberately NOT
+# filtered, so a docs commit still gets a status check and the audit gate never goes quiet.
+# Same reasoning AGENTS.md already records for the unit suite: do not build machinery to
+# subset something that finishes in seconds -- filter the one expensive thing instead.
+#
+# DO NOT collapse paths-ignore into '**/*.md'. tests/fixtures/ holds live Markdown fixtures
+# this suite actually opens (basic.md, latex.md, mermaid.md, search-list.md, and the
+# explorer/ tree, including .hidden/secret.md), so an extension glob would skip the suite on
+# exactly the change most likely to break it. paths-ignore has no negation -- you cannot
+# re-include a path once a pattern covers it -- so documentation locations are listed one by
+# one instead, and anything not listed here (tests/, scripts/, assets/, package*.json,
+# .npmrc, .github/) still triggers a full run. GitHub skips the workflow only when every
+# file in the push or PR matches one of these patterns.
+#
+# src/ is covered by two patterns rather than one 'src/**.md' on purpose. GitHub documents
+# '**' as matching slashes too, which would make the single pattern enough, but minimatch
+# and most local glob tooling read '**' as a whole path segment and then miss
+# src/renderer/AGENTS.md. Spelling out 'src/*.md' plus 'src/**/*.md' means both readings
+# agree, so a local dry run of this list cannot disagree with what Actions actually does.
+#
+# main has no branch protection today, so a skipped workflow blocks nothing. If required
+# status checks are ever turned on, note that a workflow skipped by paths-ignore reports no
+# status at all and would leave such a PR waiting forever: require the `test` job from
+# ci.yml instead, or move this gate to a `changes` job whose `if:` marks it skipped.
+on:
+  pull_request:
+    branches: [main]
+    paths-ignore:
+      - '*.md'
+      - 'src/*.md'
+      - 'src/**/*.md'
+      - 'docs/**'
+      - '.skills/**'
+      - 'LICENSE'
+  push:
+    branches: [main]
+    paths-ignore:
+      - '*.md'
+      - 'src/*.md'
+      - 'src/**/*.md'
+      - 'docs/**'
+      - '.skills/**'
+      - 'LICENSE'
+
+# This job only reads the tree and runs tests, so its GITHUB_TOKEN needs nothing beyond
+# that -- same reasoning as ci.yml. Without this block the token inherits the repository
+# default, which can be read-write.
+permissions:
+  contents: read
+
+jobs:
+  test-electron:
+    runs-on: macos-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+
+      - name: Install dependencies
+        run: npm ci
+
+      # `npm ci` alone doesn't always finish downloading the Electron binary (it can defer
+      # to a lazy first-require download instead). node --test spawns each test file as its
+      # own child process, so with --test-concurrency > 1 several processes would `require('electron')`
+      # for the first time at once and race to download+extract into the same node_modules/electron/dist
+      # -- this step forces that download to happen exactly once, serially, before any test runs.
+      - name: Ensure Electron binary is downloaded
+        run: node -e "require('electron')"
+
+      # 4 was a first guess (see AGENTS.md/CONTRIBUTING.md) and proved too aggressive: the
+      # first real run finished in ~197s (vs ~30s locally) with 2 timing-sensitive failures
+      # (a scroll-restore assertion and a 15s waitForFunction) that don't reproduce locally --
+      # both point at CPU contention from 4 concurrent Electron instances on a GitHub-hosted
+      # macOS runner's limited cores, not a real bug. Lowered to 2; revisit if CI is still
+      # flaky or if it's comfortably fast enough to try raising again later.
+      - name: Electron smoke suite
+        run: npm run test:electron -- --test-concurrency=2

@@ -11,7 +11,7 @@ MDV uses [GitHub Flow](https://docs.github.com/en/get-started/using-github/githu
 
 1. Branch off `main` using a `type/short-description` name — `feat/`, `fix/`, `docs/`, `harden/`, etc.
 2. Commit in small, focused steps. Open a pull request early so work is visible.
-3. Before merging, CI (`.github/workflows/ci.yml`) must pass: `npm run test:unit`, `npm run test:controller`, a dependency audit gate, and the Electron smoke suite (`test-electron` job, macOS runner).
+3. Before merging, CI must pass. `.github/workflows/ci.yml` runs `npm run test:unit`, `npm run test:controller`, and a dependency audit gate on every push and PR, including documentation-only ones — it takes about 15s. `.github/workflows/ci-electron.yml` runs the Electron smoke suite (macOS runner, ~4min) and is skipped when a change touches only documentation; that file lists the excluded paths and explains why `tests/fixtures/*.md` must keep triggering it.
 4. Run the Electron smoke suite locally at least once before pushing (see [AGENTS.md](AGENTS.md) test tiers) — CI now runs it too, but a local run surfaces failures faster than waiting on the macOS runner:
    ```
    npm run test:electron

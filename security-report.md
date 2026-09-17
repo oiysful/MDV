@@ -176,7 +176,7 @@ too, with the only check that catches it: execute the step.
 | **Injection** | No `eval`, `new Function`, or `child_process` anywhere in `src/`. Search queries escaped before `new RegExp` — no ReDoS from user input |
 | **Dependencies** | `npm audit` full tree: **0 vulnerabilities**. Lockfile committed. `min-release-age=7` now repo-level. Audit gate with an empty allowlist, so nothing is exempt |
 | **Secrets** | None in source or history. `.gitignore` covers `.env*`, `*.key`, `*.pem`, `secrets/`. The one `TAP_TOKEN=` is an env reference |
-| **CI** | `ci.yml` `contents: read`, `release.yml` `contents: write`, no `${{ }}` inside any `run:` block |
+| **CI** | `ci.yml` and `ci-electron.yml` `contents: read`, `release.yml` `contents: write`, no `${{ }}` inside any `run:` block |
 | **Resource limits** | Directory watch: depth 1, ignore list, 20,000-path circuit breaker that closes the watcher and warns rather than stalling the main process |
 | **IPC surface** | Every channel reviewed; the newest (`fullscreen-changed`) is main→renderer, one boolean, with no renderer-callable counterpart |
 

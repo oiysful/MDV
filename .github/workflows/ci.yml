@@ -1,5 +1,11 @@
 name: CI
 
+# This workflow is deliberately unfiltered: it runs on every push and PR to main, including
+# documentation-only ones. The whole thing takes ~15s (unit 2s, controller 2s, audit ~0s),
+# so filtering it would save nothing and would cost a status check plus a silent dependency
+# gate on those commits. The expensive half -- the ~4min macOS Electron smoke suite -- lives
+# in ci-electron.yml, which does skip documentation-only changes; that file explains which
+# paths are excluded and why an extension glob would be wrong here.
 on:
   pull_request:
     branches: [main]
@@ -67,33 +73,3 @@ jobs:
       - name: Audit dependencies (informational, full tree, all severities)
         continue-on-error: true
         run: npm audit
-
-  test-electron:
-    runs-on: macos-latest
-    timeout-minutes: 20
-    steps:
-      - uses: actions/checkout@v7
-
-      - uses: actions/setup-node@v7
-        with:
-          node-version: 22
-
-      - name: Install dependencies
-        run: npm ci
-
-      # `npm ci` alone doesn't always finish downloading the Electron binary (it can defer
-      # to a lazy first-require download instead). node --test spawns each test file as its
-      # own child process, so with --test-concurrency > 1 several processes would `require('electron')`
-      # for the first time at once and race to download+extract into the same node_modules/electron/dist
-      # -- this step forces that download to happen exactly once, serially, before any test runs.
-      - name: Ensure Electron binary is downloaded
-        run: node -e "require('electron')"
-
-      # 4 was a first guess (see AGENTS.md/CONTRIBUTING.md) and proved too aggressive: the
-      # first real run finished in ~197s (vs ~30s locally) with 2 timing-sensitive failures
-      # (a scroll-restore assertion and a 15s waitForFunction) that don't reproduce locally --
-      # both point at CPU contention from 4 concurrent Electron instances on a GitHub-hosted
-      # macOS runner's limited cores, not a real bug. Lowered to 2; revisit if CI is still
-      # flaky or if it's comfortably fast enough to try raising again later.
-      - name: Electron smoke suite
-        run: npm run test:electron -- --test-concurrency=2
