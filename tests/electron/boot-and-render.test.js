@@ -15,6 +15,51 @@ const {
 const MERMAID_MD = path.join(ROOT, 'tests/fixtures/mermaid.md')
 const LATEX_MD = path.join(ROOT, 'tests/fixtures/latex.md')
 
+// 2026-09-17 audit M2: JetBrains Mono used to come from fonts.googleapis.com /
+// fonts.gstatic.com, so opening a local document contacted a third party. csp.test.js pins
+// the markup and the CSP; this pins the behaviour those are supposed to produce -- that a
+// real boot issues no remote request at all, and that the font genuinely resolves from the
+// bundle rather than silently falling back to SF Mono with nobody noticing.
+test('booting the app makes no remote request, and the bundled code font resolves', async () => {
+  const { electronApp, page } = await launchApp()
+
+  try {
+    await page.waitForSelector('#empty')
+
+    // launchApp returns an already-loaded page, so the initial requests are gone. Reload with
+    // a listener attached to observe a genuine boot.
+    const requested = []
+    page.on('request', request => requested.push(request.url()))
+    await page.reload()
+    await page.waitForFunction(() => document.documentElement.dataset.rendererReady === 'true')
+
+    const remote = requested.filter(url => /^https?:/i.test(url))
+    assert.deepEqual(remote, [], `boot must not reach any remote origin:\n${remote.join('\n')}`)
+    assert.ok(
+      requested.some(url => url.includes('fonts/jetbrains-mono.css')),
+      'the bundled font stylesheet should have been requested locally'
+    )
+
+    // Render a document with a code block so the mono face is actually exercised, then let
+    // the font engine settle before asking whether it resolved.
+    await stubOpenDialog(electronApp, [BASIC_MD])
+    await emitRendererCommand(electronApp, 'openFile')
+    await page.waitForFunction(() => document.title === 'basic')
+
+    const font = await page.evaluate(async () => {
+      await document.fonts.ready
+      return {
+        available: document.fonts.check('400 13px "JetBrains Mono"'),
+        loaded: [...document.fonts].filter(f => f.family === 'JetBrains Mono' && f.status === 'loaded').length,
+      }
+    })
+    assert.equal(font.available, true, 'JetBrains Mono must resolve from the bundled woff2')
+    assert.ok(font.loaded > 0, `expected at least one loaded JetBrains Mono face, got ${font.loaded}`)
+  } finally {
+    await closeApp(electronApp)
+  }
+})
+
 const REMOVED_GLOBALS = [
   'openFile',
   'openFolder',

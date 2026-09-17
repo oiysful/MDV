@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <meta http-equiv="Content-Security-Policy"
-  content="default-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; script-src 'self'; img-src 'self' data:; form-action 'none'; base-uri 'none'; object-src 'none';">
+  content="default-src 'self'; style-src 'self' 'unsafe-inline'; font-src 'self'; script-src 'self'; img-src 'self' data:; form-action 'none'; base-uri 'none'; object-src 'none';">
 <title>MDV</title>
 
 <!-- marked.js, highlight.js, DOMPurify & js-yaml (locally bundled) -- always needed, every
@@ -26,10 +26,10 @@
 <!-- KaTeX: light/dark 구분 없음 (currentColor 상속, 하드코딩 색상 없음) -->
 <link rel="stylesheet" href="../../node_modules/katex/dist/katex.min.css">
 
-<!-- JetBrains Mono (코드 편집기용) -->
-<link rel="preconnect" href="https://fonts.googleapis.com">
-<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<!-- JetBrains Mono (코드 편집기용) -- 로컬 번들. 예전에는 fonts.googleapis.com에서 받아왔는데,
+     로컬 문서를 여는 것만으로 제3자에 접속해 IP와 열람 시각이 나가는 구조였다. 번들로 바꾸면서
+     오프라인에서도 동작하고, 위 CSP의 style-src/font-src를 'self'로 조일 수 있게 됐다. -->
+<link rel="stylesheet" href="./fonts/jetbrains-mono.css">
 
 <style>
 /* ════════════════════════════════════════
