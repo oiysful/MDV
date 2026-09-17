@@ -37,14 +37,19 @@ jobs:
           npm audit --audit-level=high --json > audit-full.json || true
           node -e '
             const data = require("./audit-full.json");
+            // NOTE: this whole script is a single-quoted shell string, so it must contain
+            // no apostrophe anywhere -- one in a comment ends the string and bash runs the
+            // remainder (that is exactly how run 35168504489 died on "//: Is a directory").
+            //
             // Empty on purpose. brace-expansion and fast-uri sat here from 2026-08-06, when
-            // both had highs that electron-builder's tree blocked. Those were resolved by
-            // 2026-08-10 and 2026-09-15's audit fixes, but the entries stayed -- and both
-            // packages are still very much in the tree, so the entries were not stale, they
-            // were live suppressions hiding two real packages from this gate. The full tree
-            // is at 0 high/critical today, so carrying a suppression buys nothing and costs
-            // coverage. Re-add a name only alongside a memory-security.md#accepted_risks
-            // entry recording why that specific advisory cannot be fixed.
+            // both had highs blocked upstream in the electron-builder dependency tree. Those
+            // were resolved by the 2026-08-10 and 2026-09-15 audit fixes, but the entries
+            // stayed -- and both packages are still in the tree, so the entries were not
+            // stale, they were live suppressions hiding two real packages from this gate.
+            // The full tree is at 0 high/critical today, so carrying a suppression buys
+            // nothing and costs coverage. Re-add a name only alongside a
+            // memory-security.md#accepted_risks entry recording why that advisory cannot
+            // be fixed.
             const allowlist = new Set([]);
             const vulns = data.vulnerabilities || {};
             const blocking = Object.entries(vulns).filter(([name, v]) =>
