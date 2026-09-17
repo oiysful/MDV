@@ -1,100 +1,258 @@
-# 🔐 Security Audit Report
+# Security Audit Report
 
-**Date:** 2026-08-06 (updated same day — see correction note and Resolved section below)
-**Score:** 96/100 🟢
-**Project:** MDV (v1.1.0) — Claude-style Markdown Editor
-**Stacks:** Electron 42 (desktop app, no backend server), Node.js/JavaScript, GitHub Actions CI/CD, electron-builder, Homebrew tap distribution
-**Audited by:** security-skill v1.0.0
+Date: 2026-09-17
+Score: 87/100
+Project: Electron (main + preload + renderer), Node.js, GitHub Actions, Homebrew cask distribution
+Previous: 94/100 (2026-08-10), 96/100 (2026-08-06)
 
----
-
-## 📊 Score Breakdown
-
-Only categories applicable to a local, single-user Electron desktop app (no server, no network API, no auth/DB/JWT/Docker/GraphQL/websocket/file-upload-over-network/mobile/AI features) are scored. Non-applicable categories are excluded and their weight redistributed.
-
-| Category | Score | Issues |
-|---|---|---|
-| 01. Secrets & Files | 100/100 | none |
-| 08. Deployment & Cloud | 85/100 | 1 low |
-| 11. Advanced Attacks (XSS/SSRF/SSTI/proto-pollution) | 100/100 | none |
-| 12. Injections (path traversal) | 100/100 | none |
-| 16. Supply Chain | 85/100 | 2 low (accepted risk) |
-| 21. Source Code Analysis (dangerous functions, taint) | 100/100 | none |
-| 24. Browser/Electron APIs | 100/100 | none |
-| 25. Advanced Security (L3 hardening) | 95/100 | 1 info |
-
-**Not applicable / excluded from scoring:** Network & CORS, HTTP Headers (covered instead under CSP in §24), Auth & Sessions, Cryptography, JWT, Database Security, Docker, Protocols, Race Conditions, File Upload, DNS & Email, Mobile, Compliance/GDPR, Monitoring, Serverless, AI/LLM Security, Bot & DDoS — MDV is a local desktop app with no network-facing surface, no login, no persisted user data beyond a local `session.json`.
+> The score went **down** because this audit found two things earlier audits never looked
+> at, not because the code got worse. Both prior audits scored almost entirely on dependency
+> advisories; neither examined the remote font dependency or the image handler's symlink
+> behaviour. Dependencies are currently at **0 advisories**, better than at either previous audit.
 
 ---
 
-## ✅ What's Secure
+## Scope
 
-This codebase shows deliberate, well-documented security engineering (comments throughout `src/main.js`, `path-utils.js`, `markdown.js` explain the exact threat each guard defeats):
+MDV is an offline-first desktop markdown viewer. It has no server, no database, no user
+accounts, no sessions, no cookies, and exactly **one** outbound network call it makes on its
+own (`src/main.js:126`, the GitHub Releases check). Most of the 25 categories therefore do
+not apply and are marked N/A rather than scored as passes — the score is computed over the
+16 applicable categories only (75% of the standard weighting), then normalised.
 
-- **Electron hardening (`src/main.js:71-76`):** `contextIsolation: true`, `nodeIntegration: false`, `sandbox: true`. `preload.js` exposes a minimal, explicit `contextBridge` API surface — no raw `ipcRenderer`/Node access reaches the renderer.
-- **Navigation lockdown (`src/main.js:85-96`):** `setWindowOpenHandler` and `will-navigate` both reject anything but the local shell, so no remote page can ever inherit the `window.api` bridge.
-- **Strict CSP (`index.html:6-7`):** `script-src 'self'`, `object-src 'none'`, `base-uri 'none'`, `form-action 'none'` — blocks inline/remote script execution outright.
-- **XSS defense-in-depth (`markdown.js`):** all rendered markdown HTML is piped through DOMPurify before `innerHTML`, with an `escapeHtml` fallback if DOMPurify fails to load. Mermaid diagram source is base64-encoded into `data-mermaid-src` specifically to avoid an mXSS gap where DOMPurify would otherwise strip an attribute containing an encoded `>`. Mermaid itself runs with `securityLevel: 'strict'`.
-- **Path-traversal / arbitrary-file-read guards (`main.js:337-429`):**
-  - `open-external-url` allowlists `^https?://` only.
-  - `open-local-path` resolves symlinks via `realpath` and checks the extension of *both* the link name and its real target before handing anything to `shell.openPath`, specifically to stop a `notes.pdf`-named symlink pointing at an executable, or a `.md`-named symlink pointing at `~/.ssh/id_rsa`.
-  - `OPENABLE_EXTENSIONS` deliberately excludes `.svg` (can carry `<script>`) and any script-like extension (`.command`, etc.) that would hand active content to the OS default handler.
-  - `read-image-data-url` allowlists known image MIME types only, closing a documented prior arbitrary-file-read via `![](../../.ssh/id_rsa)`.
-- **No dangerous code-execution patterns:** no `eval`, `new Function`, string-form `setTimeout`/`setInterval`, `child_process.exec`/`spawn`, or dynamic `require` found anywhere in `src/`.
-- **No Trojan Source characters** (Unicode bidi overrides) in any source file.
-- **Supply chain (production runtime deps):** `npm audit --omit=dev` reports 0 vulnerabilities across `dompurify`, `marked`, `mermaid`, `chokidar`, `@highlightjs/cdn-assets` and their subtrees. See **Medium/Low #1–4** below for issues found in `devDependencies` (electron itself, and the electron-builder/jsdom build-and-test toolchain) once those are included. CI (`ci.yml`) and release (`release.yml`) both use `npm ci` against the committed lockfile; workflows use `pull_request` (not `pull_request_target`) so PR code never runs with repo secrets.
-- **Release integrity:** `scripts/common.sh` pins `curl --proto '=https'` and verifies a SHA256 checksum against a `SHA256SUMS` asset before installing any downloaded release artifact — a corrupted or tampered download is rejected rather than silently installed.
-- **Secrets hygiene:** `.gitignore` excludes `.env*`, `*.key`, `*.pem`, `secrets/`; no hardcoded credentials, tokens, or API keys found in source. `HOMEBREW_TAP_TOKEN` is consumed only from the CI secret store, never logged.
-- **Install scripts (`scripts/*.sh`):** `set -euo pipefail`, no unquoted variable expansion into a shell context, no interpolation of untrusted input into commands — no command-injection path found.
+The app's real attack surface is narrow and specific: **it renders untrusted `.md` files and
+resolves file paths they name.** Every finding below lives there or in the supply chain.
 
 ---
 
-## ⚠️ Correction (2026-08-06, same day)
+## Critical Issues (fix immediately)
 
-The original version of this report scoped its `npm audit` check to `--omit=dev` (production runtime deps only) and stated the project's supply chain was clean without calling out that devDependencies weren't included. Running `npm install`/plain `npm audit` — as `scripts/install-local.sh` does — audits the full 445-package tree (electron itself + the electron-builder/jsdom/playwright toolchain) and surfaces **4 known advisories (1 moderate, 3 high)**. None of them are false positives; they're real, currently-unpatched versions in `package-lock.json`. Findings and real-world exploitability for MDV are below; the Supply Chain category score and overall score have been revised down accordingly (97 → 96).
-
-## ✅ Resolved (2026-08-06, user ran `npm audit fix`)
-
-### Electron 42.3.0 — protocol response cache reused across sessions (CWE-668, was moderate) — FIXED
-**Advisory:** [GHSA-r4w5-6pfg-jxp5](https://github.com/advisories/GHSA-r4w5-6pfg-jxp5) — affected Electron 42.0.0-alpha.1 – 42.5.0.
-**Status:** `npm audit fix` bumped `electron` 42.3.0 → **42.8.0** (within the existing `^42.3.0` range, no `--force`). Confirmed via `npm ls electron` and a clean re-run of `npm audit` (this advisory no longer appears). `npm run test:unit` (147/147) and `npm run test:controller` (8/8) both pass against the new electron version — no regression. The electron/e2e smoke suite (`test:electron`) has not been re-run yet since it requires quitting the currently-running MDV.app first; run it once before the next release build.
-
-### undici (both instances, was high) — FIXED
-**Advisory:** multiple GHSAs (response desync, cache poisoning, CRLF injection).
-**Status:** `npm audit fix` bumped `undici` 6.27.0→6.28.0 (under `node-gyp`) and 7.28.0→7.29.0 (under `@electron/get` and `jsdom`). Confirmed gone from `npm audit` output.
+None.
 
 ---
 
-## 🔵 Low / Info (still open — accepted risk)
+## High Issues
 
-### 1. brace-expansion & fast-uri — unpatched in electron-builder's own dependency tree (High severity per advisory; Low real-world risk here)
-**Files:** `node_modules/@electron/asar`, `@electron/universal`, `dir-compare`, `filelist` → `minimatch` → `brace-expansion` (currently 1.1.17 / 2.1.3 / 5.0.8); `node_modules/ajv` → `fast-uri` (currently 3.1.4).
-**Advisories:** [GHSA-rgw5-rvv9-x895](https://github.com/advisories/GHSA-rgw5-rvv9-x895) (brace-expansion, DoS) and [GHSA-7p8r-x3mc-p8w7](https://github.com/advisories/GHSA-7p8r-x3mc-p8w7) (fast-uri, host confusion via backslash authority).
-**Confirmed still unresolved after `npm audit fix`, and after `npm audit fix --force --dry-run`** — the force run produced byte-identical output to the normal run, meaning npm found *no* resolvable install path, forced or not. Root cause: patched releases exist upstream (`brace-expansion@5.0.9`, `fast-uri@4.x` per `npm view`), but they're nested two levels deep inside `electron-builder`'s own dependencies (`minimatch`, `ajv`), and `electron-builder` is already at its newest published version (26.15.3) — it simply hasn't bumped those deps yet. npm cannot reach across another package's own declared dependency range without that package publishing an update, or this project overriding it via a package.json `overrides` block (untested against electron-builder's real behavior — not applied here).
-**Risk in MDV specifically:** Effectively none. Both packages run only inside `electron-builder`'s own build-time processing of this project's own trusted `package.json`/glob config during `npm run build` — never shipped inside `MDV.app`, never exposed to attacker-controlled input (`build.files` only packages `src/**/*` and `assets/**/*`). Per this audit's own policy, DoS-only findings and build-tool-only exposure with no attacker-reachable input are not scored as exploitable runtime vulnerabilities.
-**Recorded as an accepted risk** in `memory-security.md` (2026-08-06). No action required now; re-check when `electron-builder` publishes its next release, or on the next `/security-audit`.
-
-### 2. Release builds are unsigned / not notarized (Low)
-**File:** `.github/workflows/release.yml:24-26`, `scripts/install-local.sh`, `scripts/update-local.sh`
-**Observation:** `CSC_IDENTITY_AUTO_DISCOVERY=false` is set for both local and CI release builds, so the shipped `.app`/`.zip` is not Apple-signed or notarized. `common.sh` compensates by manually clearing the quarantine flag (`xattr -dr com.apple.quarantine`) after install and by verifying a SHA256SUMS checksum before that — this mitigates in-transit tampering but does not provide the OS-level authenticity guarantee (Gatekeeper/notarization) that a signed build would. This is a known tradeoff (no paid Apple Developer account), not a code defect, and is already reflected in this project's own distribution docs.
-**Recommendation:** If/when an Apple Developer ID becomes available, sign and notarize release builds; until then, keep the current checksum verification as the primary integrity control (already in place — no action required).
-
-### 3. No automated dependency-vulnerability scanning in CI (Info)
-**File:** `.github/workflows/ci.yml`
-**Observation:** CI runs `npm ci` and tests but does not run `npm audit` (or equivalent) as a gate. As this same-day correction shows, that means new advisories (like the 4 above) go unnoticed until someone runs `npm install`/`npm audit` locally.
-**Recommendation:** Add an `npm audit --omit=dev --audit-level=high` step (production-only, so build-toolchain noise doesn't fail CI) plus a separate informational full `npm audit` step, to `ci.yml`. Purely optional; per policy, outdated/vulnerable third-party libraries are tracked separately from this audit, but automating the check would have caught this sooner.
+None.
 
 ---
 
-## 📋 Accepted Risks
+## Medium Issues
 
-None recorded yet in `memory-security.md`.
+### M1 — `read-image-data-url` checks the extension by name only, so a symlink escapes it
+
+**File:** `src/main.js:687` · **CWE-59 (Link Following), CWE-22** · Category 11/14/21
+
+The handler resolves the extension with `path.extname(filePath)` and rejects anything not in
+`IMAGE_MIME_TYPES`. That check sees the **link's own name**, never where it points, and
+`fs.promises.readFile` follows symlinks.
+
+```
+attacker ships:  notes.md  +  photo.png → ~/.ssh/id_rsa   (symlink)
+notes.md says:   ![](./photo.png)
+result:          .png passes the allowlist, the private key is read and
+                 returned as data:image/png;base64,<key>, landing in the DOM
+```
+
+Path containment does not help: `pathUtils.resolveLocalImageCandidates` deliberately tries an
+absolute candidate for a leading-slash `src`, so the read is not confined to the document's
+folder.
+
+**Why this stands out rather than being theoretical:** this repository already identified and
+fixed exactly this bypass class elsewhere. `main.js:538 isOpenableTarget()` checks the link
+name **and** its `realpath`, and `AGENTS.md` records the reasoning — *"a name-only check is
+bypassed by `notes.pdf → setup.command`"* and *"a `.md`-named symlink must resolve to a real
+`.md`/`.markdown` target too"*. The image handler is the one reader that never got that
+treatment.
+
+**Honest impact assessment:** this is not currently a data leak. The CSP (`img-src 'self'
+data:`, no remote origins anywhere, `connect-src` inheriting `default-src 'self'`) leaves the
+renderer no way to send the bytes anywhere. The content reaches the DOM and stops there. So
+the practical severity is bounded — but it is bounded by **one** control, where the rest of
+this codebase deliberately keeps two.
+
+**Fix** — mirror the existing pattern:
+
+```js
+const realPath = await fs.promises.realpath(filePath)
+const named = path.extname(filePath).slice(1).toLowerCase()
+const real  = path.extname(realPath).slice(1).toLowerCase()
+if (!IMAGE_MIME_TYPES[named] || !IMAGE_MIME_TYPES[real]) {
+  return { ok: false, error: `Unsupported image type: .${named || '(none)'}` }
+}
+```
+
+A `realpath` failure (broken or looping symlink) should be treated as a rejection, the way
+`open-local-path` already does. Add a regression test with a symlink fixture.
 
 ---
 
-## 📅 Next Steps
+### M2 — The app fetches its font from Google on every launch
 
-1. Run `npm audit fix` (verified safe via `--dry-run`: bumps `electron` 42.3.0→42.8.0 and a handful of electron-builder/jsdom transitive deps, all within existing semver ranges, no `--force`, no code changes needed) to clear all 4 advisories.
-2. Add `npm audit` as a CI gate so the next advisory is caught automatically (see Info #4).
-3. Optional: pursue code signing/notarization for release builds if an Apple Developer account becomes available (see Low #3).
-4. Re-run `/security-audit` after any change to `src/main.js`, `preload.js`, or the CSP in `index.html` — these are the highest-leverage files for this app's security posture.
+**File:** `src/renderer/index.html:30-32` · Category 02/16/18
+
+```html
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+```
+
+Three consequences, none of them dramatic, all of them avoidable:
+
+1. **Privacy.** A local document viewer contacts a third party every time it opens, exposing
+   the user's IP address and usage timing. Nothing about reading a local `.md` file requires
+   that. For EU users this is a GDPR-relevant transfer with no notice and no opt-out (German
+   courts have treated exactly this pattern as a violation). The app otherwise collects
+   nothing.
+2. **It forces the CSP to be looser than it needs to be.** `style-src` has to name a remote
+   origin, and carries `'unsafe-inline'` alongside it. Without the remote font, `style-src`
+   could tighten toward `'self'`.
+3. **Offline and supply chain.** An offline launch silently falls back; and a stylesheet
+   fetched at runtime from a third party is an unpinned dependency (no SRI is possible on a
+   Google Fonts CSS URL, since it serves varying content).
+
+**Fix:** bundle the font. JetBrains Mono is OFL-licensed, so the `.woff2` files can ship in
+the app (`electron-builder` already packages `src/`), the two `preconnect` hints and the
+stylesheet `<link>` drop out, and `style-src`/`font-src` lose their remote origins. This is a
+visual-surface change in that it touches how the font loads, so per the skill's
+"Ask Before Modifying UI/Design" rule it needs approval before being applied — the rendered
+result should be identical, since the same font is used either way.
+
+---
+
+## Low Issues
+
+### L1 — `memory-security.md` credits this repo with an `.npmrc` it does not have
+
+**Files:** `memory-security.md` (three separate claims) · Category 16
+
+The security memory states *"this repo's own `.npmrc` sets `min-release-age=7`"* and builds a
+standing policy on it (*"do not bypass it with `--force` or by lowering `min-release-age`"*).
+
+Verified: **there is no `.npmrc` in this repository, and there never has been** (`git log --
+.npmrc` is empty). The setting lives in `~/.npmrc` — the maintainer's user-level npm config.
+
+Practical impact is small, because the cooldown matters at `npm install` / `npm audit fix`
+time, which happens on the maintainer's machine where the setting is active; CI only runs
+`npm ci` from the committed lockfile, which installs pinned versions and never consults it.
+But the memory presents a machine-local preference as a repository control, so a second
+contributor, a fresh clone, or a future CI change would silently have no cooldown while the
+audit trail claims otherwise.
+
+**Fix:** either commit an `.npmrc` with `min-release-age=7` so the control is real and
+portable, or correct the three claims in `memory-security.md` to say it is user-level. The
+first is one line and makes the documentation true.
+
+### L2 — `ci.yml` declares no `permissions:` block
+
+**File:** `.github/workflows/ci.yml` · Category 08
+
+`release.yml` correctly scopes itself (`permissions: contents: write`). `ci.yml` declares
+nothing, so its `GITHUB_TOKEN` inherits the repository/organisation default, which can be
+read-write. A test workflow needs only `contents: read`.
+
+**Fix:** add `permissions:\n  contents: read` at the top of `ci.yml`. No behaviour change —
+the workflow only checks out and runs tests.
+
+---
+
+## Info / Accepted
+
+### The app is unsigned and un-notarized
+
+Known, documented in `RELEASING.md`, and the reason the in-app update checker is notify-only
+(Squirrel.Mac cannot apply an update to an unsigned app). Users see a Gatekeeper warning on
+first launch.
+
+Not scored as a finding, because download integrity is covered in practice: the Homebrew cask
+pins a `sha256` for each release artifact, so a tampered download fails installation. What is
+genuinely absent is revocation and publisher identity — acceptable for a personal tool,
+worth revisiting if distribution ever widens.
+
+### CI's audit allowlist was suppressing two packages that are still in the tree
+
+`ci.yml`'s allowlist named `brace-expansion` and `fast-uri`. This report first described them
+as stale leftovers of packages no longer present — **that was wrong, and it was wrong because
+it was copied from `memory-security.md`'s 2026-09-15 note instead of being checked.** Both
+packages are very much in the dependency tree (`npm ls` finds them), so the entries were live
+suppressions: a future high or critical in either would not have failed the gate.
+
+Nothing was actually hidden, because the full tree is at 0 high/critical. The entries were
+removed rather than left, since a suppression that suppresses nothing only costs coverage —
+verified first by running the gate's own script with an empty allowlist against a fresh
+`npm audit --json` (0 blocking). A name should go back only together with a
+`memory-security.md#accepted_risks` entry saying why that specific advisory cannot be fixed.
+
+---
+
+## What's Secure
+
+| Area | Evidence |
+|---|---|
+| **Electron isolation** | `contextIsolation: true`, `nodeIntegration: false`, `sandbox: true` (`main.js:207-210`) — the full modern trio, not just the first |
+| **Renderer containment** | `will-navigate` blocks navigation away from the local shell; `setWindowOpenHandler` denies every window and hands only `^https?://` to the OS browser. Both guard the fact that the renderer holds `window.api` |
+| **XSS** | All markdown output passes through DOMPurify; mermaid source is base64'd into `data-*` to survive sanitisation; TOC entries are built with `createElement` + `textContent`, so the stored `tocHTML` re-parses inertly |
+| **Injection** | No `eval`, no `new Function`, no `child_process` anywhere in `src/`. Search queries are escaped before `new RegExp` (`search.js:2-3`), so no ReDoS from user input |
+| **Local file opening** | `open-local-path` checks the link name **and** its realpath against `OPENABLE_EXTENSIONS`; directories (incl. `.app` bundles) and non-allowlisted targets get `showItemInFolder` only. `.svg` deliberately excluded |
+| **Dependencies** | `npm audit`: **0 vulnerabilities**, full tree. Lockfile committed. CI fails the build on new high/critical outside an explicit allowlist |
+| **Secrets** | None in source or history. `.gitignore` covers `.env*`, `*.key`, `*.pem`, `secrets/`. The one `TAP_TOKEN=` is an env reference, and the single `ghp_` history hit is a detection pattern inside the security skill's own docs |
+| **Resource limits** | Update check: 10s timeout, 1MB body cap, 24h throttle. Directory watch: depth 1, ignore list, and a 20,000-path circuit breaker that closes the watcher and warns rather than stalling the main process |
+| **IPC surface** | Every channel reviewed. The newest, `fullscreen-changed`, is main→renderer, one boolean, `Boolean()`-coerced, with no `send`/`invoke`/`ipcMain` counterpart — nothing new is callable *from* the renderer |
+| **Storage** | `localStorage` used in 3 places for UI preferences only. Session state deliberately goes to `userData/session.json` via the main process, not `localStorage`, because every window shares one origin |
+| **CI** | No `${{ }}` interpolation inside any `run:` block — the classic Actions script-injection vector is absent |
+
+---
+
+## Score Board
+
+```
+╔════════════════════════════════════════════════════════╗
+║          SECURITY SCORE : 87/100  🟡                    ║
+╠════════════════════════════════════════════════════════╣
+║  🟢 Secrets & Files            100/100   (8%)          ║
+║  🟡 Network & Egress            80/100   (5%)          ║
+║  🟡 HTTP Headers / CSP          80/100   (5%)          ║
+║  🟢 Cryptography / Signing      90/100   (6%)          ║
+║  🟢 Deployment & CI             85/100   (5%)          ║
+║  🟡 Advanced Attacks            80/100   (7%)          ║
+║  🟢 Injections                 100/100   (6%)          ║
+║  🟢 Race Conditions             95/100   (4%)          ║
+║  🟡 File Handling               75/100   (3%)          ║
+║  🟢 Supply Chain                85/100   (5%)          ║
+║  🟢 Compliance / Privacy        85/100   (4%)          ║
+║  🟡 Monitoring                  80/100   (3%)          ║
+║  🟢 Source Code Analysis        85/100   (7%)          ║
+║  🟢 Resource Limits            100/100   (3%)          ║
+║  🟢 Browser APIs               100/100   (2%)          ║
+║  🟠 Advanced Security (L3)      60/100   (2%)          ║
+╠════════════════════════════════════════════════════════╣
+║  N/A: Auth · JWT · Database · Docker · Protocols ·     ║
+║       DNS/Email · Mobile · Serverless · AI/LLM ·       ║
+║       Bot/DDoS (no server, no accounts, no data store) ║
+╚════════════════════════════════════════════════════════╝
+  📈 Last score: 94/100 (2026-08-10, dependency-weighted)
+  🎯 Target: 100/100
+  🔴 0 critical · 🟠 0 high · 🟡 2 medium · 🔵 2 low
+```
+
+Weighted over the 16 applicable categories (75% of the standard weighting), normalised to 100.
+Cross-checked against the flat penalty model: 2 medium (−5) + 2 low (−2) = 86, consistent.
+
+---
+
+## Next Steps
+
+In the order they are worth doing:
+
+1. **M1 — the image handler realpath check.** Smallest diff, closes a known bypass class the
+   rest of the codebase already defends against, and removes the reliance on CSP being the
+   only thing standing between an untrusted document and an arbitrary file read.
+2. **M2 — bundle JetBrains Mono.** Ends the third-party call on every launch, and lets the CSP
+   tighten afterwards. Needs approval first: it touches how the UI loads its font.
+3. **L1 — commit an `.npmrc`.** One line, and it turns a documented control into a real one.
+4. **L2 — `permissions: contents: read` in `ci.yml`.** One line, no behaviour change.
+5. Drop the two stale allowlist entries in `ci.yml` while touching it.
+
+Reaching 100/100 would additionally need the L3 items — code signing and notarization (which
+would also unblock a real auto-updater) and Trusted Types. Both are larger decisions than
+this audit should make on its own.
