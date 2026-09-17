@@ -1,0 +1,64 @@
+{
+  "schema_version": 1,
+  "diagram_type": "architecture",
+  "meta": {
+    "title": "MDV 애플리케이션 아키텍처",
+    "quality_profile": "showcase"
+  },
+  "components": [
+    { "id": "user", "type": "external", "label": "사용자", "sublabel": "macOS 데스크톱", "pos": [40, 300], "size": [120, 60] },
+    { "id": "controllers", "type": "frontend", "label": "렌더러 컨트롤러", "sublabel": "탭 · 편집기 · 탐색기 · 검색", "pos": [240, 150], "size": [150, 64] },
+    { "id": "shell", "type": "frontend", "label": "렌더러 셸", "sublabel": "index.html + app.js", "pos": [240, 300], "size": [150, 64], "tag": "data-command 바인딩" },
+    { "id": "markdown", "type": "frontend", "label": "마크다운 파이프라인", "sublabel": "marked · DOMPurify", "pos": [240, 450], "size": [150, 64] },
+    { "id": "preload", "type": "security", "label": "preload 브리지", "sublabel": "contextBridge window.api", "pos": [470, 300], "size": [150, 64], "tag": "유일한 특권 통로" },
+    { "id": "main", "type": "backend", "label": "Electron Main", "sublabel": "창 · 메뉴 · IPC 핸들러", "pos": [710, 300], "size": [150, 64] },
+    { "id": "watcher", "type": "messagebus", "label": "chokidar 감시자", "sublabel": "파일 · 디렉터리", "pos": [670, 450], "size": [140, 60], "tag": "경로별 구독자 맵" },
+    { "id": "session", "type": "database", "label": "userData 상태", "sublabel": "session.json", "pos": [840, 450], "size": [140, 60] },
+    { "id": "fs", "type": "database", "label": "로컬 파일시스템", "sublabel": "사용자 .md 문서", "pos": [1020, 300], "size": [150, 64] },
+    { "id": "releases", "type": "cloud", "label": "GitHub Releases", "sublabel": "releases/latest", "pos": [710, 150], "size": [150, 64], "tag": "알림 전용" }
+  ],
+  "boundaries": [
+    { "kind": "security-group", "label": "렌더러 샌드박스 · nodeIntegration 없음", "wraps": ["controllers", "shell", "markdown"] },
+    { "kind": "region", "label": "메인 프로세스 (특권 영역)", "wraps": ["main", "watcher", "session"], "pad": 18 }
+  ],
+  "connections": [
+    { "id": "user-shell", "from": "user", "to": "shell", "label": "열기 · 편집", "variant": "emphasis" },
+    { "id": "shell-controllers", "from": "shell", "to": "controllers", "label": "명령 위임" },
+    { "id": "shell-markdown", "from": "shell", "to": "markdown", "label": "렌더 요청", "labelDy": 24 },
+    { "id": "shell-preload", "from": "shell", "to": "preload", "label": "window.api" },
+    { "id": "preload-main", "from": "preload", "to": "main", "label": "IPC 채널", "variant": "security" },
+    { "id": "main-fs", "from": "main", "to": "fs", "label": "읽기 · 쓰기", "variant": "emphasis" },
+    { "id": "main-watcher", "from": "main", "to": "watcher", "label": "경로 감시", "fromSide": "bottom", "toSide": "top" },
+    { "id": "main-session", "from": "main", "to": "session", "label": "세션 저장", "fromSide": "bottom", "toSide": "top" },
+    { "id": "main-releases", "from": "main", "to": "releases", "label": "릴리스 확인", "variant": "dashed", "labelDy": -20 }
+  ],
+  "cards": [
+    {
+      "dot": "rose",
+      "title": "프로세스 경계",
+      "items": [
+        "contextIsolation: true, nodeIntegration: false, sandbox: true — 렌더러는 window.api를 통해서만 특권 기능에 닿는다",
+        "preload는 ipcMain.handle 채널을 그대로 비추는 얇은 브리지이며 업무 로직을 담지 않는다",
+        "createWindow의 will-navigate / setWindowOpenHandler 가드가 원격 페이지의 브리지 상속을 막는다"
+      ]
+    },
+    {
+      "dot": "emerald",
+      "title": "IPC 계약",
+      "items": [
+        "요청: read-file, list-directory, save-file, watch-file, read-image-data-url, open-local-path",
+        "이벤트: file-opened, file-changed, theme-changed, renderer-command, restore-session",
+        "페이로드는 structured clone 되는 평범한 객체 — JSON 문자열로 감싸지 않는다"
+      ]
+    },
+    {
+      "dot": "cyan",
+      "title": "감시와 영속 상태",
+      "items": [
+        "파일 감시는 경로별 { watcher, subscribers } 맵 — 마지막 구독자가 떠날 때만 닫힌다",
+        "디렉터리 감시는 깊이 1단계, dist/node_modules 등을 제외하고 경로 수 상한에서 스스로 멈춘다",
+        "session.json은 메인 프로세스가 쓰며, 빈 세션(탭 0개 + 루트 없음)은 절대 덮어쓰지 않는다"
+      ]
+    }
+  ]
+}

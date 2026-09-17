@@ -16,6 +16,9 @@ pnpm-debug.log*
 
 *.log
 
+# archify visual-check 산출물 (영수증 + 뷰포트 캡처) — 명세에서 언제든 재생성된다
+docs/diagrams/*.visual-check.*
+
 # === Added by security-skill ===
 .env
 .env.local

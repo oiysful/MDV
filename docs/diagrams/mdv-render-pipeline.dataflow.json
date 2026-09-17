@@ -1,0 +1,70 @@
+{
+  "schema_version": 1,
+  "diagram_type": "dataflow",
+  "meta": {
+    "title": "마크다운 렌더 파이프라인",
+    "quality_profile": "showcase",
+    "viewBox": [1080, 540]
+  },
+  "stages": [
+    { "label": "원본" },
+    { "label": "전처리" },
+    { "label": "파싱" },
+    { "label": "정화" },
+    { "label": "화면과 캐시" }
+  ],
+  "nodes": [
+    { "id": "file", "type": "database", "label": "원본 .md 텍스트", "sublabel": "readFile 결과", "stage": 0, "row": 1 },
+    { "id": "lazy", "type": "messagebus", "label": "지연 로드 판단", "sublabel": "mermaid · KaTeX", "stage": 1, "row": 0, "tag": "펜스 없으면 비용 0" },
+    { "id": "frontmatter", "type": "backend", "label": "프론트매터 분리", "sublabel": "js-yaml.load()", "stage": 1, "row": 1, "tag": "매 렌더 실행" },
+    { "id": "images", "type": "backend", "label": "로컬 이미지 치환", "sublabel": "data: URI", "stage": 1, "row": 2, "tag": "확장자 제한" },
+    { "id": "fences", "type": "backend", "label": "펜스 특수 처리", "sublabel": "mermaid · latex · math", "stage": 2, "row": 0, "tag": "원본은 base64" },
+    { "id": "marked", "type": "backend", "label": "marked 렌더", "sublabel": "GFM · highlight.js", "stage": 2, "row": 1, "tag": "알림 인용 확장" },
+    { "id": "purify", "type": "security", "label": "DOMPurify", "sublabel": "삽입 직전 정화", "stage": 3, "row": 1, "tag": "mXSS 방어" },
+    { "id": "toc", "type": "frontend", "label": "TOC · 문서 통계", "sublabel": "스크롤스파이", "stage": 4, "row": 0 },
+    { "id": "content", "type": "frontend", "label": "#content DOM", "sublabel": "미리보기 본문", "stage": 4, "row": 1 },
+    { "id": "snapshot", "type": "database", "label": "탭 스냅샷", "sublabel": "base64 뺀 HTML", "stage": 4, "row": 2 }
+  ],
+  "flows": [
+    { "id": "raw-frontmatter", "from": "file", "to": "frontmatter", "label": "원문", "variant": "emphasis", "route": "straight", "labelDx": 28 },
+    { "id": "raw-scan", "from": "file", "to": "lazy", "label": "펜스 검사" },
+    { "id": "raw-images", "from": "file", "to": "images", "label": "이미지 경로" },
+    { "id": "body-marked", "from": "frontmatter", "to": "marked", "label": "남은 본문", "variant": "emphasis", "route": "straight" },
+    { "id": "images-marked", "from": "images", "to": "marked", "label": "치환 완료" },
+    { "id": "lazy-fences", "from": "lazy", "to": "fences", "label": "로드 완료", "variant": "dashed", "route": "straight" },
+    { "id": "fences-marked", "from": "fences", "to": "marked", "label": "블록 대체", "fromSide": "bottom", "toSide": "top", "route": "straight", "labelDy": 24 },
+    { "id": "marked-purify", "from": "marked", "to": "purify", "label": "HTML 문자열", "variant": "emphasis", "route": "straight" },
+    { "id": "purify-content", "from": "purify", "to": "content", "label": "정화된 DOM", "variant": "emphasis", "route": "straight" },
+    { "id": "content-toc", "from": "content", "to": "toc", "label": "제목 수집", "fromSide": "top", "toSide": "bottom", "route": "straight" },
+    { "id": "content-snapshot", "from": "content", "to": "snapshot", "label": "본문 캡처", "fromSide": "bottom", "toSide": "top", "route": "straight", "labelDy": 24 }
+  ],
+  "cards": [
+    {
+      "dot": "emerald",
+      "title": "무조건 도는 것과 아닌 것",
+      "items": [
+        "프론트매터 분리는 모든 render() 맨 위에서 무조건 돈다",
+        "mermaid 와 KaTeX 는 해당 펜스가 본문에 있을 때만 주입된다",
+        "두 펜스가 없는 문서는 두 라이브러리 비용을 한 번도 내지 않는다"
+      ]
+    },
+    {
+      "dot": "rose",
+      "title": "정화 경계",
+      "items": [
+        "marked 결과는 DOMPurify 를 지나기 전에는 화면에 닿지 않는다",
+        "DOMPurify 는 값에 > 가 든 속성을 지운다 — mermaid 원본은 base64 로 넣는다",
+        "CSP 는 원격 스크립트도 원격 이미지도 아예 허용하지 않는다"
+      ]
+    },
+    {
+      "dot": "cyan",
+      "title": "렌더 뒤에 남는 것",
+      "items": [
+        "탭 스냅샷은 이미지 base64 를 뺀 HTML 만 담는다 — 원본은 공용 캐시에 한 번만",
+        "TOC 는 미리보기에서 offsetTop, 순수 소스 모드에서는 줄 위치를 쓴다",
+        "세션 복원 때는 활성 탭만 즉시 그리고 나머지는 전환할 때 그린다"
+      ]
+    }
+  ]
+}

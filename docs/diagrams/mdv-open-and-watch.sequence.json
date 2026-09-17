@@ -1,0 +1,81 @@
+{
+  "schema_version": 1,
+  "diagram_type": "sequence",
+  "meta": {
+    "title": "파일 열기와 외부 변경 감지 시퀀스",
+    "quality_profile": "showcase",
+    "column_fit": "spread",
+    "viewBox": [1040, 640]
+  },
+  "participants": [
+    { "id": "user", "type": "external", "label": "사용자", "sublabel": "툴바 · 메뉴" },
+    { "id": "renderer", "type": "frontend", "label": "렌더러", "sublabel": "document-flow" },
+    { "id": "bridge", "type": "security", "label": "preload 브리지", "sublabel": "window.api" },
+    { "id": "main", "type": "backend", "label": "Electron Main", "sublabel": "IPC 핸들러" },
+    { "id": "fs", "type": "database", "label": "파일시스템", "sublabel": ".md 문서" },
+    { "id": "watcher", "type": "messagebus", "label": "chokidar", "sublabel": "경로 구독" }
+  ],
+  "segments": [
+    { "from": 150, "to": 336, "label": "문서 열기" },
+    { "from": 344, "to": 424, "label": "감시 등록" },
+    { "from": 432, "to": 564, "label": "외부 변경 감지" }
+  ],
+  "messages": [
+    { "id": "open-click", "from": "user", "to": "renderer", "y": 160, "label": "열기 클릭", "variant": "default" },
+    { "id": "open-call", "from": "renderer", "to": "bridge", "y": 188, "label": "window.api.openFile", "variant": "default" },
+    { "id": "open-ipc", "from": "bridge", "to": "main", "y": 216, "label": "IPC: 파일 열기", "variant": "security" },
+    { "id": "read-file", "from": "main", "to": "fs", "y": 244, "label": "readFile(경로)", "variant": "emphasis" },
+    { "id": "file-text", "from": "fs", "to": "main", "y": 272, "label": "본문 텍스트", "variant": "return" },
+    { "id": "file-opened", "from": "main", "to": "bridge", "y": 300, "label": "file-opened", "variant": "return" },
+    { "id": "create-tab", "from": "bridge", "to": "renderer", "y": 328, "label": "탭 생성 · render()", "variant": "return" },
+    { "id": "watch-call", "from": "renderer", "to": "bridge", "y": 356, "label": "watch-file(경로)", "variant": "dashed" },
+    { "id": "watch-ipc", "from": "bridge", "to": "main", "y": 384, "label": "감시 구독", "variant": "dashed" },
+    { "id": "subscribe", "from": "main", "to": "watcher", "y": 412, "label": "구독자 등록", "variant": "dashed", "note": "경로별 구독자 집합에 이 창을 더한다" },
+    { "id": "external-edit", "from": "fs", "to": "watcher", "y": 442, "label": "외부 편집 감지", "variant": "default" },
+    { "id": "change-event", "from": "watcher", "to": "main", "y": 470, "label": "change 이벤트", "variant": "default" },
+    { "id": "file-changed", "from": "main", "to": "bridge", "y": 498, "label": "file-changed", "variant": "default" },
+    { "id": "compare-saved", "from": "bridge", "to": "renderer", "y": 526, "label": "바뀐 본문 동봉", "variant": "security", "note": "savedContent 와 같으면 자기 저장의 메아리다" },
+    { "id": "notify-user", "from": "renderer", "to": "user", "y": 554, "label": "외부 변경 안내", "variant": "emphasis" }
+  ],
+  "activations": [
+    { "participant": "renderer", "from": 155, "to": 559, "type": "frontend" },
+    { "participant": "bridge", "from": 183, "to": 333, "type": "security" },
+    { "participant": "main", "from": 211, "to": 333, "type": "backend" },
+    { "participant": "fs", "from": 239, "to": 277, "type": "database" },
+    { "participant": "bridge", "from": 351, "to": 389, "type": "security" },
+    { "participant": "main", "from": 379, "to": 417, "type": "backend" },
+    { "participant": "watcher", "from": 407, "to": 475, "type": "messagebus" },
+    { "participant": "fs", "from": 437, "to": 447, "type": "database" },
+    { "participant": "main", "from": 465, "to": 503, "type": "backend" },
+    { "participant": "bridge", "from": 493, "to": 531, "type": "security" }
+  ],
+  "cards": [
+    {
+      "dot": "emerald",
+      "title": "열기 경로",
+      "items": [
+        "렌더러는 파일시스템을 직접 만지지 않는다 — 모든 경로가 window.api 를 지난다",
+        "IPC 페이로드는 structured clone 되는 평범한 객체다",
+        "경로가 붙은 탭이 생길 때 Dock 최근 항목에도 올라간다"
+      ]
+    },
+    {
+      "dot": "cyan",
+      "title": "감시 구독",
+      "items": [
+        "창마다 활성 탭 하나만 감시한다 — 탭을 바꾸면 대상도 갈아탄다",
+        "같은 경로를 여러 창이 볼 수 있어 구독자 집합으로 관리한다",
+        "마지막 구독자가 떠날 때에만 watcher 가 닫힌다"
+      ]
+    },
+    {
+      "dot": "rose",
+      "title": "메아리 판별",
+      "items": [
+        "앱 자신의 저장도 chokidar 를 거쳐 change 로 되돌아온다",
+        "savedContent 와 비교하지 않으면 입력 중이던 내용을 날린다",
+        "안내는 비교를 통과한 진짜 외부 변경에만 뜬다"
+      ]
+    }
+  ]
+}

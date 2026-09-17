@@ -1,0 +1,66 @@
+{
+  "schema_version": 1,
+  "diagram_type": "lifecycle",
+  "meta": {
+    "title": "탭 문서 상태 생명주기",
+    "quality_profile": "showcase",
+    "viewBox": [1040, 640]
+  },
+  "lanes": [
+    { "id": "main", "label": "문서 상태" },
+    { "id": "pause", "label": "대기" },
+    { "id": "conflictlane", "label": "충돌" },
+    { "id": "terminal", "label": "종료" }
+  ],
+  "states": [
+    { "id": "opened", "type": "start", "label": "열림", "sublabel": "새로 열기 · 세션 복원", "lane": "main", "col": 0, "step": "01", "tag": "진입" },
+    { "id": "clean", "type": "active", "label": "저장된 상태", "sublabel": "디스크와 동일", "lane": "main", "col": 1, "step": "02" },
+    { "id": "dirty", "type": "active", "label": "편집 중", "sublabel": "탭에 점 표시", "lane": "main", "col": 2, "step": "03", "tag": "dirty" },
+    { "id": "saving", "type": "decision", "label": "저장 시도", "sublabel": "기록 전 재확인", "lane": "main", "col": 3, "step": "04" },
+    { "id": "saved", "type": "success", "label": "저장 완료", "sublabel": "savedContent 갱신", "lane": "main", "col": 4, "step": "05", "tag": "점 사라짐" },
+    { "id": "background", "type": "waiting", "label": "백그라운드 탭", "sublabel": "previewDirty", "lane": "pause", "col": 0, "tag": "전환 때 렌더" },
+    { "id": "conflict", "type": "failure", "label": "저장 충돌", "sublabel": "디스크가 더 새롭다", "lane": "conflictlane", "col": 1, "tag": "복구 가능" },
+    { "id": "closed", "type": "neutral", "label": "탭 닫힘", "sublabel": "감시 구독 해제", "lane": "terminal", "col": 2, "tag": "종료" }
+  ],
+  "transitions": [
+    { "id": "open-clean", "from": "opened", "to": "clean" },
+    { "id": "clean-dirty", "from": "clean", "to": "dirty" },
+    { "id": "dirty-saving", "from": "dirty", "to": "saving", "route": "straight" },
+    { "id": "saving-saved", "from": "saving", "to": "saved", "variant": "emphasis" },
+    { "id": "saved-dirty", "from": "saved", "to": "dirty", "label": "다시 입력", "fromSide": "top", "toSide": "top", "route": "top-channel" },
+    { "id": "dirty-background", "from": "dirty", "to": "background", "label": "다른 탭 전환", "fromSide": "bottom", "toSide": "top", "route": "straight", "labelDy": 24 },
+    { "id": "background-dirty", "from": "background", "to": "dirty", "label": "돌아오면 렌더", "variant": "emphasis", "fromSide": "left", "toSide": "left", "route": "left-channel", "channelX": 325 },
+    { "id": "saving-conflict", "from": "saving", "to": "conflict", "label": "디스크가 다름", "variant": "security", "fromSide": "bottom", "toSide": "top", "route": "straight", "labelDy": 24 },
+    { "id": "conflict-dirty", "from": "conflict", "to": "dirty", "label": "편집 유지", "variant": "emphasis" },
+    { "id": "saved-closed", "from": "saved", "to": "closed", "fromSide": "bottom", "toSide": "top", "route": "straight" }
+  ],
+  "cards": [
+    {
+      "dot": "emerald",
+      "title": "본 흐름",
+      "items": [
+        "탭은 열림 → 저장된 상태 → 편집 중 → 저장 시도 → 저장 완료 순서로 움직인다",
+        "dirty 여부가 탭의 점 표시와 툴바 저장 버튼 활성화를 함께 정한다",
+        "저장이 끝나면 savedContent 가 갱신되어 이후 change 판정의 기준이 된다"
+      ]
+    },
+    {
+      "dot": "cyan",
+      "title": "끝나지 않는 대기",
+      "items": [
+        "다른 탭으로 옮겨도 문서는 살아 있다 — 상태만 백그라운드로 내려간다",
+        "세션 복원은 활성 탭 하나만 즉시 렌더하고 나머지는 previewDirty 로 둔다",
+        "백그라운드 탭은 다시 전환될 때 기존 stale-preview 경로로 그려진다"
+      ]
+    },
+    {
+      "dot": "rose",
+      "title": "충돌과 종료",
+      "items": [
+        "저장 직전 디스크를 다시 읽어 더 새로운 내용이면 충돌로 빠진다",
+        "충돌은 종료가 아니다 — 편집 중으로 돌아가 사용자가 고를 수 있다",
+        "탭이 닫히면 그 경로의 감시 구독도 함께 빠진다"
+      ]
+    }
+  ]
+}
