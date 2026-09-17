@@ -112,6 +112,47 @@ test('open-local-path refuses to read a markdown-named symlink whose real target
   }
 })
 
+// 2026-09-17 audit M1: read-image-data-url had the same name-only gap the two tests above
+// close for open-local-path. extname() sees the link's own name while readFile() follows the
+// symlink, so `![](./photo.png)` pointing at a credential was read and returned as a
+// data:image/png URI. Only the CSP (no remote origin to exfiltrate through) kept that from
+// being a live leak -- one control where the sibling handler deliberately keeps two.
+// The legitimate case is asserted alongside it, so this can never pass by rejecting everything.
+test('read-image-data-url refuses an image-named symlink whose real target is not an image', async () => {
+  const tempDir = await fs.mkdtemp(path.join(os.tmpdir(), 'mdv-imglink-'))
+  const secret = path.join(tempDir, 'secret.txt')
+  const disguised = path.join(tempDir, 'photo.png') // symlink → secret.txt
+  const realImage = path.join(tempDir, 'real.png')
+  await fs.writeFile(secret, 'super-secret-value\n')
+  await fs.symlink(secret, disguised)
+  // A 1x1 PNG, so the allowed path is exercised with genuine image bytes.
+  await fs.writeFile(realImage, Buffer.from(
+    'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==',
+    'base64'
+  ))
+
+  const { electronApp, page } = await launchApp()
+
+  try {
+    await page.waitForSelector('#empty')
+
+    const blocked = await page.evaluate(p => window.api.readImageDataUrl(p), disguised)
+    assert.equal(blocked.ok, false, 'a .png-named symlink to a non-image target must be refused')
+    assert.equal(blocked.data_url, undefined, 'no bytes may come back for a rejected target')
+    assert.ok(
+      !JSON.stringify(blocked).includes('super-secret'),
+      'the rejection must not leak the target content through the error either'
+    )
+
+    const allowed = await page.evaluate(p => window.api.readImageDataUrl(p), realImage)
+    assert.equal(allowed.ok, true, 'a genuine .png must still load')
+    assert.ok(allowed.data_url.startsWith('data:image/png;base64,'), allowed.data_url?.slice(0, 40))
+  } finally {
+    await closeApp(electronApp)
+    await fs.rm(tempDir, { recursive: true, force: true })
+  }
+})
+
 // LOW-4: window.open() targets bypass the content link handler, so the window-open handler
 // needs the same ^https?:// whitelist as open-external-url — a file:/// or custom-scheme
 // target must be dropped, not handed to the OS.

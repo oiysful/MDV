@@ -684,14 +684,32 @@ const IMAGE_MIME_TYPES = {
 // 마크다운의 이미지 경로는 신뢰할 수 없는 입력이다. 예전에는 확장자와 무관하게
 // 아무 파일이나 읽어 data URL로 만들었기 때문에 ![](../../.ssh/id_rsa) 같은
 // 임의 파일 읽기가 가능했다. 알려진 이미지 확장자만 허용한다.
+//
+// 확장자는 링크 자신의 이름과 realpath 양쪽에서 확인한다. extname()은 링크 이름만 보는데
+// readFile()은 심링크를 따라가므로, ~/.ssh/id_rsa를 가리키는 photo.png 심링크가 이름만
+// 보는 검사를 그대로 통과한다 — open-local-path의 isOpenableTarget()이 막는 것과 정확히
+// 같은 우회다(`notes.pdf → setup.command`). 읽기도 realpath로 하는데, 그래야 검사와 읽기
+// 사이에 심링크가 바뀌는 TOCTOU가 남지 않는다. realpath 실패(끊어진/순환 심링크)는
+// 허용목록 밖과 동일하게 거부한다. mime은 실제 대상의 확장자에서 가져온다 — 이름이
+// 무엇이든 바이트의 정체를 따르는 쪽이 맞다.
 ipcMain.handle('read-image-data-url', async (_, filePath) => {
   try {
-    const ext  = path.extname(filePath).slice(1).toLowerCase()
-    const mime = IMAGE_MIME_TYPES[ext]
-    if (!mime) {
-      return { ok: false, error: `Unsupported image type: .${ext || '(none)'}` }
+    const named = path.extname(filePath).slice(1).toLowerCase()
+    if (!IMAGE_MIME_TYPES[named]) {
+      return { ok: false, error: `Unsupported image type: .${named || '(none)'}` }
     }
-    const data = await fs.promises.readFile(filePath)
+    let realPath
+    try {
+      realPath = await fs.promises.realpath(filePath)
+    } catch {
+      return { ok: false, error: `Image not found: ${filePath}` }
+    }
+    const real = path.extname(realPath).slice(1).toLowerCase()
+    const mime = IMAGE_MIME_TYPES[real]
+    if (!mime) {
+      return { ok: false, error: `Unsupported image type: .${real || '(none)'}` }
+    }
+    const data = await fs.promises.readFile(realPath)
     return { ok: true, data_url: `data:${mime};base64,${data.toString('base64')}` }
   } catch (e) {
     return { ok: false, error: e.message }
