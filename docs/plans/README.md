@@ -13,6 +13,10 @@
 - [done/2026-08-21/](./done/2026-08-21/) — [16](./done/2026-08-21/16-mermaid-hidden-render-and-print-palette.md) mermaid 렌더링 버그 2건 — 소스 모드(⌘U) 왕복 시 다이어그램이 빈 공간으로 남는 문제(`display:none` 중 `getBBox()`가 0을 반환), 다크 모드 인쇄/PDF에서 다이어그램만 검게 남는 문제(mermaid가 팔레트를 SVG에 구워 넣어 `@media print`의 CSS 변수 강제를 따라오지 않음). advisor + code-reviewer 리뷰로 계획서 범위 밖 레이스 3건(인쇄 복원 시 테마 재확인, 동시 재렌더 직렬화, 파킹 중 스냅샷 자체복구)도 함께 반영. 2026-08-21 구현·검증 완료.
 - [done/2026-09-16/](./done/2026-09-16/) — [17](./done/2026-09-16/17-shortcuts-and-fullscreen-toolbar.md) ⌘B 좌측 패널·⌘⇧O 폴더 열기 단축키, + 메뉴 단축키 안내, 전체화면 툴바 좌측 여백(`.traffic-gap` 70px) 회수 4건. ⌘B가 소스 편집기의 "굵게"와 충돌해 `triggeredByAccelerator` + 포커스 가드로 갈랐고, 계획서가 검증 불가로 남겼던 그 가정을 Ian이 실제 키보드로 확인 완료. code-reviewer 리뷰로 계획서 범위 밖 1건(`switchTab`의 force-open이 분할뷰 가드를 우회해 ⌘⇧O로 "닫을 수 없는 사이드바"를 만드는 문제)도 함께 반영. 실측으로 계획서 결론 하나를 뒤집었다 — 실제 키 입력은 어떤 합성 경로로도 메뉴 accelerator에 닿지 않지만(`sendInputEvent`, Playwright `keyboard.press` 모두), `MenuItem#click`이 1번 인자를 핸들러의 3번째 파라미터로 넘기므로 **분기 자체는 테스트로 고정할 수 있다**. 2026-09-16 구현·검증 완료.
 
+## [`20-copy-clipboard-flake-and-doc-reconciliation.md`](./20-copy-clipboard-flake-and-doc-reconciliation.md) — 복사 테스트 플레이크 + 플레이크 목록 문서 정합 (2026-09-18 계획)
+
+두 가지를 한 계획서로 묶었다. **A**: `boot-and-render.test.js`의 복사 테스트가 병렬 실행에서 간헐적으로 15초 타임아웃을 낸다. 유력 가설은 `navigator.clipboard.writeText`가 문서 포커스를 요구한다는 것 — 거부되면 `copyCode`가 `.copied`를 붙이지 않고 early return 하므로 바로 다음 대기가 통째로 소진된다. **아직 재현으로 확정하지 않았고, 착수 시 첫 일이 그 재현이다.** **B**: 같은 플레이크 목록을 `AGENTS.md`와 보안 문서 2종이 각자 적고 있어 교집합이 한 건뿐이다 — 그 갈라짐 때문에 A가 세 번의 수정 내내 시야 밖에 있었다. 정본을 `AGENTS.md`로 모으고 나머지는 참조만 하게 한다. A를 먼저 하고 그 결과를 B에 반영한다.
+
 ## [`19-default-app-guide-focus-flake.md`](./19-default-app-guide-focus-flake.md) — 기본 앱 안내 포커스 플레이크 (2026-09-18 진단 및 수정)
 
 계획 18 작업 중 전체 스위트 병렬 실행에서 드러난 **세 번째** 플레이크. 앞의 두 건과 달리 로컬 병렬 실행에서도 터진다(3회 중 1회). `menu-and-guides.test.js`의 기본 앱 안내 테스트가 쓰는 400ms IPC 지연은 대기가 아니라 **창**이고, 부하가 걸려 그 창을 놓치면 안내가 먼저 포커스를 잡은 뒤 테스트가 그것을 빼앗아 145행이 다시는 오지 않을 조건을 기다린다. 창을 1ms로 줄여 100% 재현 확인. 계획 18의 두 건과 같은 과(고정 지연을 명시적 조건 대신 사용)다. 수정은 고정 지연을 **테스트가 여는 게이트**로 바꾼 것 — 포커스를 심은 뒤에야 상태 응답이 풀리므로 안내가 심기보다 먼저 뜨는 것이 구조적으로 불가능해진다. 지연을 400 → 2000으로 키우는 선택지는 버렸다: 검증에 쓴 부하 자체가 2초라 그대로 죽었을 것이다.
