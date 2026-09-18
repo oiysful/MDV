@@ -22,13 +22,14 @@ name: CI (Electron)
 # src/renderer/AGENTS.md. Spelling out 'src/*.md' plus 'src/**/*.md' means both readings
 # agree, so a local dry run of this list cannot disagree with what Actions actually does.
 #
-# main has no branch protection today, so a skipped workflow blocks nothing. If required
-# status checks are ever turned on, note that a workflow skipped by paths-ignore reports no
-# status at all and would leave such a PR waiting forever: require the `test` job from
-# ci.yml instead, or move this gate to a `changes` job whose `if:` marks it skipped.
+# main is protected only against force pushes and deletion (ruleset, 2026-09-18); there are
+# no required status checks, so a skipped workflow blocks nothing. If required checks are ever
+# turned on, note that a workflow skipped by paths-ignore reports no status at all and would
+# leave such a PR waiting forever: require the `test` job from ci.yml instead, or move this
+# gate to a `changes` job whose `if:` marks it skipped.
 on:
   pull_request:
-    branches: [main]
+    branches: [main, develop]
     paths-ignore:
       - '*.md'
       - 'src/*.md'
@@ -37,7 +38,7 @@ on:
       - '.skills/**'
       - 'LICENSE'
   push:
-    branches: [main]
+    branches: [main, develop]
     paths-ignore:
       - '*.md'
       - 'src/*.md'
@@ -76,9 +77,19 @@ jobs:
 
       # 4 was a first guess (see AGENTS.md/CONTRIBUTING.md) and proved too aggressive: the
       # first real run finished in ~197s (vs ~30s locally) with 2 timing-sensitive failures
-      # (a scroll-restore assertion and a 15s waitForFunction) that don't reproduce locally --
-      # both point at CPU contention from 4 concurrent Electron instances on a GitHub-hosted
-      # macOS runner's limited cores, not a real bug. Lowered to 2; revisit if CI is still
-      # flaky or if it's comfortably fast enough to try raising again later.
+      # (a scroll-restore assertion and a 15s waitForFunction) that don't reproduce locally.
+      # Those were read as CPU contention from 4 concurrent Electron instances on a
+      # GitHub-hosted macOS runner's limited cores, and dropping to 2 did make them rare.
+      #
+      # It did not fix them. The same two -- large-directory-watch.test.js's path-count
+      # guard (TimeoutError) and split-view-async.test.js's fresh-preview-after-tab-switch
+      # (AssertionError) -- failed again at concurrency 2 on PR #8 (run 35202862668,
+      # 2026-09-17, 102/104), and a plain re-run of that same commit went green. So
+      # concurrency is not the root cause, and lowering it further would only buy more
+      # rarity. Do not tune this number again for those two: the fix is the one applied on
+      # 2026-08-06 for the same class, replacing fixed/implicit waits with explicit
+      # condition waits in the tests themselves. AGENTS.md's NOTES carries the detail,
+      # including that a red run naming only those two is not automatically a regression.
+      # Raising the number is still fair game for speed once they are genuinely fixed.
       - name: Electron smoke suite
         run: npm run test:electron -- --test-concurrency=2

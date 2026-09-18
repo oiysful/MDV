@@ -8,9 +8,9 @@ name: CI
 # paths are excluded and why an extension glob would be wrong here.
 on:
   pull_request:
-    branches: [main]
+    branches: [main, develop]
   push:
-    branches: [main]
+    branches: [main, develop]
 
 # CI only reads the tree and runs tests, so its GITHUB_TOKEN needs nothing beyond that.
 # Without this block the token inherits the repository default, which can be read-write --
