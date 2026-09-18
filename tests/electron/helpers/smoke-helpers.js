@@ -124,14 +124,19 @@ async function waitForSidebarTransition(page) {
 // live -- mirrors armSidebarTransitionWatch above.
 async function armToastWatch(page) {
   await page.evaluate(() => {
-    window.__mdvToasts = []
     const toast = document.getElementById('toast')
+    // Leave __mdvToasts unset when there is nothing to watch, so waitForToast can tell
+    // "armed, no toast fired" apart from "armed before #toast existed" -- an empty
+    // recording reads like the first and would misdirect whoever hits the second.
     if (!toast) return
+    window.__mdvToasts = []
     const record = () => {
       if (toast.classList.contains('show')) window.__mdvToasts.push(toast.textContent)
     }
     record() // catches a toast that's already showing by the time this arms
-    new MutationObserver(record).observe(toast, { attributes: true, attributeFilter: ['class'] })
+    window.__mdvToastObserver?.disconnect() // re-arming replaces the watch, never stacks one
+    window.__mdvToastObserver = new MutationObserver(record)
+    window.__mdvToastObserver.observe(toast, { attributes: true, attributeFilter: ['class'] })
   })
 }
 
@@ -150,11 +155,15 @@ async function waitForToast(page, pattern, { timeout = 5000 } = {}) {
       { source: pattern.source, flags: pattern.flags },
       { timeout },
     )
-  } catch {
-    // Swallowed on purpose: let the assert below fail with the toasts actually recorded
-    // rather than surfacing a bare TimeoutError that names none of them.
+  } catch (error) {
+    // Swallow the timeout on purpose: the assert below then fails with the toasts actually
+    // recorded rather than a bare TimeoutError that names none of them. Only the timeout,
+    // though -- a destroyed execution context or a closed target reaching that assert would
+    // be reported as "no toast matched", which is a different and misleading story.
+    if (error.name !== 'TimeoutError') throw error
   }
-  const toasts = await page.evaluate(() => window.__mdvToasts || [])
+  const toasts = await page.evaluate(() => window.__mdvToasts ?? null)
+  assert.ok(toasts, 'armToastWatch was never armed on this page -- call it before the action that raises the toast')
   assert.ok(
     toasts.some(text => pattern.test(text)),
     `no recorded toast matched ${pattern}, got ${JSON.stringify(toasts)}`,

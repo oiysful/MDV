@@ -10,6 +10,7 @@
 | 설계 A — 호출부 (`large-directory-watch.test.js`) | **적용 완료** |
 | 설계 A — 의도적 파괴 검증 (토스트 타이머 단축) | **완료.** 창을 닫으면 수정 전 실패 / 수정 후 통과 확인 |
 | 문서·주석 갱신 (`AGENTS.md`, `ci-electron.yml`, 이 문서) | **완료** |
+| CI 3회 연속 그린 확인 | **미수집** — PR을 열어야 수집이 시작된다 (아래 "통계적 근거") |
 
 PR #8의 첫 실행(run `35202862668`)에서 Electron 스모크 104건 중 2건이 실패했고, 같은 커밋을
 그대로 재실행하니 통과했다. **작성 시점에는** 두 건 모두 로컬에서 재현되지 않았다. 그 전제는
@@ -98,8 +99,17 @@ async function armToastWatch(page) {
 }
 
 async function waitForToast(page, pattern, { timeout = 5000 } = {}) {
-  await page.waitForFunction(() => (window.__mdvToasts || []).length > 0, null, { timeout })
-  const toasts = await page.evaluate(() => window.__mdvToasts || [])
+  try {
+    await page.waitForFunction(
+      ({ source, flags }) => (window.__mdvToasts || []).some(text => new RegExp(source, flags).test(text)),
+      { source: pattern.source, flags: pattern.flags },
+      { timeout },
+    )
+  } catch (error) {
+    if (error.name !== 'TimeoutError') throw error
+  }
+  const toasts = await page.evaluate(() => window.__mdvToasts ?? null)
+  assert.ok(toasts, 'armToastWatch was never armed on this page -- ...')
   assert.ok(
     toasts.some(text => pattern.test(text)),
     `no recorded toast matched ${pattern}, got ${JSON.stringify(toasts)}`,
@@ -107,10 +117,19 @@ async function waitForToast(page, pattern, { timeout = 5000 } = {}) {
 }
 ```
 
-패턴 매칭은 페이지 안이 아니라 Node 쪽에서 한다. `RegExp`는 어차피 페이지 경계를 넘지 못하고,
-여기서 맞춰야 실패 메시지가 **실제로 기록된 토스트 문구**를 담는다 — 맨 `TimeoutError`보다
-진단 가치가 크다. `timeout` 기본값이 Playwright의 30초보다 한참 짧은 것도 같은 이유다:
-뜰 토스트라면 트리거 직후에 뜨므로, 긴 기본값은 진짜 실패 경로를 느리게 만들 뿐이다.
+**초안에서 두 군데가 바뀌었다.** 초안은 "첫 토스트가 기록될 때까지 기다린 뒤 Node에서 매칭한다"
+였는데, 그러면 무관한 토스트가 먼저 뜨는 호출자가 정작 기다리던 토스트가 오기 전에 깨어나
+실패한다. 그래서 대기 자체가 **패턴이 맞는** 토스트를 기다린다 — `RegExp`는 페이지 경계를 넘지
+못하므로 `source`/`flags`를 넘겨 페이지 안에서 재구성한다.
+
+그런데 대기만으로 끝내면 실패가 맨 `TimeoutError`가 되어 "어떤 토스트가 실제로 떴는지"를 잃는다.
+그래서 설계 B와 **같은 수법**을 쓴다 — 타임아웃을 `try`/`catch`로 삼키고, 바로 아래 `assert`가
+기록된 문구를 담아 실패하게 둔다. 삼키는 것은 타임아웃 **뿐**이다: 실행 컨텍스트 파괴나 타깃
+종료까지 삼키면 전혀 다른 사고가 "no toast matched"로 둔갑한다.
+
+`timeout` 기본값이 Playwright의 30초보다 한참 짧은 것도 같은 맥락이다: 뜰 토스트라면 트리거
+직후에 뜨므로, 긴 기본값은 진짜 실패 경로를 느리게 만들 뿐이다. (실측: 이 대기의 실소요는 밀리초
+단위다.)
 
 테스트는 `emitRendererCommand('openFolder')` **전에** arm 하고, 트리 대기 뒤에 기록을 확인한다.
 
@@ -213,7 +232,8 @@ A는 관측 창 자체를 없애므로 타이밍과 무관해진다. 근거의 *
 재현이 아니라, **창을 인위적으로 닫아** 같은 실패를 만들어내는 쪽이다. `onboarding.js`의 토스트
 타이머 `1600`을 `1`로 줄인 뒤:
 
-- 수정 **전** 테스트(`git show HEAD:`로 꺼낸 원본)는 계획서가 기록한 CI 실패와 같은 모양으로
+- 수정 **전** 테스트(`git show e5c92c5^:`로 꺼낸 원본 — `HEAD:`는 이제 수정본이라 거짓 음성이 난다)는
+  계획서가 기록한 CI 실패와 같은 모양으로
   실패했다 — `page.waitForFunction: Timeout 15000ms exceeded` at `large-directory-watch.test.js:91`,
   `duration_ms: 15723`. (CI 로그는 `duration_ms: 18737`이었다. 15초 타임아웃 + 앞선 대기라는
   구조가 같다.)
