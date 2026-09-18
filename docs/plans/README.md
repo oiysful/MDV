@@ -13,6 +13,10 @@
 - [done/2026-08-21/](./done/2026-08-21/) — [16](./done/2026-08-21/16-mermaid-hidden-render-and-print-palette.md) mermaid 렌더링 버그 2건 — 소스 모드(⌘U) 왕복 시 다이어그램이 빈 공간으로 남는 문제(`display:none` 중 `getBBox()`가 0을 반환), 다크 모드 인쇄/PDF에서 다이어그램만 검게 남는 문제(mermaid가 팔레트를 SVG에 구워 넣어 `@media print`의 CSS 변수 강제를 따라오지 않음). advisor + code-reviewer 리뷰로 계획서 범위 밖 레이스 3건(인쇄 복원 시 테마 재확인, 동시 재렌더 직렬화, 파킹 중 스냅샷 자체복구)도 함께 반영. 2026-08-21 구현·검증 완료.
 - [done/2026-09-16/](./done/2026-09-16/) — [17](./done/2026-09-16/17-shortcuts-and-fullscreen-toolbar.md) ⌘B 좌측 패널·⌘⇧O 폴더 열기 단축키, + 메뉴 단축키 안내, 전체화면 툴바 좌측 여백(`.traffic-gap` 70px) 회수 4건. ⌘B가 소스 편집기의 "굵게"와 충돌해 `triggeredByAccelerator` + 포커스 가드로 갈랐고, 계획서가 검증 불가로 남겼던 그 가정을 Ian이 실제 키보드로 확인 완료. code-reviewer 리뷰로 계획서 범위 밖 1건(`switchTab`의 force-open이 분할뷰 가드를 우회해 ⌘⇧O로 "닫을 수 없는 사이드바"를 만드는 문제)도 함께 반영. 실측으로 계획서 결론 하나를 뒤집었다 — 실제 키 입력은 어떤 합성 경로로도 메뉴 accelerator에 닿지 않지만(`sendInputEvent`, Playwright `keyboard.press` 모두), `MenuItem#click`이 1번 인자를 핸들러의 3번째 파라미터로 넘기므로 **분기 자체는 테스트로 고정할 수 있다**. 2026-09-16 구현·검증 완료.
 
+## [`18-electron-ci-flake-fixes.md`](./18-electron-ci-flake-fixes.md) — CI 전용 Electron 플레이크 2건 수정 (2026-09-18 계획)
+
+PR #8의 첫 실행에서 실패하고 재실행에서 통과한 Electron 테스트 2건. 진단이 바뀐 것이 핵심 — `ci-electron.yml` 주석이 기록해 둔 "러너 CPU 경합"은 오진이었고, 둘 다 코드로 특정되는 테스트 설계 결함이다. 하나는 1600ms 뒤 사라지는 토스트를 그 창 밖에서 폴링하는 문제, 다른 하나는 검증 대상(스크롤 복원)이 대기 조건에 빠져 있는 문제. 프로덕션 코드는 건드리지 않는다. 착수 대기.
+
 ## [`12-i18n-feasibility-assessment.md`](./12-i18n-feasibility-assessment.md) — 전체 UI i18n 적용 타당성 검토 (2026-08-12 조사)
 
 착수 계획이 아니라 조사 보고서. 하드코딩된 한국어 UI 문자열 규모(~171줄, 13개 파일)와 테스트 커플링(21개 테스트 파일이 한국어 리터럴을 직접 assert)을 근거로, 전면 착수보다 단계적 축소 착수를 권장. 실행 여부는 사용자 결정 대기.
