@@ -5,18 +5,22 @@
 **English** | [한국어](CONTRIBUTING.ko.md)
 </div>
 
-MDV uses [GitHub Flow](https://docs.github.com/en/get-started/using-github/github-flow): `main` is always deployable, and all changes land through short-lived branches and pull requests.
+MDV keeps two long-lived branches. **`develop` is where work integrates**; **`main` holds released code only** and moves when a release is deliberately decided. Everything else is a short-lived branch that lands through a pull request.
+
+`main`, `develop`, and `release/*` are protected by a repository ruleset against force pushes and deletion. There are no required status checks, so CI is advisory rather than blocking — read it before merging.
 
 ## Workflow
 
-1. Branch off `main` using a `type/short-description` name — `feat/`, `fix/`, `docs/`, `harden/`, etc.
-2. Commit in small, focused steps. Open a pull request early so work is visible.
+1. Branch off `develop` using a `type/short-description` name — `feat/`, `fix/`, `docs/`, `ci/`, `harden/`, etc.
+2. Commit in small, focused steps: one logical change per commit, staging only the paths that change belongs to. Open a pull request early so work is visible.
+   - If `develop` moves ahead while you work, **rebase onto it rather than merging it back in**. Force-push a branch you already pushed with `--force-with-lease`, and only when you are its sole owner.
 3. Before merging, CI must pass. `.github/workflows/ci.yml` runs `npm run test:unit`, `npm run test:controller`, and a dependency audit gate on every push and PR, including documentation-only ones — it takes about 15s. `.github/workflows/ci-electron.yml` runs the Electron smoke suite (macOS runner, ~4min) and is skipped when a change touches only documentation; that file lists the excluded paths and explains why `tests/fixtures/*.md` must keep triggering it.
 4. Run the Electron smoke suite locally at least once before pushing (see [AGENTS.md](AGENTS.md) test tiers) — CI now runs it too, but a local run surfaces failures faster than waiting on the macOS runner:
    ```
    npm run test:electron
    ```
-5. Merge the PR (merge commit, matching existing history). The branch is deleted automatically on merge.
+5. Merge the PR into `develop` (merge commit, matching existing history). The branch is deleted automatically on merge. Squash and rebase merges are available but are a deliberate per-PR choice, not the default.
+6. Releasing is a separate, explicit act: open a pull request from `develop` to `main`, merge it, then follow [RELEASING.md](RELEASING.md). Nothing reaches `main` any other way.
 
 ## Dependencies
 
