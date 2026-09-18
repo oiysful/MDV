@@ -11,6 +11,10 @@ MDV keeps two long-lived branches. **`develop` is where work integrates**; **`ma
 
 ## Workflow
 
+**Documentation-only changes go straight to `develop`** — no branch, no pull request. "Documentation-only" is defined by exactly one list: the `paths-ignore` block in [`.github/workflows/ci-electron.yml`](.github/workflows/ci-electron.yml) — root `*.md`, `src/**/*.md`, `docs/**` (including the generated diagram `.json` and `.html`), `.skills/**`, and `LICENSE`. Reusing that list means the two rules cannot drift apart, and it already excludes `tests/fixtures/*.md`, which are live test inputs rather than documentation. Workflow YAML is never documentation, even when only its comments change. `ci.yml` still runs on every push to `develop`, so a direct docs push keeps its unit, controller, and dependency-audit coverage. `main` is never pushed to directly; it moves only through the release pull request.
+
+Everything else follows the numbered flow below.
+
 1. Branch off `develop` using a `type/short-description` name — `feat/`, `fix/`, `docs/`, `ci/`, `harden/`, etc.
 2. Commit in small, focused steps: one logical change per commit, staging only the paths that change belongs to. Open a pull request early so work is visible.
    - If `develop` moves ahead while you work, **rebase onto it rather than merging it back in**. Force-push a branch you already pushed with `--force-with-lease`, and only when you are its sole owner.
