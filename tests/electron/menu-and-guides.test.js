@@ -10,16 +10,35 @@ const {
   emitFullScreenChanged, armSidebarTransitionWatch, waitForSidebarTransition,
 } = require('./helpers/smoke-helpers')
 
-// Overrides the real (OS-dependent) default-app-status IPC handler with a fixed, delayed
-// response, so a test can focus something before the guide claims focus during page load.
-async function stubDefaultAppStatusDelay(electronApp, delayMs) {
-  await electronApp.evaluate(async ({ ipcMain }, ms) => {
+// Overrides the real (OS-dependent) default-app-status IPC handler with a fixed response
+// held shut until the test opens the gate, so a test can focus something before the guide
+// claims focus during page load.
+//
+// This used to be a 400ms delay, which made the window a race rather than a barrier: the
+// reload plus the rendererReady wait plus one evaluate round trip can overrun 400ms on a
+// loaded runner, and then the guide opens first, its deferred rAF takes focus, the test
+// steals that focus back, and the following wait sits out its timeout on a focus move that
+// already happened. A wider delay would only have made it rarer. See
+// docs/plans/19-default-app-guide-focus-flake.md.
+//
+// Safe to hold open-endedly: app.js dispatches checkMarkdownDefaultAppStatus() with `void`
+// and sets rendererReady on the very next line, so a blocked status call does not hold up
+// the readiness this test waits on.
+async function stubDefaultAppStatusGate(electronApp) {
+  await electronApp.evaluate(({ ipcMain }) => {
+    globalThis.__mdvDefaultAppStatusGate = new Promise(resolve => {
+      globalThis.__mdvOpenDefaultAppStatusGate = resolve
+    })
     ipcMain.removeHandler('get-markdown-default-app-status')
     ipcMain.handle('get-markdown-default-app-status', async () => {
-      await new Promise(resolve => setTimeout(resolve, ms))
+      await globalThis.__mdvDefaultAppStatusGate
       return { ok: true, registered: false, needsAction: true, appPath: '/Applications/MDV.app', defaultHandlers: [] }
     })
-  }, delayMs)
+  })
+}
+
+async function openDefaultAppStatusGate(electronApp) {
+  await electronApp.evaluate(() => { globalThis.__mdvOpenDefaultAppStatusGate() })
 }
 
 test('native menu exposes previously hidden file, edit, view, and help commands', async () => {
@@ -135,11 +154,13 @@ test('default app guide has dialog semantics, traps Tab focus, and restores focu
     )
 
     // The real status IPC round trip resolves before a test script can race it, so there's no
-    // window to plant a "previously focused" element. Delay the response to open one deliberately.
-    await stubDefaultAppStatusDelay(electronApp, 400)
+    // window to plant a "previously focused" element. Hold the response shut, plant the focus,
+    // then open the gate -- the guide cannot possibly precede the plant, at any runner speed.
+    await stubDefaultAppStatusGate(electronApp)
     await page.reload()
     await page.waitForFunction(() => document.documentElement.dataset.rendererReady === 'true')
     await page.evaluate(() => document.getElementById('btn-theme').focus())
+    await openDefaultAppStatusGate(electronApp)
     await page.waitForFunction(() => document.getElementById('default-app-guide')?.classList.contains('show'))
 
     await page.waitForFunction(() => document.activeElement?.id === 'default-app-do-not-show')
