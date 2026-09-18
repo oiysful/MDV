@@ -1,3 +1,4 @@
+const assert = require('node:assert/strict')
 const fs = require('node:fs/promises')
 const os = require('node:os')
 const path = require('node:path')
@@ -115,6 +116,51 @@ async function waitForSidebarTransition(page) {
   await page.waitForFunction(() => window.__mdvSidebarTransitionDone === true)
 }
 
+// #toast (onboarding.js's showToast) removes its own 'show' class 1.6s after it's added, so
+// polling classList.contains('show') after some other wait races that timeout: if the other
+// wait is slow enough, the toast has already faded before the poll even starts, and the poll
+// then waits out its own timeout for a class that will never return again. Arm this before
+// the action that triggers the toast and record every appearance instead of polling for one
+// live -- mirrors armSidebarTransitionWatch above.
+async function armToastWatch(page) {
+  await page.evaluate(() => {
+    window.__mdvToasts = []
+    const toast = document.getElementById('toast')
+    if (!toast) return
+    const record = () => {
+      if (toast.classList.contains('show')) window.__mdvToasts.push(toast.textContent)
+    }
+    record() // catches a toast that's already showing by the time this arms
+    new MutationObserver(record).observe(toast, { attributes: true, attributeFilter: ['class'] })
+  })
+}
+
+// Waits for a recorded toast matching `pattern` (armToastWatch must have been called first).
+// The final check is an assert in Node rather than the wait itself, so a failure reports the
+// toast text(s) that were actually recorded instead of a bare TimeoutError. `timeout` defaults
+// well under Playwright's own 30s: a toast that was going to fire at all does so right after
+// the action that triggers it, so a long default would only slow down the real failure case.
+async function waitForToast(page, pattern, { timeout = 5000 } = {}) {
+  try {
+    // Wait for a *matching* toast, not merely the first one: a caller whose action also
+    // raises an unrelated toast would otherwise wake on that one and fail before the toast
+    // it asked for arrived. A RegExp can't cross the page boundary, so rebuild it there.
+    await page.waitForFunction(
+      ({ source, flags }) => (window.__mdvToasts || []).some(text => new RegExp(source, flags).test(text)),
+      { source: pattern.source, flags: pattern.flags },
+      { timeout },
+    )
+  } catch {
+    // Swallowed on purpose: let the assert below fail with the toasts actually recorded
+    // rather than surfacing a bare TimeoutError that names none of them.
+  }
+  const toasts = await page.evaluate(() => window.__mdvToasts || [])
+  assert.ok(
+    toasts.some(text => pattern.test(text)),
+    `no recorded toast matched ${pattern}, got ${JSON.stringify(toasts)}`,
+  )
+}
+
 module.exports = {
   BASIC_MD,
   EXPLORER_DIR,
@@ -131,4 +177,6 @@ module.exports = {
   clickApplicationMenuItem,
   armSidebarTransitionWatch,
   waitForSidebarTransition,
+  armToastWatch,
+  waitForToast,
 }

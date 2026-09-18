@@ -5,7 +5,7 @@ const os = require('node:os')
 const path = require('node:path')
 
 const { launchApp, closeApp } = require('./helpers/launch')
-const { stubOpenDialog, emitRendererCommand } = require('./helpers/smoke-helpers')
+const { stubOpenDialog, emitRendererCommand, armToastWatch, waitForToast } = require('./helpers/smoke-helpers')
 
 // Reads back exactly which paths chokidar decided to watch for a given root, straight from
 // the main process's dirWatchers map (exposed to globalThis only under MDV_USER_DATA_DIR --
@@ -81,6 +81,12 @@ test('a pathologically large directory trips the path-count guard instead of han
     const { electronApp, page } = await launchApp()
     try {
       await page.waitForSelector('#empty')
+
+      // Arm before triggering the guard: the toast removes its own 'show' class 1.6s after
+      // it appears (onboarding.js), and the tree-load wait right below can outlast that under
+      // CI load, so polling classList.contains('show') afterwards can miss a toast that
+      // already came and went. Recording every appearance removes the race entirely.
+      await armToastWatch(page)
       await stubOpenDialog(electronApp, [root])
       await emitRendererCommand(electronApp, 'openFolder')
 
@@ -88,9 +94,7 @@ test('a pathologically large directory trips the path-count guard instead of han
       await page.waitForFunction(() => document.getElementById('explorer-tree').textContent.includes('file-0.md'))
 
       // The watch guard should fire and surface a toast, not hang.
-      await page.waitForFunction(() => document.getElementById('toast')?.classList.contains('show'))
-      const toastText = await page.textContent('#toast')
-      assert.match(toastText, /너무 커서/)
+      await waitForToast(page, /너무 커서/)
 
       // The app must stay responsive after the guard trips -- a real IPC round trip proves it.
       await emitRendererCommand(electronApp, 'toggleTheme')
