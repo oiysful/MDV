@@ -28,7 +28,7 @@ name: CI (Electron)
 # ci.yml instead, or move this gate to a `changes` job whose `if:` marks it skipped.
 on:
   pull_request:
-    branches: [main]
+    branches: [main, develop]
     paths-ignore:
       - '*.md'
       - 'src/*.md'
@@ -37,7 +37,7 @@ on:
       - '.skills/**'
       - 'LICENSE'
   push:
-    branches: [main]
+    branches: [main, develop]
     paths-ignore:
       - '*.md'
       - 'src/*.md'
