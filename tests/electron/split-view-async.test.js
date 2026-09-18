@@ -73,11 +73,21 @@ test('split view restores fresh preview and pane scroll after immediate tab swit
     await page.waitForFunction(() => document.title === 'b')
 
     await page.locator('#tab-list .file-tab').first().click()
-    await page.waitForFunction(() => {
-      const heading = document.querySelector('#content h1')
-      const editor = document.getElementById('source-editor')
-      return document.title === 'a' && heading && heading.textContent.includes('A edited') && editor.value.startsWith('# A edited')
-    })
+    // Scroll restore lands after the render, so waiting on content alone reads the pane
+    // before restoreTabState has written scrollTop back. Wait on the scroll too.
+    try {
+      await page.waitForFunction(() => {
+        const heading = document.querySelector('#content h1')
+        const editor = document.getElementById('source-editor')
+        const content = document.getElementById('content')
+        const source = document.getElementById('source-view')
+        return document.title === 'a' && heading && heading.textContent.includes('A edited')
+          && editor.value.startsWith('# A edited')
+          && content.scrollTop > 0 && source.scrollTop > 0
+      }, undefined, { timeout: 5000 })
+    } catch {
+      // Swallowed on purpose: let the asserts below fail with the real scrollTop values.
+    }
 
     const restoredScroll = await page.evaluate(() => ({
       preview: document.getElementById('content').scrollTop,
