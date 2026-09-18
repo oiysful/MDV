@@ -22,6 +22,32 @@ MDV keeps two long-lived branches. **`develop` is where work integrates**; **`ma
 5. Merge the PR into `develop` (merge commit, matching existing history). The branch is deleted automatically on merge. Squash and rebase merges are available but are a deliberate per-PR choice, not the default.
 6. Releasing is a separate, explicit act: open a pull request from `develop` to `main`, merge it, then follow [RELEASING.md](RELEASING.md). Nothing reaches `main` any other way.
 
+## Commit messages
+
+Commit subjects follow [Conventional Commits 1.0.0](https://www.conventionalcommits.org/en/v1.0.0/):
+
+```
+<type>[optional scope][!]: <description>
+```
+
+| type | use for |
+|------|---------|
+| `feat` | a capability a user can see |
+| `fix` | a defect in behaviour that already shipped |
+| `docs` | documentation, comments, and plans |
+| `refactor` | restructuring with no behaviour change |
+| `test` | tests and test helpers only |
+| `perf` | a measured performance change |
+| `build` | packaging, `electron-builder`, dependency changes |
+| `ci` | workflows and CI configuration |
+| `chore` | anything else, including release version bumps |
+
+Scope is optional; when it helps, name the area the change touches — `renderer`, `main`, `preload`, `ci`, `security`, `release`, `deps`, `tests`, `plans`, `diagrams`. Put `!` before the colon when a change breaks something people rely on.
+
+**Keep writing the body.** The convention constrains the subject line and nothing else. This repository's commit bodies carry why a change was made, the evidence behind it, and the hypotheses that turned out wrong — that is some of its best documentation, and adopting a subject format is not a reason to give it up.
+
+Commits before 2026-09-18 are imperative English sentences with no type prefix. Leave them alone; rewriting history to match is not worth it.
+
 ## Dependencies
 
 `.npmrc` sets `min-release-age=7`: npm will not install a package version published less than seven days ago.
