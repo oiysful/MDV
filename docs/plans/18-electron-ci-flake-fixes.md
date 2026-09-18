@@ -176,11 +176,30 @@ try {
 | `tests/electron/helpers/smoke-helpers.js` | `armToastWatch` / `waitForToast` 추가 + export |
 | `tests/electron/large-directory-watch.test.js` | 설계 A 적용 |
 | `tests/electron/split-view-async.test.js` | 설계 B 적용 |
+| `tests/electron/boot-and-render.test.js` | 남아 있던 같은 모양의 토스트 호출부 3곳을 같은 헬퍼로 이관 (아래 "남은 호출부 이관") |
 | `AGENTS.md` | NOTES의 플레이크 항목 재작성 — 두 건이 각각 무엇이었고 어떻게 고쳤는지, B의 재현 조건, 그리고 이제 이 두 건이 빨간색이면 재실행이 아니라 **회귀**라는 점. "동시성을 낮춘 것은 해결이 아니었다"는 교훈은 유지 |
 | `.github/workflows/ci-electron.yml` | `--test-concurrency` 주석 산문을 현재 사실에 맞게 갱신. **숫자는 2 그대로.** 이 계획서가 그 주석의 오진을 논지로 삼으면서 정작 변경 표에서 빠뜨렸던 파일이다 |
 | `docs/plans/README.md` | 이 계획서의 색인 항목을 "착수 대기"에서 현재 상태로 갱신 |
 
 프로덕션 코드는 건드리지 않는다. 두 건 모두 앱의 결함이 아니라 테스트의 결함이다.
+
+## 남은 호출부 이관
+
+설계 A가 헬퍼를 만들었지만 `large-directory-watch` 한 곳에서만 썼다. 검토 과정에서
+`boot-and-render.test.js`에 **같은 모양의 호출부 3곳**(`코드 복사됨` / `복사됨` / `PDF 저장됨`)이
+남아 있는 것이 드러났고, Ian의 결정으로 이번 변경에서 함께 이관했다. 헬퍼는 이미 있으므로
+호출부만 바뀐다.
+
+**다만 위험도 평가 하나는 정정해 둔다.** 검토는 `PDF 저장됨` 호출부를 "가장 위험"으로 봤다 —
+토스트 폴링 앞에 최대 5000ms를 기다리는 `waitForFile`이 있으니 PDF 생성이 1.6초를 넘기면
+토스트가 이미 꺼져 있다는 것이었다. **그 서술은 틀렸다.** `app-runtime.js#exportPdf`는
+`await api.exportPdf(...)`가 **끝난 뒤에** `showToast('PDF 저장됨')`을 부른다. 즉 파일이 생긴
+**다음에** 토스트가 뜨므로, `waitForFile`의 5초 예산은 토스트의 1.6초 수명을 잡아먹지 않는다.
+실제로 토스트 타이머를 1ms로 줄인 파괴 조건에서 **이관 전 버전도 실패하지 않았다.**
+
+그래서 이 이관은 "실증된 실패를 고쳤다"가 아니라 **구조적 의존을 없앴다**로 적는 것이 정확하다.
+남은 창은 `waitForFile`의 100ms 폴링 간격 정도이고, 그것이 1.6초를 넘으려면 러너가 훨씬 심하게
+굶주려야 한다. 없앨 수 있고 헬퍼가 이미 있으니 없앴을 뿐, 급한 불은 아니었다.
 
 ## 검증 결과
 

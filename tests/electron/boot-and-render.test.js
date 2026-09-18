@@ -10,6 +10,7 @@ const {
   stubOpenDialog, stubSaveDialog, createTempMarkdown,
   emitFileOpened, emitRendererCommand, clickApplicationMenuItem,
   stubOpenExternal, getOpenExternalCalls,
+  armToastWatch, waitForToast,
 } = require('./helpers/smoke-helpers')
 
 const MERMAID_MD = path.join(ROOT, 'tests/fixtures/mermaid.md')
@@ -297,9 +298,10 @@ test('openFile loads markdown, updates title, and renders code highlighting', as
     })
     assert.equal(await copyButton.evaluate(el => getComputedStyle(el, '::after').content), '"복사"')
 
+    await armToastWatch(page)
     await copyButton.click()
     await page.waitForFunction(() => document.querySelector('#content .copy-btn')?.classList.contains('copied'))
-    await page.waitForFunction(() => document.getElementById('toast')?.textContent === '코드 복사됨' && document.getElementById('toast')?.classList.contains('show'))
+    await waitForToast(page, /^코드 복사됨$/)
     const copiedIconHtml = await copyButton.evaluate(el => el.innerHTML)
     assert.match(copiedIconHtml, /icon-check/)
     // Tooltip hides once the button flips to its "copied" state so it doesn't read stale.
@@ -311,8 +313,9 @@ test('openFile loads markdown, updates title, and renders code highlighting', as
       return btn && getComputedStyle(btn, '::after').opacity === '0'
     })
 
+    await armToastWatch(page)
     await page.click('#btn-copy-all')
-    await page.waitForFunction(() => document.getElementById('toast')?.textContent === '복사됨' && document.getElementById('toast')?.classList.contains('show'))
+    await waitForToast(page, /^복사됨$/)
   } finally {
     await closeApp(electronApp)
   }
@@ -687,9 +690,12 @@ test('PDF export button sits right of print and saves a PDF', async () => {
       ariaLabel: 'PDF 내보내기',
     })
 
+    await armToastWatch(page)
     await page.click('#btn-export-pdf')
+    // waitForFile polls for up to 5s and the toast fades after 1.6s, so the recording -- not
+    // the live element -- is the only thing still around to check by the time we get here.
     await waitForFile(pdfPath)
-    await page.waitForFunction(() => document.getElementById('toast')?.textContent === 'PDF 저장됨' && document.getElementById('toast')?.classList.contains('show'))
+    await waitForToast(page, /^PDF 저장됨$/)
 
     const pdf = await fs.readFile(pdfPath)
     assert.equal(pdf.subarray(0, 4).toString('utf8'), '%PDF')
