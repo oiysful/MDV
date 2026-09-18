@@ -1,15 +1,26 @@
 # 18. CI 전용 Electron 플레이크 2건 수정
 
 ## 상태
-**계획 (미착수)** — 2026-09-18 작성.
+**착수 — 항목별 상태는 아래와 같다.** 2026-09-18 작성, 같은 날 갱신.
+
+| 항목 | 상태 |
+|------|------|
+| 설계 B — `split-view-async.test.js` | **적용 완료.** 로컬 결정적 재현으로 수정 전 실패 / 수정 후 통과까지 확인 |
+| 설계 A — 헬퍼 (`smoke-helpers.js`의 `armToastWatch` / `waitForToast`) | **추가 완료** |
+| 설계 A — 호출부 (`large-directory-watch.test.js`) | **적용 완료** |
+| 설계 A — 의도적 파괴 검증 (토스트 타이머 단축) | **완료.** 창을 닫으면 수정 전 실패 / 수정 후 통과 확인 |
+| 문서·주석 갱신 (`AGENTS.md`, `ci-electron.yml`, 이 문서) | **완료** |
 
 PR #8의 첫 실행(run `35202862668`)에서 Electron 스모크 104건 중 2건이 실패했고, 같은 커밋을
-그대로 재실행하니 통과했다. 두 건 모두 **로컬에서는 재현되지 않는다.**
+그대로 재실행하니 통과했다. **작성 시점에는** 두 건 모두 로컬에서 재현되지 않았다. 그 전제는
+이후 B에 대해 깨졌다 — B는 로컬에서 결정적으로 재현됐다(아래 "검증 결과"). A는 여전히 자연
+재현이 없지만, 관측 창 자체를 없애는 수정이라 재현 없이도 근거가 선다.
 
 이 계획서의 핵심은 수정안 자체가 아니라 **진단이 바뀌었다**는 점이다. `ci-electron.yml`의
 `--test-concurrency` 주석은 이 두 건을 "GitHub 러너의 코어 부족으로 인한 CPU 경합"으로 서술하고
 동시성을 4→2로 낮춘 것을 대응으로 기록해 두었다. 그 서술은 틀렸다. 동시성 2에서도 재발했고,
 아래에서 보듯 **둘 다 코드로 특정 가능한 테스트 설계 결함**이다. 동시성은 빈도만 바꿨다.
+(그 주석 자체도 이 변경에서 현재 사실에 맞게 다시 썼다.)
 
 ## Context
 
@@ -81,19 +92,25 @@ async function armToastWatch(page) {
     const record = () => {
       if (toast.classList.contains('show')) window.__mdvToasts.push(toast.textContent)
     }
-    record()                                   // 이미 떠 있는 경우도 놓치지 않는다
+    record() // catches a toast that's already showing by the time this arms
     new MutationObserver(record).observe(toast, { attributes: true, attributeFilter: ['class'] })
   })
 }
 
-async function waitForToast(page, pattern) {
-  // RegExp는 페이지 경계를 넘지 못하므로 source만 넘긴다.
-  await page.waitForFunction(
-    source => (window.__mdvToasts || []).some(text => new RegExp(source).test(text)),
-    pattern.source,
+async function waitForToast(page, pattern, { timeout = 5000 } = {}) {
+  await page.waitForFunction(() => (window.__mdvToasts || []).length > 0, null, { timeout })
+  const toasts = await page.evaluate(() => window.__mdvToasts || [])
+  assert.ok(
+    toasts.some(text => pattern.test(text)),
+    `no recorded toast matched ${pattern}, got ${JSON.stringify(toasts)}`,
   )
 }
 ```
+
+패턴 매칭은 페이지 안이 아니라 Node 쪽에서 한다. `RegExp`는 어차피 페이지 경계를 넘지 못하고,
+여기서 맞춰야 실패 메시지가 **실제로 기록된 토스트 문구**를 담는다 — 맨 `TimeoutError`보다
+진단 가치가 크다. `timeout` 기본값이 Playwright의 30초보다 한참 짧은 것도 같은 이유다:
+뜰 토스트라면 트리거 직후에 뜨므로, 긴 기본값은 진짜 실패 경로를 느리게 만들 뿐이다.
 
 테스트는 `emitRendererCommand('openFolder')` **전에** arm 하고, 트리 대기 뒤에 기록을 확인한다.
 
@@ -113,21 +130,20 @@ await waitForToast(page, /너무 커서/)
 잃는다. 대기는 넓히되 실패 보고는 기존 assert에 맡긴다.
 
 ```js
-// 스크롤 복원은 렌더 뒤에 적용된다. 렌더만 기다리면 restoreTabState가 scrollTop을
-// 다시 넣기 전 값을 읽는다.
+// Scroll restore lands after the render, so waiting on content alone reads the pane
+// before restoreTabState has written scrollTop back. Wait on the scroll too.
 try {
   await page.waitForFunction(() => {
     const heading = document.querySelector('#content h1')
     const editor = document.getElementById('source-editor')
     const content = document.getElementById('content')
     const source = document.getElementById('source-view')
-    return document.title === 'a'
-      && heading && heading.textContent.includes('A edited')
+    return document.title === 'a' && heading && heading.textContent.includes('A edited')
       && editor.value.startsWith('# A edited')
       && content.scrollTop > 0 && source.scrollTop > 0
-  })
+  }, undefined, { timeout: 5000 })
 } catch {
-  // 의도적으로 삼킨다 — 아래 assert가 실제 값을 담은 메시지로 실패하게 두기 위해서다.
+  // Swallowed on purpose: let the asserts below fail with the real scrollTop values.
 }
 ```
 
@@ -141,24 +157,84 @@ try {
 | `tests/electron/helpers/smoke-helpers.js` | `armToastWatch` / `waitForToast` 추가 + export |
 | `tests/electron/large-directory-watch.test.js` | 설계 A 적용 |
 | `tests/electron/split-view-async.test.js` | 설계 B 적용 |
-| `AGENTS.md` | 수정 후 NOTES의 플레이크 항목 갱신 — "재실행부터 해보라"는 현재 안내는 수정이 들어가면 더 이상 맞지 않는다 |
+| `AGENTS.md` | NOTES의 플레이크 항목 재작성 — 두 건이 각각 무엇이었고 어떻게 고쳤는지, B의 재현 조건, 그리고 이제 이 두 건이 빨간색이면 재실행이 아니라 **회귀**라는 점. "동시성을 낮춘 것은 해결이 아니었다"는 교훈은 유지 |
+| `.github/workflows/ci-electron.yml` | `--test-concurrency` 주석 산문을 현재 사실에 맞게 갱신. **숫자는 2 그대로.** 이 계획서가 그 주석의 오진을 논지로 삼으면서 정작 변경 표에서 빠뜨렸던 파일이다 |
+| `docs/plans/README.md` | 이 계획서의 색인 항목을 "착수 대기"에서 현재 상태로 갱신 |
 
 프로덕션 코드는 건드리지 않는다. 두 건 모두 앱의 결함이 아니라 테스트의 결함이다.
 
-## 검증 계획과 그 한계
+## 검증 결과
 
-**정직하게 적어 둔다: 이 수정은 "고쳤음"을 결정적으로 증명할 수 없다.** 로컬에서 재현되지 않기
-때문이다. 근거는 두 층이다.
+**작성 당시 이 절은 "이 수정은 고쳤음을 결정적으로 증명할 수 없다 — 로컬에서 재현되지 않기
+때문"이라고 적혀 있었다. 그 전제는 B에 대해 깨졌다.** B는 로컬에서 결정적으로 재현됐고,
+수정본이 같은 조건에서 통과하는 것까지 확인했다. 아래는 근거를 층위별로 구분해 다시 적은 것이다.
 
-1. **논리적 근거.** A는 관측 창 자체를 없애므로 근거가 강하다 — 타이밍과 무관해진다.
-   B는 대기 조건이 검증 대상을 포함하게 되므로 이전보다 명백히 낫지만, "복원이 영원히 안 되는"
-   경우와 "느린" 경우를 여전히 구분하지 못한다. 근거가 상대적으로 약하다.
-2. **통계적 근거.** CI를 반복 실행해 연속 그린을 확인한다. 몇 회를 기준으로 할지는 착수 시
-   정한다. 이건 증명이 아니라 신뢰 구간이다.
+### B — 결정적 재현으로 확정 (근거: 실험)
 
-추가로, A는 **의도적으로 깨서** 검증할 수 있다: 토스트 타이머를 1600ms에서 아주 짧게 바꾸면
-현재 테스트는 실패하고 수정된 테스트는 통과해야 한다. 이건 로컬에서 결정적으로 돌릴 수 있는
-유일한 검증이므로 착수 시 먼저 한다.
+두 조건이 **겹쳐야** 터진다. 하나만으로는 터지지 않는다.
+
+1. **`fill()` 뒤 탭 전환이 `handleSourceInput`의 120ms 디바운스보다 느릴 것.** 느리면
+   `renderSplitPreview`가 먼저 끝나 `tab.previewDirty = false`가 되고, 저장되는 `renderedHTML`
+   스냅샷에 편집 결과가 담긴다. 복귀 시 `hydrateFromDom`이 그 스냅샷으로 본문을 **동기적으로**
+   그리므로 (수정 전) 대기 조건이 **즉시** 만족된다 — 즉 관측 창이 열린다.
+   로컬에서 안 터지던 이유가 여기 있다: 로컬은 클릭이 빨라 `previewDirty: true` 경로를 타는데,
+   그 경로에서는 스크롤 복원이 비동기 렌더의 `.then()`에서 일어나 본문 등장과 마이크로태스크
+   거리라 읽을 창이 아예 열리지 않는다.
+2. **rAF가 굶주릴 것.** 스크롤 복원은 `restoreTabState`의 `requestAnimationFrame` 안에만 있어
+   본문이 보인 뒤 한 프레임 늦게 온다. 부하 걸린 러너에서 rAF 지연이 CDP 왕복보다 길면
+   `preview: 0`을 읽는다. 이때 `source`는 살아 있으므로 preview assert에서 먼저 죽는데,
+   이는 CI가 86행에서 실패한 모습과 정확히 일치한다.
+
+계측(`window.__mdvProbeLog`)은 이 순서를 그대로 보여줬다:
+`{e:"restore", previewDirty:false, previewScrollTop:8384.5, hasHtml:true}` →
+대기 조건 만족 시점 `{p:0, s:6006}` → 한 프레임 뒤 `{p:8385}`.
+
+재현 절차 — 둘 다 필요하고, 둘 다 일시적 계측이라 트리에 남기지 않는다:
+
+1. 테스트의 `.nth(1).click()` 직전에 `await page.waitForTimeout(500)` 삽입 (느린 클릭 시뮬레이션).
+2. `src/renderer/workspace.js`의 `restoreTabState`에서
+   `requestAnimationFrame(() => {...})` → `setTimeout(() => {...}, 300)` (rAF 굶기기).
+
+결과는 `AssertionError: preview scroll should restore, got 0` — CI 메시지와 동일했다. 설계 B
+적용본은 동일 조건에서 통과했다. 두 계측 모두 되돌렸고 `src/`는 이 브랜치에서 변경되지 않았다.
+
+### 반증된 가설 — "저장측이 0을 저장한다" (근거: 실험)
+
+`saveCurrentTabState`가 렌더 도중 `content.scrollTop`을 0으로 캡처한다는 가설은 **틀렸다.**
+`refs.content.innerHTML = ...` 교체는 동기라 중간 레이아웃이 없고, 따라서 `scrollTop`이
+클램프되지 않는다. `readImageDataUrl`에 900ms 지연을 주입해 렌더 await 창 한가운데서 탭을
+전환해도 mid-render `scrollTop`은 8391이었고, 완전히 정착한 뒤에도 8393으로 정상 복원됐다.
+→ "변경 파일" 절의 "프로덕션 코드는 건드리지 않는다"는 결론이 추론이 아니라 실험으로
+뒷받침된다.
+
+### A — 논리적 근거 + 의도적 파괴 검증 (근거: 논증 + 실험)
+
+A는 관측 창 자체를 없애므로 타이밍과 무관해진다. 근거의 **성격**이 B와 다르다 — 자연 실패의
+재현이 아니라, **창을 인위적으로 닫아** 같은 실패를 만들어내는 쪽이다. `onboarding.js`의 토스트
+타이머 `1600`을 `1`로 줄인 뒤:
+
+- 수정 **전** 테스트(`git show HEAD:`로 꺼낸 원본)는 계획서가 기록한 CI 실패와 같은 모양으로
+  실패했다 — `page.waitForFunction: Timeout 15000ms exceeded` at `large-directory-watch.test.js:91`,
+  `duration_ms: 15723`. (CI 로그는 `duration_ms: 18737`이었다. 15초 타임아웃 + 앞선 대기라는
+  구조가 같다.)
+- 수정 **후** 테스트는 같은 조건에서 통과했다(2/2).
+
+50ms로는 재현되지 않았다 — 로컬이 너무 빨라 창이 여전히 열려 있었다. 창을 실제로 닫으려면
+1ms가 필요했다. `src/renderer/onboarding.js`는 검증 후 원복했고 이 브랜치에서 변경되지 않았다.
+
+**작성 시점의 평가가 뒤집혔다는 점을 남겨 둔다.** 원래 이 절은 A의 근거가 강하고 B가 약하다고
+적었다. 지금은 둘 다 실험으로 뒷받침되지만 성격이 다르다 — B는 **자연 실패를 재현**했고,
+A는 **창을 닫아** 실패를 만들어냈다. B 쪽이 더 무거운 증거다.
+
+### 통계적 근거
+
+CI를 반복 실행해 연속 그린을 확인하는 것은 여전히 할 일이지만, 성격이 달라졌다. B에 대해서는
+이제 증명이 아니라 확인이다 — 증명은 위의 재현이 이미 했다. **기준은 CI 3회 연속 그린으로 둔다.**
+
+로컬 전체 스위트를 `--test-concurrency=2`로 3회 돌린 결과는 104 / 104 / 103이었고, **이 두 건은
+3회 모두 그린**이었다. 1회의 실패는 이 계획서 범위 밖의 다른 테스트
+(`menu-and-guides.test.js`의 기본 앱 안내 포커스 테스트, 145행 `TimeoutError`)였다 — 같은 과의
+결함이지만 별건으로 분리했고, 진단은 `docs/plans/19-default-app-guide-focus-flake.md`에 있다.
 
 ## 하지 않을 것
 
