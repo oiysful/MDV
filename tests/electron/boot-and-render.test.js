@@ -26,7 +26,7 @@ const COPY_RESET_DELAY_MS = 1500
 // on at 22ms and off at 1524ms, so a wait that starts after the window closed never sees the
 // class and sits out its full 15s timeout -- while the toast recording still shows the copy
 // itself succeeded. That is the same defect plan 18 fixed for #toast's 1.6s `show` window,
-// and it made this test the fourth CI flake (docs/plans/20-...). Widening the window would
+// and it made this test the fourth CI flake (docs/plans/done/2026-09-21/20-...). Widening the window would
 // only move the failure rate, so the test opens it instead and closes it on purpose, the
 // gate move plan 19 used for the default-app guide. Releasing it also lets the test assert
 // the restore, which it could not check at all while the timer ran on its own.
@@ -633,10 +633,9 @@ test('code fence with no language renders without a reserved header row', async 
       })
       return ctrl.renderMarkdown('```\nplain text\n```')
     })
-    assert.ok(!/code-lang/.test(html), html)
-    assert.ok(!/code-meta/.test(html), html)
-    assert.ok(/data-command="copyCode"/.test(html), html)
-    assert.ok(/class="copy-btn"/.test(html), html)
+    // What this markup contains -- no `code-lang`/`code-meta`, but still a copy button -- is
+    // asserted on the same input by tests/unit/markdown.test.js:258. Only the rendered
+    // *height* is checked here, because that is the part jsdom cannot see.
 
     await page.evaluate(htmlStr => {
       const probe = document.createElement('div')
