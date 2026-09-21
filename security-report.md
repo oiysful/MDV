@@ -144,8 +144,8 @@ was maintained in parallel with the one in `AGENTS.md`, the two diverged until t
 single entry, and the divergence hid a fourth flake through three consecutive fix rounds.
 `AGENTS.md`'s NOTES section is now the one list — what is open, what is fixed, and what each
 measured cause actually was. The argument for why it matters stays here; the inventory does
-not. All four known flakes were closed between 2026-09-16 and 2026-09-21 (`docs/plans/18`,
-`19`, `20`), and every one of them was a defect in the test rather than in the app.
+not. All four known flakes were closed between 2026-09-16 and 2026-09-21 (`docs/plans/done/2026-09-18/`,
+`done/2026-09-21/`), and every one of them was a defect in the test rather than in the app.
 
 One correction, because this report asserted the mechanism: the cause given here — parallel
 Electron instances contending for OS focus — was **measured false on 2026-09-21** for the copy
@@ -171,6 +171,16 @@ in security memory is what someone believed on a date, not a fact about today's 
 the command.** A third error the same day (a comment apostrophe breaking the audit gate's
 single-quoted shell string, which `node --check` and `bash -n` both pass) is recorded there
 too, with the only check that catches it: execute the step.
+
+**Added 2026-09-21 — and then this report did the same thing itself.** The mechanism it gave
+for the flaky Electron tests, *"several Electron instances contend for OS focus"*, came out of
+the same `memory-security.md` entry and was never checked either. Measured false: under
+Playwright `document.hasFocus()` stays `true` through `blur()`, `minimize()` and `hide()`, and
+`navigator.clipboard.writeText` resolves in all three, so the rejection that story needs cannot
+occur in this harness. The real causes were expiring observation windows and fixed delays
+standing in for explicit waits — see *Flaky tests are a gate-trust problem* above and
+`docs/plans/done/2026-09-21/`. Same failure shape as the two above, one section further down,
+four days later: **the lesson is not learned by recording it.**
 
 ---
 
