@@ -131,17 +131,28 @@ Unchanged and documented in `RELEASING.md`; the reason the update checker is not
 Download integrity is covered in practice by the Homebrew cask's per-release `sha256`. What
 is genuinely absent is revocation and publisher identity.
 
-### Three Electron tests are load-dependent flakes — a gate-trust problem
+### Flaky tests are a gate-trust problem
 
-Not a vulnerability, but it belongs in a security report: the copy-button hover test, the
-default-app-guide focus test, and (before `fcd7015`) the ⌘B focus-guard test each pass 3/3 in
-isolation and fail intermittently only under the full suite's concurrency, where several
-Electron instances contend for OS focus.
+Not a vulnerability, but it belongs in a security report: the Electron suite shares one
+red/green signal with the dependency audit gate. A CI run that is red often enough for
+unrelated reasons trains everyone — including me, twice on 2026-09-17 — to reach for
+"probably flaky" before reading the log. **A gate is only as good as the willingness to read
+it.**
 
-The security consequence is alert fatigue on the gate that catches dependency advisories. A
-CI run that is red often enough for unrelated reasons trains everyone — including me, twice
-today — to reach for "probably flaky" before reading the log. The audit gate and the flaky
-tests share one red/green signal.
+This section used to enumerate three such tests. That list is gone from here deliberately: it
+was maintained in parallel with the one in `AGENTS.md`, the two diverged until they shared a
+single entry, and the divergence hid a fourth flake through three consecutive fix rounds.
+`AGENTS.md`'s NOTES section is now the one list — what is open, what is fixed, and what each
+measured cause actually was. The argument for why it matters stays here; the inventory does
+not. All four known flakes were closed between 2026-09-16 and 2026-09-21 (`docs/plans/18`,
+`19`, `20`), and every one of them was a defect in the test rather than in the app.
+
+One correction, because this report asserted the mechanism: the cause given here — parallel
+Electron instances contending for OS focus — was **measured false on 2026-09-21** for the copy
+test. Under Playwright the document keeps `document.hasFocus() === true` through `blur()`,
+`minimize()` and `hide()`, and clipboard writes resolve in all three, so the rejection that
+story required cannot occur in this harness. The real causes were expiring observation windows
+and fixed delays standing in for explicit waits.
 
 ---
 
@@ -229,13 +240,9 @@ categories where the project has deliberately not gone further:
 
 Nothing is urgent. In rough order of value:
 
-1. **Stabilise the three flaky Electron tests.** Not a vulnerability, but it is what keeps the
-   dependency gate trustworthy, and the failure mode is already observable — twice today a red
-   CI was reasoned about as "probably flaky" before the log was read. Likely fix is the same
-   class as `fcd7015`: these tests contend for OS focus under concurrency.
-2. **Code signing + notarization**, if distribution ever widens beyond a personal Homebrew
+1. **Code signing + notarization**, if distribution ever widens beyond a personal Homebrew
    tap. Unblocks the auto-updater as a side effect.
-3. **Trusted Types and dropping `'unsafe-inline'`**, together — both mean reworking inline
+2. **Trusted Types and dropping `'unsafe-inline'`**, together — both mean reworking inline
    styles, so they are one project rather than two.
-4. Rebuild the font subsets from the JetBrains upstream release if the supply chain ever needs
+3. Rebuild the font subsets from the JetBrains upstream release if the supply chain ever needs
    a firmer link than one CDN fetch.
