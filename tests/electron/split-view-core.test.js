@@ -43,15 +43,27 @@ test('entering split view force-closes the sidebar, disables its toggle, and res
   }
 })
 
-// Toggling split view twice within #sidebar's .25s width transition (index.html) supersedes
-// the running transition -- Chromium fires transitioncancel for it, not transitionend. The
-// listener setSplitMode (editor.js) attaches to recompute TOC offsets once the transition
-// settles must detach on transitioncancel too. Note on what this test can and can't catch: a
-// stale listener here is redundant, not unbounded -- every pending listener still matches the
-// *next* completed transition's transitionend and removes itself there, so this test (which
-// checks final state and absence of thrown errors, not an exact recompute count) cannot
-// distinguish the fixed code from the pre-fix one. It's kept as a basic stability check under
-// rapid, adversarial input; the leak fix itself is pinned by code review, not by this test.
+// What this test pins, stated first because the background below used to bury it: after six
+// toggles fired inside #sidebar's .25s width transition (index.html), the app lands in the
+// state the toggle count implies -- even count, so back to normal mode with the sidebar
+// restored, not left forced-closed -- and no renderer error surfaces along the way. Rapid
+// adversarial toggling is where overlapping async work corrupts state, and nothing else in
+// the suite drives that.
+//
+// Historical background, so nobody re-derives it: this test was written alongside the
+// transitioncancel fix in editor.js's setSplitMode. Toggling twice mid-transition supersedes
+// the running one, so Chromium fires transitioncancel rather than transitionend, and the
+// TOC-offset listener has to detach on both. **This test does not pin that fix** -- a stale
+// listener there is redundant rather than unbounded (it still matches the next completed
+// transition and removes itself), and editor.js's own comment calls the consequence
+// "harmless-but-wasteful" no-ops. Pinning it would take a recompute-count assertion, which
+// means instrumenting a controller app.js never exposes to the page (it is a module-scope
+// const) -- a fragile coupling to buy coverage of a performance triviality. Counting
+// addEventListener/removeEventListener calls instead does not work either: setSplitMode's
+// cancelPendingSidebarTransitionListener removes both event types unconditionally, so
+// suppressing the transitioncancel registration yields *more* removes than adds, which is an
+// artifact of the instrumentation and not a leak signature. The fix stays pinned by code
+// review, which is where editor.js says it is pinned.
 test('rapid split-view toggling settles into a consistent state without throwing', async () => {
   const { electronApp, page } = await launchApp()
   const pageErrors = []

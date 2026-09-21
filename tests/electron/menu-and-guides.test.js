@@ -10,6 +10,17 @@ const {
   emitFullScreenChanged, armSidebarTransitionWatch, waitForSidebarTransition,
 } = require('./helpers/smoke-helpers')
 
+// Turns an Electron accelerator string ('CmdOrCtrl+Shift+O') into the ⌘-style form the UI
+// shows ('⌘⇧O'). Derived rather than looked up on purpose: a lookup table would just move the
+// hardcoded strings somewhere else, and the point is that the advertised hints come from the
+// menu rather than from a second copy of it.
+const toDisplayShortcut = accelerator => accelerator
+  .replace(/CmdOrCtrl|Command|Cmd/g, '⌘')
+  .replace(/Shift/g, '⇧')
+  .replace(/Alt|Option/g, '⌥')
+  .replace(/Control|Ctrl/g, '⌃')
+  .replace(/\+/g, '')
+
 // Overrides the real (OS-dependent) default-app-status IPC handler with a fixed response
 // held shut until the test opens the gate, so a test can focus something before the guide
 // claims focus during page load.
@@ -19,7 +30,7 @@ const {
 // loaded runner, and then the guide opens first, its deferred rAF takes focus, the test
 // steals that focus back, and the following wait sits out its timeout on a focus move that
 // already happened. A wider delay would only have made it rarer. See
-// docs/plans/19-default-app-guide-focus-flake.md.
+// docs/plans/done/2026-09-18/19-default-app-guide-focus-flake.md.
 //
 // Safe to hold open-endedly: app.js dispatches checkMarkdownDefaultAppStatus() with `void`
 // and sets rendererReady on the very next line, so a blocked status call does not hold up
@@ -562,6 +573,40 @@ test('toolbar, + menu, and the shortcuts guide advertise the shortcuts their men
   try {
     await page.waitForSelector('#empty')
 
+    // Read what the menu actually registers, so the hints below are checked against the real
+    // accelerators instead of against a second copy of the same literals. Before this, the
+    // two halves each pinned their own strings ('CmdOrCtrl+B' there, '⌘B' here) and nothing
+    // would have caught them drifting apart from each other -- only each drifting from its
+    // own hardcoded value, which is not what this test's title promises.
+    const accelerators = await electronApp.evaluate(({ Menu }) => {
+      const menu = Menu.getApplicationMenu()
+      const itemIn = (menuLabel, itemLabel) => menu.items
+        .find(item => item.label === menuLabel)?.submenu?.items
+        .find(item => item.label === itemLabel)
+      return {
+        sidebar: itemIn('보기', '좌측 패널 표시/숨기기')?.accelerator ?? null,
+        openFolder: itemIn('파일', '폴더 열기…')?.accelerator ?? null,
+        newFile: itemIn('파일', '새 파일')?.accelerator ?? null,
+        openFile: itemIn('파일', '파일 열기…')?.accelerator ?? null,
+      }
+    })
+
+    // The ⌘B and ⌘⇧O accelerator strings are pinned by their own test above ('native menu
+    // registers the ⌘B sidebar and ⌘⇧O folder-open accelerators'); ⌘T and ⌘O are not, so pin
+    // them here. Without this, deriving the hints from the menu would let a wrong accelerator
+    // and a matching-but-wrong hint agree with each other and pass.
+    assert.equal(accelerators.newFile, 'CmdOrCtrl+T')
+    assert.equal(accelerators.openFile, 'CmdOrCtrl+O')
+
+    const shown = Object.fromEntries(
+      Object.entries(accelerators).map(([name, accelerator]) => {
+        // A menu item that lost its accelerator would otherwise surface as a TypeError inside
+        // the translation, naming neither the item nor the cause.
+        assert.ok(accelerator, `the menu item behind the ${name} hint registers no accelerator`)
+        return [name, toDisplayShortcut(accelerator)]
+      }),
+    )
+
     const hints = await page.evaluate(() => {
       const sidebar = document.getElementById('btn-sidebar')
       const titleOf = selector => document.querySelector(selector)?.getAttribute('title') ?? ''
@@ -579,14 +624,14 @@ test('toolbar, + menu, and the shortcuts guide advertise the shortcuts their men
       }
     })
 
-    assert.equal(hints.sidebarShortcut, '⌘B', '#btn-sidebar needs the ⌘ badge now that ⌘B is a real accelerator')
-    assert.equal(hints.sidebarTitle, '좌측 패널 (⌘B)')
-    assert.equal(hints.sidebarAriaLabel, '좌측 패널 (⌘B)')
-    assert.ok(hints.newFile.includes('⌘T'), `새 파일 hint missing ⌘T: ${hints.newFile}`)
-    assert.ok(hints.openFolder.includes('⌘⇧O'), `폴더 열기 hint missing ⌘⇧O: ${hints.openFolder}`)
-    assert.ok(hints.openFile.includes('⌘O'), `파일 열기 hint missing ⌘O: ${hints.openFile}`)
-    assert.equal(hints.guideRows['좌측 패널 표시/숨기기'], '⌘B', 'the shortcuts guide must list ⌘B')
-    assert.equal(hints.guideRows['폴더 열기'], '⌘⇧O', 'the shortcuts guide must list ⌘⇧O')
+    assert.equal(hints.sidebarShortcut, shown.sidebar, "#btn-sidebar's ⌘ badge must exist and must match the accelerator the menu registers")
+    assert.equal(hints.sidebarTitle, `좌측 패널 (${shown.sidebar})`)
+    assert.equal(hints.sidebarAriaLabel, `좌측 패널 (${shown.sidebar})`)
+    assert.ok(hints.newFile.includes(shown.newFile), `새 파일 hint missing ${shown.newFile}: ${hints.newFile}`)
+    assert.ok(hints.openFolder.includes(shown.openFolder), `폴더 열기 hint missing ${shown.openFolder}: ${hints.openFolder}`)
+    assert.ok(hints.openFile.includes(shown.openFile), `파일 열기 hint missing ${shown.openFile}: ${hints.openFile}`)
+    assert.equal(hints.guideRows['좌측 패널 표시/숨기기'], shown.sidebar, 'the shortcuts guide must list the sidebar accelerator')
+    assert.equal(hints.guideRows['폴더 열기'], shown.openFolder, 'the shortcuts guide must list the folder-open accelerator')
   } finally {
     await closeApp(electronApp)
   }
