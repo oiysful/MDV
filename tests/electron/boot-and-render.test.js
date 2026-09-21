@@ -16,6 +16,73 @@ const {
 const MERMAID_MD = path.join(ROOT, 'tests/fixtures/mermaid.md')
 const LATEX_MD = path.join(ROOT, 'tests/fixtures/latex.md')
 
+// app-runtime.js's copyCode restores the button after this long, so `.copied` -- and
+// everything CSS hangs off it -- is a window, not a state. Kept as a named constant
+// because armCopyResetGate matches on the delay; see the assert in the copy test, which
+// fails loudly if the two ever drift apart.
+const COPY_RESET_DELAY_MS = 1500
+
+// Holds copyCode's restore timer instead of racing it. Measured 2026-09-21: `.copied` goes
+// on at 22ms and off at 1524ms, so a wait that starts after the window closed never sees the
+// class and sits out its full 15s timeout -- while the toast recording still shows the copy
+// itself succeeded. That is the same defect plan 18 fixed for #toast's 1.6s `show` window,
+// and it made this test the fourth CI flake (docs/plans/20-...). Widening the window would
+// only move the failure rate, so the test opens it instead and closes it on purpose, the
+// gate move plan 19 used for the default-app guide. Releasing it also lets the test assert
+// the restore, which it could not check at all while the timer ran on its own.
+async function armCopyResetGate(page) {
+  await page.evaluate((delay) => {
+    const realSetTimeout = window.setTimeout
+    window.__heldCopyResets = []
+    window.setTimeout = function (fn, ms, ...rest) {
+      if (ms === delay) {
+        window.__heldCopyResets.push(fn)
+        return -1
+      }
+      return realSetTimeout.call(window, fn, ms, ...rest)
+    }
+    // Restores the real timer before firing what was held, so anything scheduled from
+    // inside a released callback behaves normally and later copies are ungated.
+    window.__releaseCopyResetGate = () => {
+      window.setTimeout = realSetTimeout
+      window.__heldCopyResets.splice(0).forEach(fn => fn())
+    }
+  }, COPY_RESET_DELAY_MS)
+}
+
+async function heldCopyResetCount(page) {
+  return page.evaluate(() => window.__heldCopyResets?.length ?? null)
+}
+
+async function releaseCopyResetGate(page) {
+  await page.evaluate(() => window.__releaseCopyResetGate())
+}
+
+// The tooltip's opacity is CSS-transitioned (.1s), so it has to be polled rather than read
+// straight after a class flip. On a timeout, report the opacity actually observed instead of
+// a bare TimeoutError -- the same reason waitForToast asserts in Node rather than in the
+// wait. This matters most for the opacity==='1' hover wait, the one wait in the copy test
+// the gate does not cover: if it is ever the one that hangs, it now says so itself.
+async function waitForTooltipOpacity(page, expected) {
+  try {
+    await page.waitForFunction(
+      want => {
+        const btn = document.querySelector('#content .copy-btn')
+        return Boolean(btn) && getComputedStyle(btn, '::after').opacity === want
+      },
+      expected,
+      { timeout: 5000 },
+    )
+  } catch (error) {
+    if (error.name !== 'TimeoutError') throw error
+  }
+  const actual = await page.evaluate(() => {
+    const btn = document.querySelector('#content .copy-btn')
+    return btn ? getComputedStyle(btn, '::after').opacity : null
+  })
+  assert.equal(actual, expected, `copy button tooltip opacity never reached ${expected}`)
+}
+
 // 2026-09-17 audit M2: JetBrains Mono used to come from fonts.googleapis.com /
 // fonts.gstatic.com, so opening a local document contacted a third party. csp.test.js pins
 // the markup and the CSP; this pins the behaviour those are supposed to produce -- that a
@@ -292,27 +359,54 @@ test('openFile loads markdown, updates title, and renders code highlighting', as
     // Hovering the button alone (not just the wrapper) reveals the custom "복사" tooltip,
     // and no native title tooltip fights it since the title attribute was dropped.
     await copyButton.hover()
-    await page.waitForFunction(() => {
-      const btn = document.querySelector('#content .copy-btn')
-      return btn && getComputedStyle(btn, '::after').opacity === '1'
-    })
+    await waitForTooltipOpacity(page, '1')
     assert.equal(await copyButton.evaluate(el => getComputedStyle(el, '::after').content), '"복사"')
 
+    // Everything below about the copied look lives inside copyCode's restore window, so hold
+    // that window open first -- see armCopyResetGate.
+    await armCopyResetGate(page)
     await armToastWatch(page)
     await copyButton.click()
     await page.waitForFunction(() => document.querySelector('#content .copy-btn')?.classList.contains('copied'))
     await waitForToast(page, /^코드 복사됨$/)
+    // The gate has to have caught something. This does not prove it caught the *right*
+    // timer -- the window check further down does that -- but it separates "copyCode stopped
+    // scheduling a restore at all" from "it scheduled one the gate missed", which otherwise
+    // both surface as the same confusing failure later.
+    assert.equal(
+      await heldCopyResetCount(page),
+      1,
+      `copy reset gate never intercepted a ${COPY_RESET_DELAY_MS}ms timer -- has copyCode's restore delay changed?`,
+    )
     const copiedIconHtml = await copyButton.evaluate(el => el.innerHTML)
     assert.match(copiedIconHtml, /icon-check/)
     // Tooltip hides once the button flips to its "copied" state so it doesn't read stale.
-    // The opacity is CSS-transitioned (.1s), so poll for it to actually settle rather than
-    // asserting immediately after the class flip -- getComputedStyle can still report the
-    // pre-transition value until the next paint.
-    await page.waitForFunction(() => {
-      const btn = document.querySelector('#content .copy-btn')
-      return btn && getComputedStyle(btn, '::after').opacity === '0'
-    })
+    await waitForTooltipOpacity(page, '0')
 
+    // The count above only proves the gate caught *a* timer of that delay, which is not the
+    // same as catching this button's. Measured 2026-09-21: with COPY_RESET_DELAY_MS set to
+    // 1600 the count assertion still passed, because the gate then caught #toast's own 1.6s
+    // timer while the real restore ran on schedule -- the test would have gone straight back
+    // to racing the window, silently. So wait past the restore delay and require the window
+    // to still be open. This one costs real time on purpose (~1.8s): "the window did not
+    // close" is a claim only elapsed time can support. The cheaper checks were considered
+    // and rejected as more fragile than what they'd save -- matching on the delay value is
+    // the thing being guarded against, and inspecting the held callback's source would break
+    // on any refactor of copyCode that kept its behaviour.
+    await page.waitForTimeout(COPY_RESET_DELAY_MS + 300)
+    assert.equal(
+      await copyButton.evaluate(el => el.classList.contains('copied')),
+      true,
+      'copy reset gate held some other timer -- the copied window closed on its own',
+    )
+
+    // Let the held restore run: the button goes back to its idle icon and drops `.copied`,
+    // which nothing asserted while that timer was racing the test.
+    await releaseCopyResetGate(page)
+    await page.waitForFunction(() => document.querySelector('#content .copy-btn')?.classList.contains('copied') === false)
+    assert.match(await copyButton.evaluate(el => el.innerHTML), /icon-copy/)
+
+    // The gate is off again by now, so copyAll's own restore timer is untouched.
     await armToastWatch(page)
     await page.click('#btn-copy-all')
     await waitForToast(page, /^복사됨$/)
