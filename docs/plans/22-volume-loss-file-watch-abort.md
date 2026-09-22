@@ -1,0 +1,186 @@
+# 22. 외장·네트워크 볼륨 소실 시 파일 워처 abort 크래시 (SIGABRT)
+
+## 상태
+**진단 완료(크래시 지점 확정). 수정 착수 대기.** — 2026-09-22.
+
+2026-09-21 19:00:36에 실제로 발생한 크래시 리포트 1건에서 출발한다. 추정이 아니라 심볼
+산술과 libuv 원본으로 크래시 지점을 확정했고, 방아쇠는 세션 상태와 볼륨 마운트 상태로
+좁혔다. 수정은 아직 한 줄도 하지 않았다.
+
+## 요약
+
+| 질문 | 답 |
+|---|---|
+| 어디서 죽었나 | libuv `uv__fs_event`의 **마지막 문장 `abort()`** — kqueue one-shot 파일 워처 재무장 실패. **확정** |
+| 왜 그 경로인가 | macOS libuv는 **디렉토리만 FSEvents**로 보고 **파일은 kqueue로 폴백**한다. chokidar 5는 파일마다 `fs.watch(파일)`을 건다. **확정** |
+| 무엇이 방아쇠인가 | 슬립/웨이크 직후(웨이크 +24초) **`/Volumes/` 아래 볼륨이 사라진 상태**에서 그 볼륨의 파일 워처에 이벤트가 배달됨. **정황상 확정, errno는 미기록** |
+| 앱 코드로 막을 수 있나 | 이벤트 핸들러·try/catch로는 **불가능**하다(네이티브 `abort()`). 그 경로를 **애초에 타지 않게** 하는 것이 유일한 수정 |
+| 노출 범위 | `watch-file`만이 아니라 **`watch-directory`도 동일**. chokidar가 디렉토리 스캔 중 만난 파일마다 개별 `fs.watch`를 건다 |
+
+## 1. 크래시 지점 — 확정
+
+```
+Exception Type:  EXC_CRASH (SIGABRT) / "abort() called"
+Thread 0 CrBrowserMain:  abort ← uv__fs_event+276 ← uv__io_poll ← uv_run
+Version: 1.3.0 (1.3.0), macOS 26.6.2, Electron 42
+```
+
+설치된 프레임워크(`/Applications/MDV.app/.../Electron Framework`)의 심볼 테이블로 교차검증했다.
+
+```
+0x285cf8c  _uv__fsevents_init
+0x285d670  _uv__fsevents_close
+0x285e308  _uv__fs_event        ← 함수 시작
+0x285e41c  _uv_fs_event_init    ← 다음 함수 = uv__fs_event의 끝
+```
+
+함수 길이가 정확히 `0x114`(276)바이트이고 크래시 프레임의 복귀 주소가 `+276`, 즉 **함수의
+끝**이다. 이는 마지막 명령이 noreturn 호출(`abort`)일 때 생기는 모양이다. `atos`도 같은
+주소를 `uv_fs_event_init + 0`으로 돌려준다(같은 사실의 다른 표현이다 — 복귀 주소가 다음
+심볼의 첫 바이트).
+
+libuv `v1.x`의 `src/unix/kqueue.c`에서 `uv__fs_event`의 마지막 문장:
+
+```c
+/* Watcher operates in one-shot mode, re-arm. */
+EV_SET(&ev, w->fd, EVFILT_VNODE, EV_ADD | EV_ONESHOT, fflags, 0, 0);
+if (kevent(loop->backend_fd, &ev, 1, NULL, 0, NULL))
+  abort();
+```
+
+**재무장 실패 = 프로세스 즉사**다. JS 레이어에는 아무 기회도 없다.
+
+## 2. 왜 kqueue 경로를 타는가
+
+`uv_fs_event_start`(kqueue.c)의 분기:
+
+```c
+if (uv__fstat(fd, &statbuf))
+    goto fallback;
+/* FSEvents works only with directories */
+if (!(statbuf.st_mode & S_IFDIR))
+    goto fallback;          /* ← 파일은 여기서 kqueue로 빠진다 */
+```
+
+그리고 chokidar 5는 파일을 파일 그대로 감시한다 — `node_modules/chokidar/handler.js`의
+`_handleFile`(339행)이 `_watchWithNodeFs(file, listener)`(393행)를 무조건 호출하고, 그것이
+`fs.watch(<파일 경로>)`(126행)다. 부모 디렉토리로 우회하지 않는다.
+
+따라서 `src/main.js:868`의 `watch-file`이 만드는 워처는 **전부** 이 one-shot kqueue 워처다.
+
+크래시 리포트의 Thread 37(`uv__fsevents_*` 영역, CFRunLoop)은 **디렉토리 워처**의 FSEvents
+스레드이고 멀쩡히 살아 있었다. 죽은 것은 파일 쪽이다. 두 경로를 섞어 읽지 말 것.
+
+## 3. 방아쇠 — 슬립/웨이크와 사라진 볼륨
+
+| 항목 | 값 |
+|---|---|
+| Launch / Crash | 2026-09-21 13:46:46 / 19:00:36 (약 5시간 14분 뒤) |
+| **Time Since Wake** | **24초** |
+| Role | Background |
+
+크래시 직전 마지막으로 저장된 세션(`~/Library/Application Support/MDV/session.json`, 17:25)의
+활성 탭이 **`/Volumes/` 아래 외장·네트워크 볼륨의 `.md` 파일**이었다. 크래시 시점(19:00)에는
+그 볼륨이 `/Volumes`에 없다(현재도 없다 — 붙었다 떨어지는 볼륨이다).
+
+libuv는 vnode 필터 플래그에 `NOTE_REVOKE`를 함께 건다. 그래서 언마운트/리보크는 **침묵이
+아니라 이벤트로 배달된다** → `uv__fs_event` 실행 → 이미 죽은 vnode에 one-shot 재무장 →
+`kevent()` 실패 → `abort()`. 웨이크 +24초라는 간격은 이벤트 루프 재개나 공유 재연결
+타임아웃과 맞는다.
+
+**보정해 둘 것**(리포트가 말해주지 않는 것):
+
+- `kevent()`의 errno는 크래시 리포트에 남지 않는다. 실패 사유 자체(EBADF/ENOENT 계열)는 추정이다.
+- `session.json`은 크래시 1시간 35분 **전** 상태다. "크래시 시점에 그 탭이 열려 있었다"는
+  마지막 저장 상태에서의 추론이지 스냅샷이 아니다.
+- `DiagnosticReports`의 MDV `.ips`는 1건뿐이다. 이는 "반복 중이 아니다"까지만 말해 준다 —
+  리포트는 로테이션되므로 "최초 발생"의 증거는 아니다.
+
+## 4. 노출 범위 — `watch-file` 하나가 아니다
+
+`watch-directory`(`src/main.js:832`)도 같은 지뢰를 깐다. chokidar의 디렉토리 처리는
+
+```
+_handleDir → _handleRead → (엔트리마다) _addToNodeFs → _handleFile → fs.watch(파일)
+```
+
+이라서, **디렉토리 스캔 중 만난 파일마다 개별 kqueue 워처가 생긴다**. `DIR_WATCH_DEPTH = 1`
+이므로 루트와 한 단계 아래의 모든 파일이 대상이다. 탐색기 루트를 `/Volumes/...`로 열면 파일
+수만큼 지뢰가 깔린다.
+
+즉 수정은 두 핸들러 모두에 적용해야 한다. 한쪽만 고치면 구멍이 그대로 남는다.
+
+## 5. 수정 설계
+
+착수 순서가 중요하다. **수정 1 → 수정 2** 순으로 간다. 수정 3은 보류다.
+
+### 수정 1. 워처 `error` 핸들러 (선행 필수)
+
+현재 `watch-file`·`watch-directory` 어느 쪽에도 `watcher.on('error', ...)`가 없다. chokidar는
+`fs.watch` 실패를 `error` 이벤트로 올리는데, 리스너 없는 EventEmitter의 `error`는 **throw**
+된다(메인 프로세스 예외). 이번 크래시와는 **별개의 잠재 크래시**이며, 수정 2가 없는 경로나
+수정 3을 나중에 넣을 때의 안전망이기도 하다.
+
+- 두 핸들러에 `error` 리스너 추가. 로그를 남기고, 해당 경로 구독을 정리한 뒤,
+  이미 있는 `directory-watch-unavailable` 계열 통지로 렌더러에 알린다(파일 쪽은 대응 채널이
+  없으므로 신설 여부를 결정해야 한다).
+
+### 수정 2. 볼륨 경로는 폴링으로
+
+chokidar의 `usePolling: true`는 `setFsWatchFileListener` → `fs.watchFile` → **uv_fs_poll**
+(stat 기반)을 쓴다. kqueue EVFILT_VNODE를 아예 타지 않으므로 `abort()` 경로가 사라진다.
+네트워크 공유는 어차피 `fs.watch` 이벤트가 신뢰할 수 없으니 **기능적으로도 이득**이다.
+
+- 감시 경로가 부팅 볼륨 밖(`/Volumes/` 아래)이면 `usePolling: true`(+ `interval`)를 준다.
+- `watch-file`과 `watch-directory` 양쪽에 적용한다.
+- 판정 기준(경로 접두사)은 테스트가 뒤집을 수 있게 환경변수로 덮어쓸 수 있게 한다 —
+  `MDV_TEST_DIR_WATCH_MAX_PATHS`(`src/main.js:773`)가 이미 만들어 둔 선례를 따른다.
+  그렇지 않으면 테스트가 실제 볼륨을 마운트해야 해서 검증이 불가능해진다.
+
+**결정 대기 항목 — 폴링 범위**
+
+| 안 | 내용 | 대가 |
+|---|---|---|
+| **경로 한정(권장)** | `/Volumes/` 아래만 폴링 | 로컬은 기존 성능·즉시성 유지. 위험 부류(vnode 리보크)는 사실상 볼륨 단위이고, 로컬 파일은 unlink돼도 열린 fd가 vnode를 살려두므로 재무장이 성공한다 |
+| 전면 적용 | 모든 파일 워처를 폴링으로 | 이 크래시 부류를 통째로 제거. 대신 감지 지연 ~100ms + 열린 탭 수만큼 주기적 stat |
+
+권장은 경로 한정이다. 전면 적용은 "편집증적으로 안전한" 선택지로 기록만 해 둔다.
+
+### 수정 3. `powerMonitor` suspend/resume (보류)
+
+슬립 전에 워처를 닫고 웨이크 후 되살리는 방식. **단독으로 넣으면 오히려 해롭다** — `resume`
+시점에 아직 마운트되지 않은 공유에 다시 `watch`를 걸면 ENOENT가 나고, 수정 1이 없으면 그대로
+메인 프로세스 예외다. 게다가 수동 꺼내기·와이파이 끊김처럼 슬립이 아닌 소실은 못 막고,
+`suspend` 핸들러가 프리즈 전에 끝난다는 보장도 없다.
+
+→ 수정 1·2를 하고도 재현되면 그때 검토한다. 지금은 하지 않는다.
+
+## 6. 부수 효과 — 볼륨이 빠지면 탭이 "삭제됨"으로 보인다
+
+폴링으로 바꾸면 경로가 사라졌을 때 chokidar가 `unlink`를 올린다. 현재 렌더러는 그것을
+`mark-deleted`로 처리해(`src/renderer/workspace.js:23`, `:631`) 탭에 삭제 표시를 붙이고
+`이 파일이 외부에서 삭제되었습니다. 저장하면 다시 생성됩니다.` 툴팁을 단다.
+
+내용은 메모리에 남으므로 **데이터 손실은 없다**. 다만 "볼륨이 빠진 것"과 "파일이 지워진 것"이
+같은 표시로 보이고, 저장하면 마운트 지점에 파일을 새로 만들 수 있다는 안내가 오해를 부른다.
+볼륨 소실을 별도 상태로 가를지는 수정 2 착수 시 함께 정한다(범위를 넓히지 않으려면 이번엔
+표시만 유지하고 후속으로 미뤄도 된다).
+
+## 7. 검증
+
+- **단위/컨트롤러**: 경로 → 워처 옵션 판정 함수를 분리해 `/Volumes/...`는 폴링, 로컬은
+  기본값이 나오는지 고정한다. 부팅 없이 검증되는 계층이다.
+- **Electron**: 환경변수로 볼륨 접두사를 임시 디렉토리로 덮어쓰고, 그 아래 파일을 연 뒤
+  변경이 정상 감지되는지 확인한다(폴링 경로가 기능적으로 동작함을 보장). 기존
+  `tests/electron/file-watching.test.js`(7건)와 같은 골격을 쓴다.
+- **`error` 핸들러**: 워처에 `error`를 직접 emit시켜 프로세스가 살아남고 통지가 나가는지 본다.
+- **실기 확인(대체 불가)**: 외장 디스크나 SMB 공유의 `.md`를 연 상태에서 **꺼내기**를 하고
+  앱이 살아 있는지 본다. 그다음 슬립/웨이크로 한 번 더. 수정 전 코드가 이 조건에서 죽는지도
+  같이 확인해야 "고쳤다"가 성립한다.
+
+## 참고
+
+- 원본 크래시 리포트(`crash_report.log`)는 `.gitignore`의 `*.log`에 걸려 리포에 들어가지
+  않는다. 머신 식별자와 작업 경로가 들어 있으므로 그대로 커밋하지 말 것. 원본은
+  `~/Library/Logs/DiagnosticReports/MDV-2026-09-21-190042.ips`에도 있다(로테이션 대상).
+- libuv 원본: `libuv/libuv` `v1.x` `src/unix/kqueue.c`의 `uv__fs_event`, `uv_fs_event_start`.
