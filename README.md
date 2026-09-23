@@ -81,6 +81,7 @@ MDV_RELEASE_TAG=v1.0.0 npm run install:release
 
 **Editing & rendering**
 - Markdown preview + source editing modes, with a live split view
+- Enter carries list markers, task boxes and `>` blockquotes onto the next line while editing; an empty one drops the marker instead
 - GFM tables, task lists, and syntax-highlighted code blocks
 - Mermaid diagrams and LaTeX/math rendering, right inside a code fence
 - Auto theme, light theme, dark theme
