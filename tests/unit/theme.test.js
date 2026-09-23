@@ -340,3 +340,45 @@ test('applyTheme tolerates missing hljs stylesheet elements', () => {
   assert.deepEqual(controller.applyTheme(), { theme: 'dark', isDark: true })
   assert.deepEqual(calls, [['data-theme', 'dark']])
 })
+
+// Issue #20: a stored value outside the three themes used to poison the cycle permanently.
+// `toggleTheme`'s lookup returned `undefined`, storage coerced that to the string "undefined",
+// and that is not a key either -- so the button stayed dead across restarts, with every icon
+// hidden and `aria-label` literally "undefined". The arrival path is a downgrade from a build
+// that shipped a fourth theme, which is exactly the case a whitelist has to cover.
+test('an unrecognized stored theme falls back to auto instead of poisoning the cycle', () => {
+  for (const stored of ['sepia', 'undefined', '', 'AUTO', '{}']) {
+    const { controller, matchMedia } = createStubs({ stored, systemDark: true })
+    assert.equal(controller.getTheme(), 'auto', `stored ${JSON.stringify(stored)} must normalize to auto`)
+    // Falling back to auto is only right if auto then behaves like auto: it must follow the OS.
+    assert.deepEqual(controller.applyTheme(), { theme: 'auto', isDark: true })
+    matchMedia.matches = false
+    assert.deepEqual(controller.applyTheme(), { theme: 'auto', isDark: false })
+  }
+})
+
+test('the auto fallback is a real auto: its icon and label are the auto ones, not blank', () => {
+  // The visible symptom of the bug was all three icons hidden and title/aria-label undefined,
+  // so the fallback has to be asserted through the chrome, not only through getTheme().
+  const { controller, refs } = createStubs({ stored: 'sepia' })
+
+  controller.applyTheme()
+
+  assert.equal(refs.icAuto.style.display, '')
+  assert.equal(refs.icMoon.style.display, 'none')
+  assert.equal(refs.icSun.style.display, 'none')
+  assert.equal(refs.btnTheme.title, '시스템 테마')
+  assert.equal(refs.btnTheme.attrs['aria-label'], '시스템 테마')
+})
+
+test('toggling from an unrecognized stored theme stores real themes, never "undefined"', () => {
+  const { controller, calls } = createStubs({ stored: 'sepia' })
+
+  assert.deepEqual(controller.toggleTheme(), { theme: 'light', isDark: false })
+  assert.deepEqual(controller.toggleTheme(), { theme: 'dark', isDark: true })
+  assert.deepEqual(controller.toggleTheme(), { theme: 'auto', isDark: false })
+
+  // Every write is one of the three themes. Before the fix all three were the string
+  // "undefined", which is what made the dead state survive a restart.
+  assert.deepEqual(calls.setItem, [['theme', 'light'], ['theme', 'dark'], ['theme', 'auto']])
+})
