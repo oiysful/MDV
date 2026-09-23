@@ -329,7 +329,7 @@ async function emitWatcherError(electronApp, mapName, key, code) {
 
 // A file watch on a detachable volume is not a degraded feature, it is a process abort:
 // libuv's uv__fs_event calls abort() when the one-shot kqueue re-arm fails, which is how MDV
-// 1.3.0 died on 2026-09-21 (docs/plans/22-volume-loss-file-watch-abort.md). This pins both
+// 1.3.0 died on 2026-09-21 (docs/plans/done/2026-09-23/22-volume-loss-file-watch-abort.md). This pins both
 // halves of the fix -- the polled path gets the poll backend, a local path does not -- in one
 // app, through the same watch-file handler, so only the path can explain the difference.
 test('a file under a polled root takes the poll backend, a local file does not, and both report edits', async () => {
