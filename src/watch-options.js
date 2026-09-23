@@ -8,7 +8,7 @@
 // whole process down: MDV 1.3.0 died that way on 2026-09-21, 24 seconds after a wake, with a
 // file open on a /Volumes mount. chokidar's polling backend uses fs.watchFile (uv_fs_poll,
 // stat-based) and never registers a vnode filter, so paths that can lose their volume are
-// polled instead. Full diagnosis: docs/plans/22-volume-loss-file-watch-abort.md.
+// polled instead. Full diagnosis: docs/plans/done/2026-09-23/22-volume-loss-file-watch-abort.md.
 
 // macOS mounts every non-boot volume -- external disks, disk images, SMB/AFP shares -- under
 // /Volumes, so one prefix covers the whole risk class. The boot volume's own symlink

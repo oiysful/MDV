@@ -5,7 +5,7 @@ const { DEFAULT_POLL_ROOTS, pollRootsFromEnv, isPolledPath, watchOptionsFor } = 
 
 // What this file guards: which fs-watch backend a path gets. Picking the kqueue backend for a
 // path that can lose its volume is not a degraded feature, it is a process abort
-// (docs/plans/22-volume-loss-file-watch-abort.md), so the prefix test is worth pinning
+// (docs/plans/done/2026-09-23/22-volume-loss-file-watch-abort.md), so the prefix test is worth pinning
 // precisely -- including the boundary cases a naive startsWith would get wrong.
 
 test('isPolledPath routes /Volumes paths to the poll backend and leaves the boot volume alone', () => {

@@ -124,7 +124,7 @@ test('entering pure source mode immediately builds the TOC from source text with
   assert.notEqual(activeAtTop, activeAtBottom, 'scrolling must move the highlight, not stick on one heading')
 })
 
-// Closes the gap docs/plans/21-electron-suite-audit.md §6 recorded. A classification lane judged
+// Closes the gap docs/plans/done/2026-09-23/21-electron-suite-audit.md §6 recorded. A classification lane judged
 // tests/electron/links-and-toc.test.js:349 a near-duplicate of this file with "highest
 // confidence", and the audit found that judgement wrong: the test above probes only scrollTop 0
 // and 999, which a first/last binary passes (collapse every entry but the first onto the last
