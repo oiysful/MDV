@@ -305,3 +305,120 @@ test('switching between tabs that each embed a different image keeps every src a
     await fs.rm(tempDir, { recursive: true, force: true })
   }
 })
+
+// Reads the backend chokidar actually chose for a path, from the main process's watchers map
+// (exposed to globalThis only under MDV_USER_DATA_DIR -- see main.js). Asserting the option
+// rather than only the delivered event is what makes a failure diagnostic: "wrong backend" and
+// "backend right, delivery broken" are different bugs, and only the first one is the crash.
+async function getFileWatchBackend(electronApp, filePath) {
+  return electronApp.evaluate((_electron, fp) => {
+    const entry = globalThis.__mdvFileWatchers?.get(fp)
+    if (!entry) return { watched: false }
+    return { watched: true, usePolling: Boolean(entry.watcher.options?.usePolling) }
+  }, filePath)
+}
+
+async function emitWatcherError(electronApp, mapName, key, code) {
+  return electronApp.evaluate((_electron, args) => {
+    const entry = globalThis[args.mapName]?.get(args.key)
+    if (!entry) return { emitted: false }
+    entry.watcher.emit('error', Object.assign(new Error(`simulated ${args.code}`), { code: args.code }))
+    return { emitted: true }
+  }, { mapName, key, code })
+}
+
+// A file watch on a detachable volume is not a degraded feature, it is a process abort:
+// libuv's uv__fs_event calls abort() when the one-shot kqueue re-arm fails, which is how MDV
+// 1.3.0 died on 2026-09-21 (docs/plans/22-volume-loss-file-watch-abort.md). This pins both
+// halves of the fix -- the polled path gets the poll backend, a local path does not -- in one
+// app, through the same watch-file handler, so only the path can explain the difference.
+test('a file under a polled root takes the poll backend, a local file does not, and both report edits', async () => {
+  const polledDir = await fs.mkdtemp(path.join(os.tmpdir(), 'mdv-polled-'))
+  const localDir = await fs.mkdtemp(path.join(os.tmpdir(), 'mdv-local-'))
+  const polledDoc = path.join(polledDir, 'on-volume.md')
+  const localDoc = path.join(localDir, 'on-disk.md')
+  await fs.writeFile(polledDoc, '# On volume\n', 'utf8')
+  await fs.writeFile(localDoc, '# On disk\n', 'utf8')
+
+  // Same override precedent as MDV_TEST_DIR_WATCH_MAX_PATHS: a real /Volumes mount cannot be
+  // created in a test, so the poll root is pointed at a temp directory instead.
+  const prevRoots = process.env.MDV_TEST_WATCH_POLL_ROOTS
+  process.env.MDV_TEST_WATCH_POLL_ROOTS = polledDir
+
+  try {
+    const { electronApp, page } = await launchApp()
+    try {
+      await page.waitForSelector('#empty')
+
+      await stubOpenDialog(electronApp, [localDoc])
+      await emitRendererCommand(electronApp, 'openFile')
+      await page.waitForFunction(() => document.title === 'on-disk')
+
+      // Opened last, so the polled file is the active tab and its reload is visible.
+      await stubOpenDialog(electronApp, [polledDoc])
+      await emitRendererCommand(electronApp, 'openFile')
+      await page.waitForFunction(() => document.title === 'on-volume')
+
+      assert.deepEqual(
+        await getFileWatchBackend(electronApp, polledDoc),
+        { watched: true, usePolling: true },
+        'a file under the poll root must not be watched through a kqueue vnode registration',
+      )
+      assert.deepEqual(
+        await getFileWatchBackend(electronApp, localDoc),
+        { watched: true, usePolling: false },
+        'a local file keeps the native backend -- polling everything was the rejected option',
+      )
+
+      // The poll backend has to actually deliver, not just be selected. fs.watchFile's cadence
+      // plus awaitWriteFinish's 200ms stability window puts this around half a second.
+      await fs.writeFile(polledDoc, '# Volume edit landed\n', 'utf8')
+      await page.waitForFunction(
+        () => document.getElementById('content').textContent.includes('Volume edit landed'),
+      )
+    } finally {
+      await closeApp(electronApp)
+    }
+  } finally {
+    if (prevRoots === undefined) delete process.env.MDV_TEST_WATCH_POLL_ROOTS
+    else process.env.MDV_TEST_WATCH_POLL_ROOTS = prevRoots
+    await fs.rm(polledDir, { recursive: true, force: true })
+    await fs.rm(localDir, { recursive: true, force: true })
+  }
+})
+
+// An EventEmitter 'error' with no listener throws where it is emitted -- here, the main
+// process. Before the listener existed this emit killed the app outright, so removing the
+// listener is what turns this test red (verified by doing exactly that, see the plan). What it
+// asserts beyond survival is the recovery contract: the broken path is dropped from the map,
+// which is what lets the next tab switch rebuild a fresh watcher for it.
+test('a file watcher error drops that path instead of taking the main process down', async () => {
+  const { path: tempMarkdown, cleanup } = await createTempMarkdown(BASIC_MD, 'watch-error.md')
+  const { electronApp, page } = await launchApp()
+
+  try {
+    await page.waitForSelector('#empty')
+    await stubOpenDialog(electronApp, [tempMarkdown])
+    await emitRendererCommand(electronApp, 'openFile')
+    await page.waitForFunction(() => document.title === 'watch-error')
+
+    assert.deepEqual(await getFileWatchBackend(electronApp, tempMarkdown), { watched: true, usePolling: false })
+
+    // EMFILE is what actually reaches this listener: chokidar swallows the "path is gone"
+    // codes (ENOENT/ENOTDIR, plus EPERM/EACCES under its default ignorePermissionErrors).
+    assert.deepEqual(await emitWatcherError(electronApp, '__mdvFileWatchers', tempMarkdown, 'EMFILE'), { emitted: true })
+
+    assert.deepEqual(
+      await getFileWatchBackend(electronApp, tempMarkdown),
+      { watched: false },
+      'the failed watcher must be dropped, so a later watch-file for this path starts clean',
+    )
+
+    // A real IPC round trip proves the main process is still there, not just the window.
+    await emitRendererCommand(electronApp, 'toggleTheme')
+    await page.waitForFunction(() => document.documentElement.dataset.theme)
+  } finally {
+    await closeApp(electronApp)
+    await cleanup()
+  }
+})
