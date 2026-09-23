@@ -14,15 +14,36 @@
 
   const LIST_PREFIX_RE = /^(\s*)([-*+]|\d+[.)])(\s+\[[ xX]\])?\s+/
 
+  // Blockquote markers at the head of a line, nesting ('>>', '> >') and typed spacing
+  // included. The inner \s* stops at the first non-'>' character, so '> - item' splits into
+  // the quote prefix '> ' and the list line '- item' and both continue; the ^ anchor keeps a
+  // '>' used mid-sentence ('- a > b') out of it.
+  const QUOTE_PREFIX_RE = /^\s*(?:>\s*)+/
+
   // lineText is the full current line (both sides of the cursor), so a cursor placed
   // mid-line still continues the list (split into two items) rather than exiting it.
+  // Blockquote lines continue the same way, including a list nested inside one.
   function computeListContinuation(lineText) {
-    const match = lineText.match(LIST_PREFIX_RE)
-    if (!match) return null
+    const quotePrefix = lineText.match(QUOTE_PREFIX_RE)?.[0] ?? ''
+    const quoted = lineText.slice(quotePrefix.length)
+    const match = quoted.match(LIST_PREFIX_RE)
+
+    if (!match) {
+      if (!quotePrefix) return null
+      // A quote line with no list in it continues on its own, and an empty one exits the
+      // way an empty list item does.
+      if (quoted.trim() === '') return { type: 'exit', removeLength: quotePrefix.length }
+      return { type: 'continue', insertText: `\n${quotePrefix}` }
+    }
 
     const prefix = match[0]
-    const rest = lineText.slice(prefix.length)
+    const rest = quoted.slice(prefix.length)
     if (rest.trim() === '') {
+      // An empty item inside a quote drops only the list marker and leaves the quote behind;
+      // a second Enter then exits that too. One keystroke never discards both contexts.
+      if (quotePrefix) {
+        return { type: 'exit', removeLength: quotePrefix.length + prefix.length, insertText: quotePrefix }
+      }
       return { type: 'exit', removeLength: prefix.length }
     }
 
@@ -30,7 +51,7 @@
     const numberMatch = marker.match(/^(\d+)([.)])$/)
     const nextMarker = numberMatch ? `${Number(numberMatch[1]) + 1}${numberMatch[2]}` : marker
     const nextPrefix = `${indent}${nextMarker}${checkbox ? ' [ ]' : ''} `
-    return { type: 'continue', insertText: `\n${nextPrefix}` }
+    return { type: 'continue', insertText: `\n${quotePrefix}${nextPrefix}` }
   }
 
   // Toggles an inline marker (`**`/`*`) around the selection. Prefers unwrapping markers
@@ -576,8 +597,10 @@
           if (continuation) {
             event.preventDefault()
             if (continuation.type === 'exit') {
+              // insertText is whatever survives the exit: nothing for a plain list, the
+              // enclosing quote prefix when the emptied item sat inside a blockquote.
               editor.setSelectionRange(lineStart, lineStart + continuation.removeLength)
-              replaceSelection('')
+              replaceSelection(continuation.insertText ?? '')
             } else {
               replaceSelection(continuation.insertText)
             }
