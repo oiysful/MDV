@@ -128,13 +128,24 @@ refactor"**. 대조 결과 중복 주장은 **사실이다**:
 분류 레인이 `links-and-toc:349`(소스 모드 TOC)를 컨트롤러 테스트와 "거의 완전 중복, 최고 신뢰도"로
 판정했으나 **대조 결과 틀렸다**:
 
-- 컨트롤러(`source-mode-toc.test.js:86-108`)는 `refreshTocActive(0)`와 `(999)` **두 점만** 본다.
+- 컨트롤러(`source-mode-toc.test.js:103`)는 `refreshTocActive(0)`와 `(999)` **두 점만** 본다.
   first/last 이진 구현으로도 통과한다.
 - Electron(L376-385)은 **중간 지점**이 "첫 번째도 마지막도 아니어야" 한다고 요구한다. 주석이
   명시한다: *"proves continuous line-position tracking, not just a first/last binary."*
 
 즉 연속 추적을 증명하는 유일한 단언이 Electron 쪽에만 있다. 올바른 조치는 삭제가 아니라
 **컨트롤러에 중간 지점 단언을 먼저 추가하는 것**이다.
+
+> **닫았다(2026-09-23).** `source-mode-toc.test.js:135`가 두 `##` 헤딩 사이 지점에서 중간
+> 항목이 활성화되는지 본다. 프로브 오프셋은 픽스처의 헤딩 줄 번호와 하네스의 line-height에서
+> **유도**하며(상수 드리프트가 테스트를 조용히 약화시키지 않게), 밴드 경계에서 두 줄 떨어진
+> 중점을 찍는다. 반증 확인 결과가 이 절의 주장을 그대로 재현했다 — `markdown.js`를 first/last
+> 이진으로 망가뜨리면 **새 단언만 빨개지고 기존 두 점 단언은 통과한다.** Electron 테스트는
+> 그대로 남는다: jsdom은 `getBoundingClientRect()`가 0을 주므로 실제 레이아웃(`baseTop`,
+> CSS line-height 드리프트)은 컨트롤러 층에서 구조적으로 볼 수 없다.
+>
+> 같은 파일에 아직 내려오지 않은 요구가 하나 남아 있다 — Electron 테스트는 목차 클릭 **후
+> 활성 항목이 따라오는지**도 보는데, 컨트롤러 클릭 테스트는 `scrollTop !== 0`까지만 본다.
 
 ## 부팅 공유 가능 그룹 — 현 인프라에서
 

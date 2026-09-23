@@ -24,6 +24,13 @@ const hljsStub = {
   highlightAuto: () => ({ value: '' }),
 }
 
+// The line metrics makeHarness() fabricates below (jsdom has no layout engine, see the note
+// there). Named rather than inlined because the intermediate-position test derives its probe
+// scroll offset from them instead of hardcoding a number that would silently drift out of
+// Section One's band if these changed.
+const LINE_HEIGHT_PX = 20
+const PADDING_TOP_PX = 8
+
 function makeHarness() {
   const dom = createDom()
   // createDom() only sets global.document; editor.js's resize listener and debounce timer
@@ -37,8 +44,8 @@ function makeHarness() {
   // computeSourceModeGeometry() has real numbers to work with (only *deltas* between
   // headings are meaningful here, since getBoundingClientRect() always reports an all-zero
   // rect under jsdom -- there's no way to assert an absolute baseTop).
-  refs.sourceEditor.style.lineHeight = '20px'
-  refs.sourceEditor.style.paddingTop = '8px'
+  refs.sourceEditor.style.lineHeight = `${LINE_HEIGHT_PX}px`
+  refs.sourceEditor.style.paddingTop = `${PADDING_TOP_PX}px`
 
   // jsdom doesn't implement scrollTo either (same gap harness.js already documents for
   // scrollIntoView) -- stub it to actually move scrollTop so a click's effect is observable.
@@ -83,6 +90,16 @@ function makeHarness() {
 
 const HEADINGS_MD = '# Title\n\nintro\n\n## Section One\n\nbody one\n\n## Section Two\n\nbody two\n'
 
+// 0-based source line of each `##` heading in HEADINGS_MD. rebuildSourceModeToc() turns a
+// heading's line index into its scroll offset (baseTop + paddingTop + line * lineHeight, and
+// baseTop is 0 here because jsdom's getBoundingClientRect() reports an all-zero rect), so these
+// two are all the intermediate-position test needs to locate Section One's band. Read off the
+// fixture rather than written as literals: editing HEADINGS_MD would otherwise leave the probe
+// aimed at a stale offset, which widens the band instead of failing, silently weakening the test.
+const sourceLineOf = heading => HEADINGS_MD.split('\n').indexOf(heading)
+const SECTION_ONE_LINE = sourceLineOf('## Section One')
+const SECTION_TWO_LINE = sourceLineOf('## Section Two')
+
 test('entering pure source mode immediately builds the TOC from source text with distinct, non-stuck offsets', () => {
   const { refs, editorController, markdownController, seedMarkdown } = makeHarness()
 
@@ -105,6 +122,40 @@ test('entering pure source mode immediately builds the TOC from source text with
   assert.equal(activeAtTop, '#title')
   assert.equal(activeAtBottom, '#section-two')
   assert.notEqual(activeAtTop, activeAtBottom, 'scrolling must move the highlight, not stick on one heading')
+})
+
+// Closes the gap docs/plans/21-electron-suite-audit.md §6 recorded. A classification lane judged
+// tests/electron/links-and-toc.test.js:349 a near-duplicate of this file with "highest
+// confidence", and the audit found that judgement wrong: the test above probes only scrollTop 0
+// and 999, which a first/last binary passes (collapse every entry but the first onto the last
+// heading's offset and both endpoints still answer correctly), so the only assertion actually
+// proving continuous line-position tracking lived in the Electron suite -- 570ms of app boot away
+// from the layer that can catch it. The audit's 2026-09-23 decision on recommendation 5 keeps the
+// Electron test and brings the requirement down here too, so a binary regression fails fast.
+test('a scroll position between the two ## headings activates the middle TOC entry, not the first or the last', () => {
+  const { refs, editorController, markdownController, seedMarkdown } = makeHarness()
+
+  seedMarkdown(HEADINGS_MD)
+  editorController.openInSourceMode()
+
+  // refreshTocActive() hands a heading the highlight once scrollTop reaches that heading's own
+  // offset minus a lead-in, which under this harness gives #section-one the range 64..143
+  // (measured, not assumed). Probe that range's midpoint: it clears both edges by two full
+  // lines, so a lead-in tweak can't flip the result. A boundary-hugging value would have made
+  // this a flake vector, and plans 18-20 spent three rounds removing those.
+  const ACTIVE_LEAD_IN_PX = 24
+  const sectionOneActivatesAt = PADDING_TOP_PX + SECTION_ONE_LINE * LINE_HEIGHT_PX - ACTIVE_LEAD_IN_PX
+  const sectionTwoActivatesAt = PADDING_TOP_PX + SECTION_TWO_LINE * LINE_HEIGHT_PX - ACTIVE_LEAD_IN_PX
+  const insideSectionOne = (sectionOneActivatesAt + sectionTwoActivatesAt) / 2
+
+  markdownController.refreshTocActive(insideSectionOne)
+
+  assert.equal(
+    refs.tocList.querySelector('a.active')?.getAttribute('href'),
+    '#section-one',
+    `scrollTop ${insideSectionOne} lies between Section One's line and Section Two's, so each heading's `
+      + 'own line position must be tracked -- a first/last binary reports #title or #section-two here',
+  )
 })
 
 test('clicking a source-mode TOC entry scrolls #scroll-area to that heading instead of doing nothing', () => {
