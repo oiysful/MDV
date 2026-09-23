@@ -108,3 +108,54 @@ test('a pathologically large directory trips the path-count guard instead of han
     await fs.rm(root, { recursive: true, force: true })
   }
 })
+
+// The directory watcher's error path shares the teardown with the path-count guard above, so
+// the thing worth asserting is that the two are told apart. A watcher error that reported
+// itself as "folder too large" would send someone hunting a file count that is not the
+// problem. Removing the 'error' listener from main.js turns this red twice over: the emit
+// throws in the main process, and no toast arrives.
+test('a directory watcher error stops the watch and says so in its own words', async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), 'mdv-dirwatch-error-'))
+  await fs.writeFile(path.join(root, 'note.md'), '# note\n')
+
+  try {
+    const { electronApp, page } = await launchApp()
+    try {
+      await page.waitForSelector('#empty')
+      await armToastWatch(page)
+      await stubOpenDialog(electronApp, [root])
+      await emitRendererCommand(electronApp, 'openFolder')
+      await page.waitForFunction(() => document.getElementById('explorer-tree').textContent.includes('note.md'))
+
+      // Wait for the watch to exist before breaking it -- chokidar's initial scan is async, so
+      // the entry is not in the map the instant openFolder's IPC resolves.
+      await getWatchedOnceReady(electronApp, root)
+
+      const emitted = await electronApp.evaluate((_electron, dirPath) => {
+        const entry = globalThis.__mdvDirWatchers?.get(dirPath)
+        if (!entry) return { emitted: false }
+        entry.watcher.emit('error', Object.assign(new Error('simulated EMFILE'), { code: 'EMFILE' }))
+        return { emitted: true }
+      }, root)
+      assert.deepEqual(emitted, { emitted: true })
+
+      await waitForToast(page, /실시간 변경 감지가 중단되었습니다/)
+
+      const stillWatched = await electronApp.evaluate((_electron, dirPath) => {
+        return Boolean(globalThis.__mdvDirWatchers?.has(dirPath))
+      }, root)
+      assert.equal(stillWatched, false, 'the broken directory watch must be torn down, not left half-alive')
+
+      // The guard's own wording must not be what surfaced for an error.
+      const toasts = await page.evaluate(() => globalThis.__mdvToasts || [])
+      assert.equal(toasts.some(msg => /너무 커서/.test(msg)), false)
+
+      await emitRendererCommand(electronApp, 'toggleTheme')
+      await page.waitForFunction(() => document.documentElement.dataset.theme)
+    } finally {
+      await closeApp(electronApp)
+    }
+  } finally {
+    await fs.rm(root, { recursive: true, force: true })
+  }
+})

@@ -6,6 +6,7 @@ const { pathToFileURL } = require('url')
 const chokidar = require('chokidar')
 const { isEmptySession } = require('./renderer/session-state')
 const { normalizeTag, shouldNotify } = require('./update-checker')
+const { pollRootsFromEnv, watchOptionsFor } = require('./watch-options')
 
 // Tests point this at a throwaway directory so the suite never reads or clobbers the
 // real user's session.json. Must run before app 'ready', which module-load time satisfies.
@@ -21,6 +22,9 @@ const dirWatchers = new Map() // dirPath → { watcher: chokidar.FSWatcher, subs
 // against directly. Only exposed under the same env var launchApp() already uses to mark an
 // isolated test run (never set for a real user launch).
 if (process.env.MDV_USER_DATA_DIR) globalThis.__mdvDirWatchers = dirWatchers
+// Same guard, same reason: the file-watcher error path is only observable as "this path is
+// no longer watched", and asserting that needs the live map.
+if (process.env.MDV_USER_DATA_DIR) globalThis.__mdvFileWatchers = watchers
 const dirtyState = new Map() // BrowserWindow.id → boolean (미저장 변경 존재 여부)
 const sessionState = new Map() // BrowserWindow.id → { tabs, activeIndex, explorerRoot } (렌더러가 통지한 최신 상태)
 let lastFocusedWindowId = null
@@ -771,6 +775,9 @@ const DIR_WATCH_DEPTH = 1
 // Overridable so a test can trip the guard without actually creating tens of thousands of
 // files, matching the MDV_TEST_SKIP_DEFAULT_APP_CHECK precedent below.
 const DIR_WATCH_MAX_PATHS = Number(process.env.MDV_TEST_DIR_WATCH_MAX_PATHS) || 20000
+// Paths under these roots get chokidar's poll backend instead of a kqueue vnode watch,
+// which is what keeps a vanishing volume from aborting the process. See watch-options.js.
+const WATCH_POLL_ROOTS = pollRootsFromEnv(process.env)
 
 // chokidar's `ignored` option accepts a function `(path, stats) => boolean` alongside
 // regex/glob/string forms (see its own watch() JSDoc) and is queried for both the initial
@@ -820,19 +827,37 @@ ipcMain.handle('watch-directory', async (event, dirPath) => {
     clearTimeout(entry.debounceTimer)
     entry.debounceTimer = setTimeout(notify, DIR_WATCH_DEBOUNCE_MS)
   }
-  const onOverflow = () => {
+  // Both the path-count guard and a watcher error end here: stop watching this root and tell
+  // the renderer it has to fall back to on-demand reads (the explorer already re-reads a
+  // folder when it's expanded). Guarded so a second call is a no-op -- the guard can trip
+  // while an error teardown is already done. An overflow that fires before this entry is
+  // registered leaves the watcher inert instead of throwing on `entry.watcher.close()`; that
+  // ordering has never been observed, because chokidar's scan is async and reaches the ignore
+  // predicate after chokidar.watch() has returned.
+  const dropDirWatch = (reason) => {
+    if (dirWatchers.get(dirPath) !== entry) return
     clearTimeout(entry.debounceTimer)
     entry.watcher.close()
     dirWatchers.delete(dirPath)
     for (const sub of entry.subscribers) {
-      if (!sub.isDestroyed()) sub.send('directory-watch-unavailable', { path: dirPath })
+      if (!sub.isDestroyed()) sub.send('directory-watch-unavailable', { path: dirPath, reason })
     }
   }
 
-  const watcher = chokidar.watch(dirPath, {
+  const watcher = chokidar.watch(dirPath, watchOptionsFor(dirPath, WATCH_POLL_ROOTS, {
     ignoreInitial: true,
-    ignored: makeGuardedIgnore(DIR_WATCH_IGNORED, DIR_WATCH_MAX_PATHS, onOverflow),
+    ignored: makeGuardedIgnore(DIR_WATCH_IGNORED, DIR_WATCH_MAX_PATHS, () => dropDirWatch('overflow')),
     depth: DIR_WATCH_DEPTH,
+  }))
+  // An EventEmitter 'error' with no listener throws, and this one is on the main process's
+  // emitter -- so the listener itself is the fix, whatever it then does. chokidar swallows the
+  // codes that mean "the path is gone" (ENOENT/ENOTDIR, plus EPERM/EACCES under its default
+  // ignorePermissionErrors, see its index.js _handleError), so what reaches here is the
+  // EMFILE/ENOSPC class: descriptor or kernel-queue exhaustion, where one root's watch is
+  // beyond saving but the app is not.
+  watcher.on('error', (error) => {
+    console.error(`디렉토리 워처 오류 (${dirPath}):`, error && error.code ? error.code : error)
+    dropDirWatch('error')
   })
   watcher.on('add', scheduleNotify)
   watcher.on('unlink', scheduleNotify)
@@ -865,7 +890,10 @@ ipcMain.handle('watch-file', async (event, filePath) => {
     return
   }
 
-  const watcher = chokidar.watch(filePath, { ignoreInitial: true, awaitWriteFinish: { stabilityThreshold: 200 } })
+  const watcher = chokidar.watch(filePath, watchOptionsFor(filePath, WATCH_POLL_ROOTS, {
+    ignoreInitial: true,
+    awaitWriteFinish: { stabilityThreshold: 200 },
+  }))
   const notify = async (changeEvent) => {
     const entry = watchers.get(filePath)
     if (!entry) return
@@ -884,6 +912,16 @@ ipcMain.handle('watch-file', async (event, filePath) => {
   watcher.on('change', () => notify('change'))
   watcher.on('add',    () => notify('add'))
   watcher.on('unlink', () => notify('unlink'))
+  // See the directory watcher's error listener for what actually reaches here. Dropping the
+  // entry is the recovery path rather than a surrender: the renderer re-issues watch-file for
+  // the active tab on every tab switch (that's why removeWatchSubscriber is reference-counted
+  // at all), so the next switch rebuilds a fresh watcher for this path.
+  watcher.on('error', (error) => {
+    console.error(`파일 워처 오류 (${filePath}):`, error && error.code ? error.code : error)
+    if (watchers.get(filePath)?.watcher !== watcher) return
+    watcher.close()
+    watchers.delete(filePath)
+  })
 
   watchers.set(filePath, { watcher, subscribers: new Set([wc]) })
 })
