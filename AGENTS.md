@@ -111,7 +111,7 @@ npm run build
 npm run test:unit                   # 0.9s  — after every edit. Always run it whole.
 npm run test:controller             # ~0.5s — after every edit that touches controller wiring (workspace/editor/search/explorer)
 E2E="split view" npm run test:e2e   # ~2-10s — while iterating on one Electron-covered behavior
-npm run test:electron               # ~50s  — once, before declaring done or committing (measured 2026-09-23: 104 tests, 50.4s on a 10-core machine at the default concurrency; the CI job is ~4min because it also installs and downloads Electron)
+npm run test:electron               # ~50s  — once, before declaring done or committing (measured 2026-09-23: 108 tests, 58.8s on a 10-core machine at the default concurrency; the CI job is ~4min because it also installs and downloads Electron)
 ```
 `test:e2e` filters the split Electron test files (`tests/electron/*.test.js`, 15 files) by
 test name (`--test-name-pattern`). With `E2E` unset it falls back to the full suite, so it

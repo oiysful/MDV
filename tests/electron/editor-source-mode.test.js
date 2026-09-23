@@ -179,6 +179,61 @@ test('Enter continues a bullet list item and exits an empty one, each undoable i
   }
 })
 
+// Blockquote continuation runs through the same computeListContinuation/replaceSelection pair
+// as the list case above, but its exit is a different execCommand branch: an emptied item
+// inside a quote is *replaced* with the surviving '> ' (insertText) instead of deleted, so the
+// one-step-undo invariant has to be re-proven here rather than inherited.
+test('Enter continues a blockquote and leaves a quoted list one level at a time', async () => {
+  const { electronApp, page } = await launchApp()
+
+  try {
+    await page.waitForSelector('#empty')
+    await stubOpenDialog(electronApp, [BASIC_MD])
+    await emitRendererCommand(electronApp, 'openFile')
+    await page.waitForFunction(() => document.title === 'basic')
+
+    await emitRendererCommand(electronApp, 'toggleSource')
+    await page.waitForFunction(() => document.getElementById('source-view').style.display === 'block')
+
+    const editor = page.locator('#source-editor')
+    const expectValue = async expected => {
+      await page.waitForFunction(
+        value => document.getElementById('source-editor').value === value,
+        expected,
+      )
+      assert.equal(await editor.inputValue(), expected)
+    }
+
+    await editor.click()
+    await page.keyboard.press('Meta+a')
+    await page.keyboard.type('> quoted')
+    await page.keyboard.press('Enter')
+    await expectValue('> quoted\n> ')
+
+    // A list started inside the quote carries both markers onto the next line.
+    await page.keyboard.type('- item')
+    await page.keyboard.press('Enter')
+    await expectValue('> quoted\n> - item\n> - ')
+
+    // First Enter on the empty quoted item drops only the bullet: the quote survives.
+    await page.keyboard.press('Enter')
+    await expectValue('> quoted\n> - item\n> ')
+
+    // Second Enter, now on an empty quote line, leaves the quote too.
+    await page.keyboard.press('Enter')
+    await expectValue('> quoted\n> - item\n')
+
+    // Each of those two exits was one execCommand, so each Cmd+Z reverts exactly one.
+    await page.keyboard.press('Meta+z')
+    await expectValue('> quoted\n> - item\n> ')
+
+    await page.keyboard.press('Meta+z')
+    await expectValue('> quoted\n> - item\n> - ')
+  } finally {
+    await closeApp(electronApp)
+  }
+})
+
 // Repro for the reported "duplicate list items" bug: repeatedly pressing Enter with the
 // caret reset to the same earlier list line each time (e.g. a user clicking back into item 1)
 // inserts one new empty item per press, at that spot — this is correct list-splitting applied

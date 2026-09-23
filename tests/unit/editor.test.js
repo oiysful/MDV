@@ -196,6 +196,43 @@ test('computeListContinuation returns null for a non-list line', () => {
   assert.equal(computeListContinuation('   '), null)
 })
 
+test('computeListContinuation continues a blockquote on Enter', () => {
+  assert.deepEqual(computeListContinuation('> quoted'), { type: 'continue', insertText: '\n> ' })
+  assert.deepEqual(computeListContinuation('> 인용문입니다'), { type: 'continue', insertText: '\n> ' })
+  // Whatever spacing was typed after the marker is reproduced, including none at all.
+  assert.deepEqual(computeListContinuation('>tight'), { type: 'continue', insertText: '\n>' })
+})
+
+test('computeListContinuation preserves blockquote nesting and indentation', () => {
+  assert.deepEqual(computeListContinuation('>> deeper'), { type: 'continue', insertText: '\n>> ' })
+  assert.deepEqual(computeListContinuation('> > deeper'), { type: 'continue', insertText: '\n> > ' })
+  assert.deepEqual(computeListContinuation('  > indented'), { type: 'continue', insertText: '\n  > ' })
+})
+
+test('computeListContinuation exits the blockquote on an empty quote line', () => {
+  assert.deepEqual(computeListContinuation('> '), { type: 'exit', removeLength: 2 })
+  assert.deepEqual(computeListContinuation('>'), { type: 'exit', removeLength: 1 })
+  assert.deepEqual(computeListContinuation('>> '), { type: 'exit', removeLength: 3 })
+  assert.deepEqual(computeListContinuation('  > '), { type: 'exit', removeLength: 4 })
+})
+
+test('computeListContinuation continues a list nested inside a blockquote', () => {
+  assert.deepEqual(computeListContinuation('> - item'), { type: 'continue', insertText: '\n> - ' })
+  assert.deepEqual(computeListContinuation('> 1. first'), { type: 'continue', insertText: '\n> 2. ' })
+  assert.deepEqual(computeListContinuation('> - [x] done'), { type: 'continue', insertText: '\n> - [ ] ' })
+})
+
+test('computeListContinuation exits a quoted list one level at a time', () => {
+  // The list marker goes, the quote stays -- a second Enter on the surviving '> ' exits that.
+  assert.deepEqual(computeListContinuation('> - '), { type: 'exit', removeLength: 4, insertText: '> ' })
+  assert.deepEqual(computeListContinuation('>> 1. '), { type: 'exit', removeLength: 6, insertText: '>> ' })
+})
+
+test('computeListContinuation ignores a > that is not at the head of the line', () => {
+  assert.equal(computeListContinuation('a > b'), null)
+  assert.deepEqual(computeListContinuation('- a > b'), { type: 'continue', insertText: '\n- ' })
+})
+
 test('computeInlineMarkerToggle wraps a plain selection', () => {
   const text = 'hello world'
   const result = computeInlineMarkerToggle(text, 0, 5, '**')
