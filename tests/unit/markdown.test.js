@@ -83,6 +83,10 @@ test('renderMarkdown leaves intraword single tildes as plain text', () => {
     'a ~b~c': '<p>a ~b~c</p>',
     '끝에 물결~': '<p>끝에 물결~</p>',
     'x~': '<p>x~</p>',
+    // Opening side alone: the closing `~` is followed by a space or the end, so only the
+    // letter/digit glued in front of the opener keeps these from striking.
+    'a~b c~ d': '<p>a~b c~ d</p>',
+    '1~2명 또는 3명~': '<p>1~2명 또는 3명~</p>',
   }
   for (const [src, expected] of Object.entries(cases)) {
     assert.equal(controller.renderMarkdown(src).trim(), expected, src)
@@ -124,6 +128,8 @@ test('renderMarkdown keeps tildes intact in escapes, links, autolinks, code, and
     '참고 www.example.com/~u/a~b 끝': '<p>참고 <a href="http://www.example.com/~u/a~b">www.example.com/~u/a~b</a> 끝</p>',
     // `%~2` isn't letter/digit-glued on the opening side; the closing-side del check catches it.
     '10%~20%, 30%~40%': '<p>10%~20%, 30%~40%</p>',
+    // develop rendered `<del>a\</del>b~` (a stray backslash); pinned so a change is deliberate.
+    '~a\\~b~': '<p>~a~b~</p>',
   }
   for (const [src, expected] of Object.entries(cases)) {
     assert.equal(controller.renderMarkdown(src).trim(), expected, src)
