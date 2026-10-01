@@ -71,6 +71,62 @@ test('renderMarkdown preserves GFM table alignment attributes', () => {
   assert.ok(/<td align="right">/.test(html), html)
 })
 
+// Plan 23 §3: marked's GFM del accepts a single `~`, so ranges like `25~40` struck through the
+// prose between them. MDV keeps single tildes glued to a letter/digit as text; standalone
+// single-tilde pairs and every `~~x~~` still strike.
+test('renderMarkdown leaves intraword single tildes as plain text', () => {
+  const controller = makeController()
+  const cases = {
+    'P0~P4를 기록했다. P1은 25~40개': '<p>P0~P4를 기록했다. P1은 25~40개</p>',
+    '2~3배와 ~~취소~~ 25~40': '<p>2~3배와 <del>취소</del> 25~40</p>',
+    '한~글~자': '<p>한~글~자</p>',
+    'a ~b~c': '<p>a ~b~c</p>',
+    '끝에 물결~': '<p>끝에 물결~</p>',
+    'x~': '<p>x~</p>',
+  }
+  for (const [src, expected] of Object.entries(cases)) {
+    assert.equal(controller.renderMarkdown(src).trim(), expected, src)
+  }
+})
+
+test('renderMarkdown still strikes standalone single-tilde pairs and double tildes', () => {
+  const controller = makeController()
+  const cases = {
+    '~one~': '<p><del>one</del></p>',
+    '~one~ two': '<p><del>one</del> two</p>',
+    '(~괄호~)': '<p>(<del>괄호</del>)</p>',
+    '~~진짜 취소~~': '<p><del>진짜 취소</del></p>',
+    '앞~~뒤~~끝': '<p>앞<del>뒤</del>끝</p>',
+  }
+  for (const [src, expected] of Object.entries(cases)) {
+    assert.equal(controller.renderMarkdown(src).trim(), expected, src)
+  }
+})
+
+test('renderMarkdown applies the intraword tilde rule inside table cells', () => {
+  const html = makeController().renderMarkdown('| a | b | c | d |\n|---|---|---|---|\n| 25~40 | 1~2와 3~4 | ~~x~~ | ~y~ |')
+  const cells = Array.from(html.matchAll(/<td>(.*?)<\/td>/g), m => m[1])
+  assert.deepEqual(cells, ['25~40', '1~2와 3~4', '<del>x</del>', '<del>y</del>'], html)
+})
+
+test('renderMarkdown keeps tildes intact in escapes, links, autolinks, code, and emphasis', () => {
+  const controller = makeController()
+  const cases = {
+    '\\~이스케이프\\~': '<p>~이스케이프~</p>',
+    '[25~40개](x.md)': '<p><a href="x.md">25~40개</a></p>',
+    'https://example.com/~user/a~b': '<p><a href="https://example.com/~user/a~b">https://example.com/~user/a~b</a></p>',
+    '<https://e.com/~u>': '<p><a href="https://e.com/~u">https://e.com/~u</a></p>',
+    '`a0~b~c`': '<p><code>a0~b~c</code></p>',
+    '**굵게 1~2**': '<p><strong>굵게 1~2</strong></p>',
+    '*기울임 3~4*': '<p><em>기울임 3~4</em></p>',
+  }
+  for (const [src, expected] of Object.entries(cases)) {
+    assert.equal(controller.renderMarkdown(src).trim(), expected, src)
+  }
+  const fence = controller.renderMarkdown('~~~\nfence a~b~c\n~~~')
+  assert.ok(/<pre><code/.test(fence) && !/<del>/.test(fence), fence)
+})
+
 test('extractFrontmatter parses key: value pairs delimited by --- on the very first line', () => {
   const result = extractFrontmatter('---\ntitle: Hello\ndate: 2026-08-05\n---\n\n# Body\n')
   assert.equal(result.frontmatter[0].key, 'title')

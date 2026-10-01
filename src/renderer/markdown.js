@@ -187,6 +187,9 @@
     return `<details class="frontmatter-card"><summary>메타데이터</summary><table class="frontmatter-table"><tbody>${rows}</tbody></table></details>`
   }
 
+  // marked instances that already carry the intraword-tilde override (see createMarkdownController).
+  const intrawordTildeConfigured = new WeakSet()
+
   function createMarkdownController({ getRefs, markedLib, hljsLib, pathUtils, api, onShowModeButton, domPurify, mermaidLib, katexLib, onMermaidLoaded }) {
     let cachedHeadings = []
     let cachedTocLinks = []
@@ -378,6 +381,41 @@
       return `<blockquote>\n${quote}</blockquote>\n`
     }
     markedLib.setOptions({ renderer, breaks: true, gfm: true })
+    // marked's GFM del rule (`~~?`) also accepts a single `~`, so prose like `P0~P4 … 25~40`
+    // turned everything in between into strikethrough. MDV rejects only *intraword* single
+    // tildes: `~one~`, `(~x~)` and every `~~x~~` still strike. This deliberately differs from
+    // github.com (strikes) and remark's singleTilde:false (never strikes). use() mutates the
+    // shared marked instance, so it is applied once per instance -- the tests build many
+    // controllers over one `marked`, and stacking the override each time would only slow it.
+    if (!intrawordTildeConfigured.has(markedLib)) {
+      intrawordTildeConfigured.add(markedLib)
+      markedLib.use({
+        // Opening side: del(src) can't see the previous character, so an inline extension eats
+        // a letter/digit plus the single `~` after it as plain text. start() makes inlineText
+        // stop right before that letter, so del never gets to treat the `~` as an opener.
+        extensions: [{
+          name: 'intrawordTilde',
+          level: 'inline',
+          start(src) {
+            const i = src.search(/[\p{L}\p{N}]~(?!~)/u)
+            return i < 0 ? undefined : i
+          },
+          tokenizer(src) {
+            const match = /^[\p{L}\p{N}]~(?!~)/u.exec(src)
+            if (match) return { type: 'text', raw: match[0], text: match[0] }
+          },
+        }],
+        // Closing side: a single-tilde pair whose closing `~` is glued to a following
+        // letter/digit (`a ~b~c`) is intraword too. Returning false falls back to marked's rule.
+        tokenizer: {
+          del(src) {
+            const match = /^~(?!~)(?=[^\s~])((?:\\[\s\S]|[^\\])*?(?:\\[\s\S]|[^\s~\\]))~(?!~)/.exec(src)
+            if (match && /^[\p{L}\p{N}]/u.test(src.slice(match[0].length))) return { type: 'text', raw: '~', text: '~' }
+            return false
+          },
+        },
+      })
+    }
 
     // mermaid measures the DOM it just drew (getBBox()/getBoundingClientRect()) to size the
     // final SVG. Inside a display:none subtree (e.g. #content while source mode is showing
