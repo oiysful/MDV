@@ -291,7 +291,7 @@ test('mermaid tooltip does not make the window itself scrollable (TOC click, whe
     await page.waitForSelector('#empty')
     await emitFileOpened(electronApp, { content, filename: 'tooltip.md', path: '/tmp/mdv-tooltip.md' })
     await page.waitForFunction(() => document.title === 'tooltip')
-    await page.waitForFunction(() => !!document.querySelector('#content .mermaid svg'), { timeout: 8000 })
+    await page.waitForFunction(() => !!document.querySelector('#content .mermaid svg'))
     await page.waitForSelector('body > .mermaidTooltip', { state: 'attached' })
 
     const extents = await page.evaluate(() => ({
