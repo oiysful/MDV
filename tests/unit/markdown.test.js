@@ -119,6 +119,11 @@ test('renderMarkdown keeps tildes intact in escapes, links, autolinks, code, and
     '`a0~b~c`': '<p><code>a0~b~c</code></p>',
     '**굵게 1~2**': '<p><strong>굵게 1~2</strong></p>',
     '*기울임 3~4*': '<p><em>기울임 3~4</em></p>',
+    // start() cuts inlineText at a letter before `~`; a mid-sentence URL must still autolink whole.
+    '참고 https://example.com/a~b 문서': '<p>참고 <a href="https://example.com/a~b">https://example.com/a~b</a> 문서</p>',
+    '참고 www.example.com/~u/a~b 끝': '<p>참고 <a href="http://www.example.com/~u/a~b">www.example.com/~u/a~b</a> 끝</p>',
+    // `%~2` isn't letter/digit-glued on the opening side; the closing-side del check catches it.
+    '10%~20%, 30%~40%': '<p>10%~20%, 30%~40%</p>',
   }
   for (const [src, expected] of Object.entries(cases)) {
     assert.equal(controller.renderMarkdown(src).trim(), expected, src)
