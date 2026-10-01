@@ -260,3 +260,64 @@ test('opening a new document starts at the top instead of inheriting the previou
     await closeApp(electronApp)
   }
 })
+
+// Plan 23 §1: mermaid's flowchart renderer appends a hidden `div.mermaidTooltip` to <body>
+// (inline position:absolute, no top/left, 2px padding + 1px border) and never removes it. At
+// its static position below the 100vh #layout it made the document 6px taller than the window
+// (scrollHeight 806 vs 800), so the root itself scrolled 6px — on scrollIntoView (TOC click)
+// and on a wheel over the toolbar, which is not inside any scroll container.
+test('mermaid tooltip does not make the window itself scrollable (TOC click, wheel over toolbar)', async () => {
+  const { electronApp, page } = await launchApp()
+  const sections = Array.from({ length: 12 }, (_, i) => `## Section ${i + 1}\n\n${'Paragraph text for scroll height. '.repeat(40)}`).join('\n\n')
+  const content = `# Tooltip Doc\n\n\`\`\`mermaid\ngraph TD;\n  A-->B;\n\`\`\`\n\n${sections}\n`
+
+  // Resolves once the root and #scroll-area offsets have held still for 20 consecutive frames,
+  // i.e. any smooth scroll (including Chromium's sequenced outer-scroller step) has finished.
+  const waitForScrollSettled = () => page.evaluate(() => new Promise(resolve => {
+    const scrollArea = document.getElementById('scroll-area')
+    let last = null
+    let stableFrames = 0
+    const tick = () => {
+      const now = `${window.scrollY}:${scrollArea.scrollTop}`
+      stableFrames = now === last ? stableFrames + 1 : 0
+      last = now
+      if (stableFrames >= 20) resolve()
+      else requestAnimationFrame(tick)
+    }
+    requestAnimationFrame(tick)
+  }))
+
+  try {
+    await page.waitForSelector('#empty')
+    await emitFileOpened(electronApp, { content, filename: 'tooltip.md', path: '/tmp/mdv-tooltip.md' })
+    await page.waitForFunction(() => document.title === 'tooltip')
+    await page.waitForFunction(() => !!document.querySelector('#content .mermaid svg'))
+    await page.waitForSelector('body > .mermaidTooltip', { state: 'attached' })
+
+    const extents = await page.evaluate(() => ({
+      scrollHeight: document.documentElement.scrollHeight,
+      clientHeight: document.documentElement.clientHeight,
+    }))
+    assert.equal(extents.scrollHeight, extents.clientHeight, `the document must not overflow the window, got ${extents.scrollHeight} vs ${extents.clientHeight}`)
+
+    // TOC click -> scrollIntoView({ behavior: 'smooth' }) walks every scrollable ancestor.
+    await page.waitForFunction(() => document.querySelectorAll('#toc-list a').length === 13)
+    await page.locator('#toc-list a').last().click()
+    await page.waitForFunction(() => document.getElementById('scroll-area').scrollTop > 0)
+    await waitForScrollSettled()
+    assert.equal(await page.evaluate(() => window.scrollY), 0, 'a TOC jump must scroll #scroll-area only, never the window')
+
+    // Wheel over the toolbar: not inside any scroll container, so it falls through to the root.
+    await page.evaluate(() => {
+      window.__wheelSeen = false
+      document.addEventListener('wheel', () => { window.__wheelSeen = true }, { once: true, capture: true })
+    })
+    await page.mouse.move(600, 20)
+    await page.mouse.wheel(0, 300)
+    await page.waitForFunction(() => window.__wheelSeen === true)
+    await waitForScrollSettled()
+    assert.equal(await page.evaluate(() => window.scrollY), 0, 'a wheel over the toolbar must not scroll the window')
+  } finally {
+    await closeApp(electronApp)
+  }
+})
