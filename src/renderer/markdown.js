@@ -289,7 +289,17 @@
     }
 
     const renderer = new markedLib.Renderer()
-    renderer.code = (code, lang) => {
+    // marked (v13+) hands renderers the token object, not positional args. `text` is the raw
+    // fence body: marked's own tokenizer never escapes it and never sets `escaped` -- only a
+    // highlight extension (marked-highlight's walkTokens) does, and MDV loads none -- so every
+    // branch below escapes it exactly once itself (hljs, escapeHtml, katex). Honoring
+    // `escaped` here would be dead code that silently breaks the moment it's ever true, since
+    // hljs would then re-escape already-escaped text.
+    renderer.code = ({ text, lang, codeBlockStyle }) => {
+      // marked 18 keeps the trailing newline of an indented block that ends the document
+      // (`    a\n    b\n` -> 'a\nb\n'); marked 9 trimmed every one, and the copy button copies
+      // this text verbatim. Fenced blocks already match 9 and keep their inner blank lines.
+      const code = codeBlockStyle === 'indented' ? text.replace(/\n+$/, '') : text
       const langId = lang ? lang.split(/[\s{]/)[0] : ''
       // latex/math owns this block entirely, same as mermaid below -- but unlike mermaid,
       // no base64/data-attribute dance is needed: katex.renderToString() is synchronous
@@ -360,15 +370,18 @@
         icon: '<svg aria-hidden="true" width="14" height="14" viewBox="0 0 16 16" fill="none"><path d="M5.2 1.8h5.6l3.4 3.4v5.6l-3.4 3.4H5.2l-3.4-3.4V5.2l3.4-3.4z" stroke="currentColor" stroke-width="1.3" stroke-linejoin="round"/><line x1="8" y1="5.4" x2="8" y2="9" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/><circle cx="8" cy="11" r="0.9" fill="currentColor"/></svg>',
       },
     }
-    // marked's renderer.blockquote(quote) is handed the already-rendered inner HTML (not a
-    // token), e.g. '<p>[!NOTE]<br>body</p>\n' when the marker and body share one paragraph
+    // marked (v13+) hands renderer.blockquote the token, so the inner HTML is rendered here first,
+    // e.g. '<p>[!NOTE]<br>body</p>\n' when the marker and body share one paragraph
     // (no blank line between them), or '<p>[!NOTE]</p>\n<p>body</p>\n' when a blank line
     // separates them (breaks:true turns the shared-paragraph newline into <br>). Both forms
     // are matched and the marker is stripped in favor of the alert box's own title row. A
     // marker followed by more text on the same line (`[!NOTE] extra`) intentionally falls
     // through to a plain blockquote -- GitHub doesn't treat that as an alert either, and the
     // regex only accepts `<br>`/`</p>` immediately after `]`.
-    renderer.blockquote = (quote) => {
+    // `renderer.parser`, not `this.parser`: this is an arrow function, so `this` isn't the
+    // renderer. marked attaches the active Parser to the renderer at the start of every parse.
+    renderer.blockquote = ({ tokens }) => {
+      const quote = renderer.parser.parse(tokens)
       const match = /^\s*<p>\[!(NOTE|TIP|IMPORTANT|WARNING|CAUTION)\](?:<br\s*\/?>\s*|\s*<\/p>\s*)/i.exec(quote)
       if (match) {
         const type = match[1].toUpperCase()
@@ -408,12 +421,21 @@
             return token
           },
           // Closing side: a single-tilde pair whose closing `~` is glued to a following
-          // letter/digit (`a ~b~c`) is intraword too. marked's own del rule runs exactly once
-          // here -- falling back with `false` would run it a second time on the same input.
+          // letter/digit (`a ~b~c`) is intraword too.
+          // This owns `~~` as well and never returns `false`: since marked 17 the built-in del
+          // tokenizer is a delimiter-run scanner (like emStrong) that no longer uses
+          // rules.inline.del, and it is quadratic on unmatched runs (`'~~a '`x8000: 215ms on
+          // marked 9 -> 2.8s when `~~` fell through to it). The GFM del regex runs exactly once
+          // per `~` here, so both widths keep marked 9's cost and pairing.
           del(src) {
-            if (!/^~(?!~)/.test(src)) return false
+            if (src[0] !== '~') return undefined
             const cap = this.rules.inline.del.exec(src)
-            if (!cap || /^[\p{L}\p{N}]/u.test(src.slice(cap[0].length))) return { type: 'text', raw: '~', text: '~' }
+            // `~~` is never intraword-filtered (`앞~~뒤~~끝` strikes); an unmatched run is left
+            // to inlineText as plain text, as marked 9 did.
+            if (src[1] === '~' && !cap) return undefined
+            if (src[1] !== '~' && (!cap || /^[\p{L}\p{N}]/u.test(src.slice(cap[0].length)))) {
+              return { type: 'text', raw: '~', text: '~' }
+            }
             return { type: 'del', raw: cap[0], text: cap[2], tokens: this.lexer.inlineTokens(cap[2]) }
           },
         },

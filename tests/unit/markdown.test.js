@@ -128,8 +128,10 @@ test('renderMarkdown keeps tildes intact in escapes, links, autolinks, code, and
     '참고 www.example.com/~u/a~b 끝': '<p>참고 <a href="http://www.example.com/~u/a~b">www.example.com/~u/a~b</a> 끝</p>',
     // `%~2` isn't letter/digit-glued on the opening side; the closing-side del check catches it.
     '10%~20%, 30%~40%': '<p>10%~20%, 30%~40%</p>',
-    // develop rendered `<del>a\</del>b~` (a stray backslash); pinned so a change is deliberate.
-    '~a\\~b~': '<p>~a~b~</p>',
+    // An escaped `\~` can't close the pair. marked 9's del regex ignored escapes (stock 9 gave
+    // `<del>a\</del>b~`, a stray backslash; our override then gave `~a~b~`). marked 18's
+    // rules.inline.del is escape-aware, so the outer pair strikes as GFM intends.
+    '~a\\~b~': '<p><del>a~b</del></p>',
   }
   for (const [src, expected] of Object.entries(cases)) {
     assert.equal(controller.renderMarkdown(src).trim(), expected, src)
