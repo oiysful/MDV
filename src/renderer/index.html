@@ -629,6 +629,7 @@ mark.search-hl.current {
    explicitly and are unaffected. */
 #scroll-area {
   flex: 1; min-height: 0; overflow-y: auto;
+  /* Must stay px: markdown.js parseFloat()s it to size the hidden mermaid render host. */
   --content-pad-x: 52px;
   padding: 22px var(--content-pad-x) 80px;
 }
@@ -650,7 +651,7 @@ mark.search-hl.current {
 [data-theme="dark"] #scroll-area::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.18); background-clip: padding-box; }
 [data-theme="dark"] #scroll-area::-webkit-scrollbar-thumb:hover { background: rgba(255,255,255,0.28); background-clip: padding-box; }
 
-#content { max-width: min(100%, 60em); margin: 0 auto; user-select: text; -webkit-user-select: text; }
+#content { max-width: 60em; margin: 0 auto; user-select: text; -webkit-user-select: text; }
 #scroll-area.split-mode #content {
   order: 3;
   max-width: none;

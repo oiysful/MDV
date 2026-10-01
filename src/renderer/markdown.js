@@ -397,12 +397,9 @@
       // index.html. Both are read live instead of hardcoded so this still matches if that CSS
       // ever changes. The padding comes from --content-pad-x, not paddingLeft/Right: #content
       // is only hidden in source mode, where `#scroll-area.source-mode { padding: 0 }` zeroes
-      // the real padding but leaves the variable intact. The max-width is copied onto the host
-      // as-is rather than parsed: Chromium reports `min(100%, 60em)` as the unresolved
-      // `min(100%, 900px)` even with #content hidden, and on this position:fixed host its 100%
-      // is the viewport, never narrower than the content box -- so the host lands on the same
-      // width #content would. (Split view never reaches this function: it's full-width but
-      // also visible, so getClientRects() above already short-circuits it.)
+      // the real padding but leaves the variable intact. (Split view never reaches this
+      // function: it's full-width but also visible, so getClientRects() above already
+      // short-circuits it.)
       const scrollArea = container.parentElement
       const view = doc.defaultView
       const scrollAreaStyle = scrollArea && view?.getComputedStyle(scrollArea)
@@ -411,11 +408,11 @@
         : Number.isFinite(padVar) ? padVar * 2
         : (parseFloat(scrollAreaStyle.paddingLeft) || 0) + (parseFloat(scrollAreaStyle.paddingRight) || 0)
       const contentBoxWidth = scrollArea ? scrollArea.clientWidth - paddingX : 0
-      const maxWidth = view?.getComputedStyle(container).maxWidth || 'none'
+      const maxWidth = parseFloat(view?.getComputedStyle(container).maxWidth) || Infinity
+      const width = Math.min(maxWidth, contentBoxWidth > 0 ? contentBoxWidth : Infinity)
       host.style.cssText =
         `position:fixed;top:0;left:-10000px;overflow:hidden;pointer-events:none;` +
-        (contentBoxWidth > 0 ? `width:${contentBoxWidth}px;` : 'width:100%;')
-      host.style.maxWidth = maxWidth
+        (Number.isFinite(width) ? `width:${width}px` : 'width:100%')
       doc.body.appendChild(host)
       // The placeholder left in the node's place is a full clone (attributes + text), not a
       // bare comment -- if something snapshots #content while a node is parked (e.g. a tab
