@@ -1219,6 +1219,15 @@ kbd {
   white-space: pre;
 }
 
+/* Mermaid's flowchart tooltip: mermaid appends it to <body> once and never removes it, with an
+   inline `position:absolute` and no top/left — so it sits at its static position just below
+   the 100vh #layout and its 2px padding + 1px border make the document 6px taller than the
+   window. The root then scrolls 6px on a wheel over the toolbar or on any scrollIntoView
+   (TOC click, search jump). Fixed takes it out of the flow; mermaid places it with
+   window.scroll{X,Y} + getBoundingClientRect(), and the root never scrolls, so those are
+   viewport coordinates either way. !important is needed to beat the inline style. (plan 23) */
+.mermaidTooltip { position: fixed !important; top: 0; left: 0; }
+
 /* LaTeX/math block (```latex, ```math) */
 .mdv-latex {
   margin: 1.2em 0;
@@ -1281,7 +1290,7 @@ kbd {
 #btn-copy-all.copied { color: var(--success) !important; }
 
 @media print {
-  #toolbar, #search-bar, #sidebar, #tab-strip, #go-top, #source-view, #split-divider, .copy-btn, #update-banner { display: none !important; }
+  #toolbar, #search-bar, #sidebar, #tab-strip, #go-top, #source-view, #split-divider, .copy-btn, #update-banner, .mermaidTooltip { display: none !important; }
   html, body, #layout, #main-pane, #scroll-area, #content {
     height: auto !important;
     min-height: 0 !important;

@@ -187,6 +187,9 @@
     return `<details class="frontmatter-card"><summary>메타데이터</summary><table class="frontmatter-table"><tbody>${rows}</tbody></table></details>`
   }
 
+  // marked instances that already carry the intraword-tilde override (see createMarkdownController).
+  const intrawordTildeConfigured = new WeakSet()
+
   function createMarkdownController({ getRefs, markedLib, hljsLib, pathUtils, api, onShowModeButton, domPurify, mermaidLib, katexLib, onMermaidLoaded }) {
     let cachedHeadings = []
     let cachedTocLinks = []
@@ -378,6 +381,44 @@
       return `<blockquote>\n${quote}</blockquote>\n`
     }
     markedLib.setOptions({ renderer, breaks: true, gfm: true })
+    // marked's GFM del rule (`~~?`) also accepts a single `~`, so prose like `P0~P4 … 25~40`
+    // turned everything in between into strikethrough. MDV rejects only *intraword* single
+    // tildes: `~one~`, `(~x~)` and every `~~x~~` still strike. This deliberately differs from
+    // github.com (strikes) and remark's singleTilde:false (never strikes). use() mutates the
+    // shared marked instance, so it is applied once per instance -- the tests build many
+    // controllers over one `marked`, and stacking the override each time would only slow it.
+    if (!intrawordTildeConfigured.has(markedLib)) {
+      intrawordTildeConfigured.add(markedLib)
+      const baseInlineText = markedLib.Tokenizer.prototype.inlineText
+      markedLib.use({
+        tokenizer: {
+          // Opening side: del(src) can't see the previous character, but marked's text rule stops
+          // right before every `~`, so a text run that ends in a letter/digit absorbs the single
+          // `~` after it and del never sees that tilde as an opener. This hooks the existing text
+          // step instead of adding an inline extension: an extension's start() is re-run over the
+          // rest of the paragraph on every text token, which made parsing quadratic even in
+          // documents with no tildes at all.
+          inlineText(src, ...rest) {
+            const token = baseInlineText.call(this, src, ...rest)
+            const next = token && src.slice(token.raw.length, token.raw.length + 2)
+            if (next && next[0] === '~' && next[1] !== '~' && /[\p{L}\p{N}]$/u.test(token.raw)) {
+              token.raw += '~'
+              token.text += '~'
+            }
+            return token
+          },
+          // Closing side: a single-tilde pair whose closing `~` is glued to a following
+          // letter/digit (`a ~b~c`) is intraword too. marked's own del rule runs exactly once
+          // here -- falling back with `false` would run it a second time on the same input.
+          del(src) {
+            if (!/^~(?!~)/.test(src)) return false
+            const cap = this.rules.inline.del.exec(src)
+            if (!cap || /^[\p{L}\p{N}]/u.test(src.slice(cap[0].length))) return { type: 'text', raw: '~', text: '~' }
+            return { type: 'del', raw: cap[0], text: cap[2], tokens: this.lexer.inlineTokens(cap[2]) }
+          },
+        },
+      })
+    }
 
     // mermaid measures the DOM it just drew (getBBox()/getBoundingClientRect()) to size the
     // final SVG. Inside a display:none subtree (e.g. #content while source mode is showing
