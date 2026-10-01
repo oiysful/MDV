@@ -490,6 +490,19 @@ test('mermaid diagram keeps its intrinsic size after a source-mode round trip (p
     // assuming a specific fixture size.
     assert.ok(before > 50, `sanity check on the first render's own width: ${before}`)
 
+    // A flowchart's style.maxWidth is intrinsic, so it can't show whether the offscreen host
+    // mermaid measured in was as wide as #content -- but width-driven diagrams (gantt) bake that
+    // width in. Record the host's width as it's attached and compare it to #content's own.
+    const visibleContentWidth = await page.evaluate(() => {
+      window.__parkHostWidths = []
+      new MutationObserver(records => records.forEach(record => record.addedNodes.forEach(node => {
+        if (node.nodeType === 1 && node.getAttribute('aria-hidden') === 'true') {
+          window.__parkHostWidths.push(node.getBoundingClientRect().width)
+        }
+      }))).observe(document.body, { childList: true })
+      return document.getElementById('content').getBoundingClientRect().width
+    })
+
     await emitRendererCommand(electronApp, 'toggleSource')
     await page.waitForFunction(() => document.getElementById('scroll-area').classList.contains('source-mode'))
     await emitRendererCommand(electronApp, 'toggleSource')
@@ -499,6 +512,10 @@ test('mermaid diagram keeps its intrinsic size after a source-mode round trip (p
     const after = await intrinsicWidth()
     assert.ok(after > 50, `diagram must not collapse to a near-zero width after the round trip, got ${after}`)
     assert.ok(Math.abs(after - before) < 2, `width must not drift between the visible and parked renders: before=${before} after=${after}`)
+    const parkHostWidths = await page.evaluate(() => window.__parkHostWidths)
+    assert.equal(parkHostWidths.length, 1, 'the source-mode exit render parked its mermaid node once')
+    assert.ok(Math.abs(parkHostWidths[0] - visibleContentWidth) <= 1,
+      `the parking host must be as wide as #content: host=${parkHostWidths[0]} content=${visibleContentWidth}`)
 
     assert.deepEqual(consoleErrors, [], 'mermaid must not raise CSP violations or runtime errors')
   } finally {

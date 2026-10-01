@@ -433,20 +433,27 @@
       const doc = container.ownerDocument
       const host = doc.createElement('div')
       host.setAttribute('aria-hidden', 'true')
-      // #content's rendered width is capped at 720px (index.html) minus #scroll-area's own
-      // horizontal padding, since #content sits inside that padding box, not flush against
-      // #scroll-area's clientWidth -- reading the padding instead of hardcoding it means this
-      // still matches if that CSS ever changes. (Split view never reaches this function: it's
-      // full-width but also visible, so getClientRects() above already short-circuits it.)
+      // #content's rendered width is #scroll-area's clientWidth minus the preview's horizontal
+      // padding (#content sits inside that padding box), capped by #content's max-width in
+      // index.html. Both are read live instead of hardcoded so this still matches if that CSS
+      // ever changes. The padding comes from --content-pad-x, not paddingLeft/Right: #content
+      // is only hidden in source mode, where `#scroll-area.source-mode { padding: 0 }` zeroes
+      // the real padding but leaves the variable intact. (Split view never reaches this
+      // function: it's full-width but also visible, so getClientRects() above already
+      // short-circuits it.)
       const scrollArea = container.parentElement
-      const scrollAreaStyle = scrollArea && doc.defaultView?.getComputedStyle(scrollArea)
-      const paddingX = scrollAreaStyle
-        ? (parseFloat(scrollAreaStyle.paddingLeft) || 0) + (parseFloat(scrollAreaStyle.paddingRight) || 0)
-        : 0
+      const view = doc.defaultView
+      const scrollAreaStyle = scrollArea && view?.getComputedStyle(scrollArea)
+      const padVar = scrollAreaStyle ? parseFloat(scrollAreaStyle.getPropertyValue('--content-pad-x')) : NaN
+      const paddingX = !scrollAreaStyle ? 0
+        : Number.isFinite(padVar) ? padVar * 2
+        : (parseFloat(scrollAreaStyle.paddingLeft) || 0) + (parseFloat(scrollAreaStyle.paddingRight) || 0)
       const contentBoxWidth = scrollArea ? scrollArea.clientWidth - paddingX : 0
-      const width = Math.min(720, contentBoxWidth || 720)
+      const maxWidth = parseFloat(view?.getComputedStyle(container).maxWidth) || Infinity
+      const width = Math.min(maxWidth, contentBoxWidth > 0 ? contentBoxWidth : Infinity)
       host.style.cssText =
-        `position:fixed;top:0;left:-10000px;width:${width}px;overflow:hidden;pointer-events:none`
+        `position:fixed;top:0;left:-10000px;overflow:hidden;pointer-events:none;` +
+        (Number.isFinite(width) ? `width:${width}px` : 'width:100%')
       doc.body.appendChild(host)
       // The placeholder left in the node's place is a full clone (attributes + text), not a
       // bare comment -- if something snapshots #content while a node is parked (e.g. a tab
