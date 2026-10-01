@@ -17,11 +17,11 @@ const hljsStub = {
   highlightAuto: () => ({ value: '<span class="hljs-string">auto</span>' }),
 }
 
-function makeController({ katexLib } = {}) {
+function makeController({ katexLib, hljsLib = hljsStub } = {}) {
   return createMarkdownController({
     getRefs: () => ({}),
     markedLib: marked,
-    hljsLib: hljsStub,
+    hljsLib,
     katexLib,
     pathUtils: {},
     api: {},
@@ -59,6 +59,21 @@ test('renderMarkdown preserves task-list checkboxes', () => {
   assert.ok(/<input[^>]*type="checkbox"/i.test(html), html)
   assert.ok(/checked/i.test(html), html)
   assert.ok(/disabled/i.test(html), html)
+})
+
+test('renderMarkdown keeps task-list, loose and nested list structure', () => {
+  // marked 17 reworked list-item text and checkbox tokens; MDV doesn't override the list
+  // renderer, so pin the exact HTML marked 9 produced for the shapes documents actually use.
+  const controller = makeController()
+  assert.equal(
+    controller.renderMarkdown('- [ ] a\n- [x] b\n  - [ ] nested\n'),
+    '<ul>\n<li><input disabled="" type="checkbox"> a</li>\n<li><input checked="" disabled="" type="checkbox"> b<ul>\n<li><input disabled="" type="checkbox"> nested</li>\n</ul>\n</li>\n</ul>\n',
+  )
+  assert.equal(controller.renderMarkdown('- a\n\n- b\n'), '<ul>\n<li><p>a</p>\n</li>\n<li><p>b</p>\n</li>\n</ul>\n')
+  assert.equal(
+    controller.renderMarkdown('1. one\n   - x\n2. two\n'),
+    '<ol>\n<li>one<ul>\n<li>x</li>\n</ul>\n</li>\n<li>two</li>\n</ol>\n',
+  )
 })
 
 test('renderMarkdown preserves GFM table alignment attributes', () => {
@@ -128,14 +143,45 @@ test('renderMarkdown keeps tildes intact in escapes, links, autolinks, code, and
     '참고 www.example.com/~u/a~b 끝': '<p>참고 <a href="http://www.example.com/~u/a~b">www.example.com/~u/a~b</a> 끝</p>',
     // `%~2` isn't letter/digit-glued on the opening side; the closing-side del check catches it.
     '10%~20%, 30%~40%': '<p>10%~20%, 30%~40%</p>',
-    // develop rendered `<del>a\</del>b~` (a stray backslash); pinned so a change is deliberate.
-    '~a\\~b~': '<p>~a~b~</p>',
+    // An escaped `\~` can't close the pair. marked 9's del regex ignored escapes (stock 9 gave
+    // `<del>a\</del>b~`, a stray backslash; our override then gave `~a~b~`). marked 18's
+    // rules.inline.del is escape-aware, so the outer pair strikes as GFM intends.
+    '~a\\~b~': '<p><del>a~b</del></p>',
   }
   for (const [src, expected] of Object.entries(cases)) {
     assert.equal(controller.renderMarkdown(src).trim(), expected, src)
   }
   const fence = controller.renderMarkdown('~~~\nfence a~b~c\n~~~')
   assert.ok(/<pre><code/.test(fence) && !/<del>/.test(fence), fence)
+})
+
+test('renderMarkdown still escapes < and & in a text run that absorbed a glued tilde', () => {
+  // marked 15 moved HTML escaping from the tokenizers to the renderers, and the inlineText hook
+  // appends `~` to token.text. The text renderer must still escape the whole run exactly once.
+  const controller = makeController()
+  const cases = {
+    // The hooked run is the first text token here, so its own escaping is what renders.
+    '<y~z': '<p>&lt;y~z</p>',
+    '&y~z': '<p>&amp;y~z</p>',
+    'a<b~c': '<p>a&lt;b~c</p>',
+    'x&y~z': '<p>x&amp;y~z</p>',
+    'x&amp;y~z': '<p>x&amp;y~z</p>',
+    '1<2~3 그리고 a>b~c': '<p>1&lt;2~3 그리고 a&gt;b~c</p>',
+    '<b>q</b>~r': '<p><b>q</b>~r</p>',
+    'a~<img src=x onerror=alert(1)>': '<p>a~<img src="x"></p>',
+  }
+  for (const [src, expected] of Object.entries(cases)) {
+    assert.equal(controller.renderMarkdown(src).trim(), expected, src)
+  }
+})
+
+test('renderMarkdown pairs double tildes with the GFM del regex, not marked\'s delimiter-run scanner', () => {
+  // Since marked 17 the built-in del tokenizer is a delimiter-run scanner that is quadratic on
+  // unmatched runs ('~~a ' x8000: 0.2s -> 2.8s). The override must own `~~` too; if `~~` ever
+  // falls back to the built-in again this input pairs differently (`<del>f<br><del>g</del>h
+  // i</del>j~~`) and the test fails -- the only guard short of a timing test.
+  const html = makeController().renderMarkdown('~~f\n~~g~~h i~~j~~')
+  assert.equal(html.trim(), '<p><del>f<br>~~g</del>h i<del>j</del></p>')
 })
 
 test('extractFrontmatter parses key: value pairs delimited by --- on the very first line', () => {
@@ -244,6 +290,20 @@ test('extractHeadingsFromSource finds ATX headings and their correct line number
   ])
 })
 
+test('extractHeadingsFromSource keeps line numbers across blank-line runs, setext headings and fences', () => {
+  // marked 18 trims trailing blank lines off block tokens' `raw`; line numbers come from
+  // locating `raw` in the source, so runs of blank lines must not shift them.
+  const text = '# One\n\n\n\n## Two\n\n\n\n\nSetext\n======\n\n\n```\n# not\n```\n\n\n## After fence\n\n~~~\n## nope\n~~~\n### After tilde fence\n\n\n'
+  const headings = extractHeadingsFromSource(text, marked)
+  assert.deepEqual(headings.map(h => ({ depth: h.depth, text: h.text, line: h.line })), [
+    { depth: 1, text: 'One', line: 0 },
+    { depth: 2, text: 'Two', line: 4 },
+    { depth: 1, text: 'Setext', line: 9 },
+    { depth: 2, text: 'After fence', line: 18 },
+    { depth: 3, text: 'After tilde fence', line: 23 },
+  ])
+})
+
 test('extractHeadingsFromSource ignores a "#" inside a fenced code block', () => {
   const text = '# Real Heading\n\n```bash\n# not a heading, just a shell comment\necho hi\n```\n\n## Also Real\n'
   const headings = extractHeadingsFromSource(text, marked)
@@ -320,6 +380,28 @@ test('renderMarkdown preserves custom code-block markup and data attributes', ()
   assert.ok(/class="copy-btn"/.test(html), html)
   assert.ok(!/title="/.test(html), html)
   assert.ok(/aria-label="코드 복사"/.test(html), html)
+})
+
+test('renderMarkdown hands the code renderer raw fence text and escapes it exactly once', () => {
+  // marked 15 moved escaping into the renderers; the token's `text` is raw. An hljs stub that
+  // echoes its input escaped shows what reached it: a pre-escaped `text` would surface as
+  // `&amp;lt;`, an unescaped one as a live <script>.
+  const echoHljs = { ...hljsStub, highlightAuto: code => ({ value: code.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;') }) }
+  const html = makeController({ hljsLib: echoHljs }).renderMarkdown('```\n<script>alert(1)</script> &amp; &\n```')
+  assert.ok(html.includes('<code class="hljs">&lt;script&gt;alert(1)&lt;/script&gt; &amp;amp; &amp;</code>'), html)
+
+  const mermaid = makeController().renderMarkdown('```mermaid\ngraph TD; A["<b>&amp;</b>"]\n```')
+  assert.ok(mermaid.includes('>graph TD; A["&lt;b&gt;&amp;amp;&lt;/b&gt;"]</pre>'), mermaid)
+  assert.equal(decodeBase64Utf8(mermaid.match(/data-mermaid-src="([A-Za-z0-9+/=]+)"/)[1]), 'graph TD; A["<b>&amp;</b>"]')
+})
+
+test('renderMarkdown trims trailing newlines from an indented code block but not inside a fence', () => {
+  // marked 18 keeps an indented block's trailing newline when it ends the document; marked 9
+  // trimmed it, and the copy button copies this text verbatim.
+  const echoHljs = { ...hljsStub, highlightAuto: code => ({ value: JSON.stringify(code) }) }
+  const controller = makeController({ hljsLib: echoHljs })
+  assert.ok(controller.renderMarkdown('    a\n    b\n').includes('<code class="hljs">"a\\nb"</code>'))
+  assert.ok(controller.renderMarkdown('```\na\n\n\n```\n').includes('<code class="hljs">"a\\n\\n"</code>'))
 })
 
 test('renderMarkdown omits the code-lang element entirely for a fence with no language', () => {
