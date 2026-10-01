@@ -755,7 +755,7 @@ test('runMermaidBlocks does not park nodes when the container already reports a 
     },
   }
   const h = makeSnapshotHarness({ mermaidLib })
-  h.refs.content.getClientRects = () => [{ width: 720, height: 100 }]
+  h.refs.content.getClientRects = () => [{ width: 900, height: 100 }]
   try {
     await h.controller.render('```mermaid\ngraph TD; A-->B\n```\n', 'doc.md', null)
     assert.equal(sawParentDuringRun, h.refs.content, 'a visible container is left untouched -- no parking')
