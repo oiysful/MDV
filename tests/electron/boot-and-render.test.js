@@ -815,12 +815,14 @@ test('PDF export button sits right of print and saves a PDF', async () => {
   }
 })
 
-test('frontmatter table scrolls sideways on screen but lays out fully for print', async () => {
+test('frontmatter table scrolls sideways on screen but prints as a vertical key/value table', async () => {
   const { electronApp, page } = await launchApp()
 
   try {
+    const keys = Array.from({ length: 14 }, (_, i) => `metadata_key_number_${String(i + 1).padStart(2, '0')}`)
+    const yaml = keys.map((key, i) => (i === 1 ? `${key}: 2026-08-05` : i === 2 ? `${key}: 12345` : `${key}: value ${i + 1} with some longer descriptive text`)).join('\n')
     await emitFileOpened(electronApp, {
-      content: '---\ntitle: Hello\ndate: 2026-08-05\ntags: [a, b]\n---\n\n# Body\n',
+      content: `---\n${yaml}\n---\n\n# Body\n`,
       filename: 'frontmatter-print.md',
       path: '/tmp/mdv-frontmatter-print.md',
     })
@@ -829,15 +831,46 @@ test('frontmatter table scrolls sideways on screen but lays out fully for print'
     await page.waitForFunction(() => document.querySelector('details.frontmatter-content')?.open === true)
 
     const wrapper = page.locator('details.frontmatter-content .frontmatter-scroll')
-    // Screen first, so the print assertion below proves the rule flips rather than passing by default.
+    // Screen first, so the print assertions below prove the rules flip rather than passing by default.
     assert.equal(await wrapper.evaluate(el => getComputedStyle(el).overflowX), 'auto')
     assert.equal(
-      await page.locator('details.frontmatter-content td.frontmatter-nowrap').evaluate(el => getComputedStyle(el).whiteSpace),
+      await page.locator('details.frontmatter-content td.frontmatter-nowrap').first().evaluate(el => getComputedStyle(el).whiteSpace),
       'nowrap'
     )
+    const screenShape = await page.evaluate(() => {
+      const table = document.querySelector('.frontmatter-scroll table')
+      return {
+        headRows: table.querySelectorAll('thead tr').length,
+        sameTop: new Set([...table.querySelectorAll('th')].map(th => th.getBoundingClientRect().top)).size === 1,
+      }
+    })
+    assert.deepEqual(screenShape, { headRows: 1, sameTop: true })
 
     await page.emulateMedia({ media: 'print' })
     assert.equal(await wrapper.evaluate(el => getComputedStyle(el).overflowX), 'visible')
+    const printed = await page.evaluate(() => {
+      const limit = document.getElementById('content').getBoundingClientRect().right
+      const ths = [...document.querySelectorAll('.frontmatter-scroll th')]
+      const tds = [...document.querySelectorAll('.frontmatter-scroll td')]
+      const rect = el => el.getBoundingClientRect()
+      return {
+        count: [ths.length, tds.length],
+        overflowing: [...ths, ...tds].filter(el => rect(el).right > limit + 0.5).length,
+        misaligned: ths.filter((th, i) => Math.abs(rect(th).top - rect(tds[i]).top) > 0.5).length,
+        rows: new Set(ths.map(th => Math.round(rect(th).top))).size,
+        wraps: tds.every(td => getComputedStyle(td).whiteSpace === 'normal'),
+      }
+    })
+    assert.deepEqual(printed, { count: [14, 14], overflowing: 0, misaligned: 0, rows: 14, wraps: true })
+
+    // A real PDF through the same Chromium print path the export button uses.
+    const pdfBase64 = await electronApp.evaluate(async ({ BrowserWindow }) => {
+      const buf = await BrowserWindow.getAllWindows()[0].webContents.printToPDF({ printBackground: true, preferCSSPageSize: true })
+      return buf.toString('base64')
+    })
+    const pdf = Buffer.from(pdfBase64, 'base64')
+    assert.equal(pdf.subarray(0, 4).toString('utf8'), '%PDF')
+    if (process.env.MDV_FM_PDF_OUT) await fs.writeFile(process.env.MDV_FM_PDF_OUT, pdf)
   } finally {
     await closeApp(electronApp)
   }
