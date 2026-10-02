@@ -814,3 +814,31 @@ test('PDF export button sits right of print and saves a PDF', async () => {
     await fs.rm(tempDir, { recursive: true, force: true })
   }
 })
+
+test('frontmatter table scrolls sideways on screen but lays out fully for print', async () => {
+  const { electronApp, page } = await launchApp()
+
+  try {
+    await emitFileOpened(electronApp, {
+      content: '---\ntitle: Hello\ndate: 2026-08-05\ntags: [a, b]\n---\n\n# Body\n',
+      filename: 'frontmatter-print.md',
+      path: '/tmp/mdv-frontmatter-print.md',
+    })
+    await page.waitForFunction(() => document.title === 'frontmatter-print')
+    await page.locator('details.frontmatter-content > summary').click()
+    await page.waitForFunction(() => document.querySelector('details.frontmatter-content')?.open === true)
+
+    const wrapper = page.locator('details.frontmatter-content .frontmatter-scroll')
+    // Screen first, so the print assertion below proves the rule flips rather than passing by default.
+    assert.equal(await wrapper.evaluate(el => getComputedStyle(el).overflowX), 'auto')
+    assert.equal(
+      await page.locator('details.frontmatter-content td.frontmatter-nowrap').evaluate(el => getComputedStyle(el).whiteSpace),
+      'nowrap'
+    )
+
+    await page.emulateMedia({ media: 'print' })
+    assert.equal(await wrapper.evaluate(el => getComputedStyle(el).overflowX), 'visible')
+  } finally {
+    await closeApp(electronApp)
+  }
+})

@@ -182,6 +182,16 @@
     return midnightUtc ? date.toISOString().slice(0, 10) : date.toISOString()
   }
 
+  function isFrontmatterComposite(value) {
+    return value !== null && typeof value === 'object' && !(value instanceof Date)
+  }
+
+  // Values keep MDV's own type handling (a deliberate difference from Gitea, which prints the
+  // raw YAML text): dates are formatted, multiline strings keep their line breaks. Inside one
+  // cell of the horizontal table, a scalar array is a single comma-joined run (a vertical list
+  // would grow the whole row) and an object is compact `key: value` lines (a nested table
+  // inside a cell stacks header backgrounds and reads as clutter). Every key and value goes
+  // through escapeHtml -- they all come from untrusted YAML.
   function renderFrontmatterValue(value) {
     if (value === null || value === undefined) return ''
     if (value instanceof Date) return escapeHtml(formatFrontmatterDate(value))
@@ -189,8 +199,8 @@
     if (value instanceof Set) return renderFrontmatterValue(Array.from(value))
     if (Array.isArray(value)) {
       if (!value.length) return ''
-      const items = value.map(item => `<li>${renderFrontmatterValue(item)}</li>`).join('')
-      return `<ul class="frontmatter-list">${items}</ul>`
+      if (!value.some(isFrontmatterComposite)) return value.map(renderFrontmatterValue).join(', ')
+      return value.map(item => `<div class="frontmatter-item">${renderFrontmatterValue(item)}</div>`).join('')
     }
     if (typeof value === 'object') return renderFrontmatterObject(value)
     const text = escapeHtml(String(value))
@@ -200,18 +210,34 @@
   function renderFrontmatterObject(obj) {
     const entries = Object.entries(obj)
     if (!entries.length) return ''
-    const rows = entries.map(([key, value]) => (
-      `<tr><th>${escapeHtml(key)}</th><td>${renderFrontmatterValue(value)}</td></tr>`
+    const lines = entries.map(([key, value]) => (
+      `<div class="frontmatter-pair"><span class="frontmatter-key">${escapeHtml(key)}:</span> ${renderFrontmatterValue(value)}</div>`
     )).join('')
-    return `<table class="frontmatter-table frontmatter-nested"><tbody>${rows}</tbody></table>`
+    return `<div class="frontmatter-object">${lines}</div>`
   }
 
+  // Inline (not an icon font or <img>) so it can't fail to load -- Gitea shipped exactly that
+  // bug (go-gitea/gitea#34101). aria-hidden: the visually-hidden prefix carries the meaning.
+  const FRONTMATTER_ICON = '<svg class="frontmatter-icon" aria-hidden="true" width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="1.25" y="1.75" width="13.5" height="12.5" rx="1.5"/><path d="M1.25 6h13.5M6 6v8.25"/></svg>'
+
+  // Gitea-style: collapsed <details> whose summary lists the top-level keys in YAML order,
+  // over a horizontal table (keys in <thead>, one row of values). The table takes the regular
+  // `#content table` styling; .frontmatter-scroll lets the rare very wide case scroll instead
+  // of overflowing the page (and turns that off for print, which would otherwise clip it).
+  // "YAML order" has one exception: `fields` comes from Object.entries on a plain object, which
+  // lists integer-like keys (`2024:`, `1:`) first in ascending order, ahead of string keys. The
+  // same was true under js-yaml 4; accepted rather than switching the loader to Map output.
   function renderFrontmatterCard(fields) {
     if (!fields.length) return ''
-    const rows = fields.map(({ key, value }) => (
-      `<tr><th>${escapeHtml(key)}</th><td>${renderFrontmatterValue(value)}</td></tr>`
-    )).join('')
-    return `<details class="frontmatter-card"><summary>메타데이터</summary><table class="frontmatter-table"><tbody>${rows}</tbody></table></details>`
+    const keyList = escapeHtml(fields.map(({ key }) => key).join(', '))
+    const head = fields.map(({ key }) => `<th>${escapeHtml(key)}</th>`).join('')
+    const cells = fields.map(({ value }) => {
+      const noWrap = value instanceof Date || typeof value === 'number' || typeof value === 'boolean'
+      return `<td${noWrap ? ' class="frontmatter-nowrap"' : ''}>${renderFrontmatterValue(value)}</td>`
+    }).join('')
+    return `<details class="frontmatter-content"><summary title="${keyList}">`
+      + `<span class="visually-hidden">메타데이터: </span>${FRONTMATTER_ICON}<span class="frontmatter-keys">${keyList}</span></summary>`
+      + `<div class="frontmatter-scroll"><table><thead><tr>${head}</tr></thead><tbody><tr>${cells}</tr></tbody></table></div></details>`
   }
 
   // marked instances that already carry the intraword-tilde override (see createMarkdownController).

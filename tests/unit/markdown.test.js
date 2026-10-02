@@ -649,7 +649,7 @@ test('render collapses frontmatter into a meta card and keeps it out of the TOC 
   try {
     await h.controller.render('---\ntitle: Hello\ndate: 2026-08-05\n---\n\n# Heading\n\nBody text here.\n', 'doc.md', null)
 
-    const card = h.refs.content.querySelector('details.frontmatter-card')
+    const card = h.refs.content.querySelector('details.frontmatter-content')
     assert.ok(card, 'frontmatter renders as a collapsible card')
     assert.equal(card.hasAttribute('open'), false, 'card is collapsed by default')
     assert.match(card.innerHTML, /title/)
@@ -671,34 +671,96 @@ test('render does not add a frontmatter card for a document with none', async ()
   const h = makeSnapshotHarness()
   try {
     await h.controller.render('# Just a heading\n\nSome text.\n', 'doc.md', null)
-    assert.equal(h.refs.content.querySelector('details.frontmatter-card'), null)
+    assert.equal(h.refs.content.querySelector('details.frontmatter-content'), null)
   } finally {
     h.restore()
   }
 })
 
-test('render shows a simple array field as a list', async () => {
+test('frontmatter summary lists the top-level keys in YAML order, with a full-list title and a hidden label', async () => {
+  const h = makeSnapshotHarness()
+  try {
+    await h.controller.render('---\nname: a\ndescription: b\nmodel: c\nlevel: 2\ntools: [x]\n---\n\nBody\n', 'doc.md', null)
+    const summary = h.refs.content.querySelector('details.frontmatter-content > summary')
+    assert.equal(summary.querySelector('.frontmatter-keys').textContent, 'name, description, model, level, tools')
+    assert.equal(summary.getAttribute('title'), 'name, description, model, level, tools')
+    // Keys alone don't tell a screen reader what this is.
+    assert.equal(summary.querySelector('.visually-hidden').textContent, '메타데이터: ')
+    const icon = summary.querySelector('svg.frontmatter-icon')
+    assert.ok(icon, 'inline table icon survives DOMPurify')
+    assert.equal(icon.getAttribute('aria-hidden'), 'true')
+  } finally {
+    h.restore()
+  }
+})
+
+test('frontmatter keys are escaped in the summary text, its title, and the table header', async () => {
+  const h = makeSnapshotHarness()
+  try {
+    const key = '<img src=x onerror=alert(1)>'
+    await h.controller.render(`---\n"${key}": v\nsafe: w\n---\n\nBody\n`, 'doc.md', null)
+    const card = h.refs.content.querySelector('details.frontmatter-content')
+    assert.equal(card.querySelector('img'), null, 'no element injected anywhere in the card')
+    const summary = card.querySelector('summary')
+    assert.equal(summary.querySelector('.frontmatter-keys').textContent, `${key}, safe`)
+    assert.equal(summary.getAttribute('title'), `${key}, safe`)
+    assert.equal(card.querySelector('thead th').textContent, key)
+  } finally {
+    h.restore()
+  }
+})
+
+test('frontmatter body is a horizontal table: keys in thead, one row of values', async () => {
+  const h = makeSnapshotHarness()
+  try {
+    await h.controller.render('---\ntitle: Hello\ndate: 2026-08-05\ndraft: false\ncount: 3\n---\n\nBody\n', 'doc.md', null)
+    const wrapper = h.refs.content.querySelector('details.frontmatter-content > div.frontmatter-scroll')
+    assert.ok(wrapper, 'table sits in the horizontal-scroll wrapper')
+    const table = wrapper.querySelector('table')
+    assert.deepEqual(Array.from(table.querySelectorAll('thead th')).map(th => th.textContent), ['title', 'date', 'draft', 'count'])
+    const rows = table.querySelectorAll('tbody tr')
+    assert.equal(rows.length, 1)
+    const cells = Array.from(rows[0].querySelectorAll('td'))
+    assert.deepEqual(cells.map(td => td.textContent), ['Hello', '2026-08-05', 'false', '3'])
+    // Dates, numbers and booleans must not break; strings wrap normally.
+    assert.deepEqual(cells.map(td => td.classList.contains('frontmatter-nowrap')), [false, true, true, true])
+  } finally {
+    h.restore()
+  }
+})
+
+test('render shows a simple array field as one comma-joined line', async () => {
   const h = makeSnapshotHarness()
   try {
     await h.controller.render('---\ntags: [a, b, c]\n---\n\nBody\n', 'doc.md', null)
-    const list = h.refs.content.querySelector('details.frontmatter-card ul.frontmatter-list')
-    assert.ok(list, 'array value renders as a list')
-    assert.deepEqual(Array.from(list.querySelectorAll('li')).map(li => li.textContent), ['a', 'b', 'c'])
+    const cell = h.refs.content.querySelector('details.frontmatter-content tbody td')
+    assert.equal(cell.innerHTML, 'a, b, c')
+    assert.equal(cell.classList.contains('frontmatter-nowrap'), false, 'arrays wrap like strings')
   } finally {
     h.restore()
   }
 })
 
-test('render shows an array of objects and a nested object as nested tables', async () => {
+test('render shows a nested object and an array of objects as key: value lines', async () => {
   const h = makeSnapshotHarness()
   try {
-    const text = '---\nitems:\n  - name: x\n    value: y\nauthor:\n  name: Jane\n---\n\nBody\n'
+    const text = '---\nitems:\n  - name: x\n    value: y\n  - name: z\nauthor:\n  name: Jane\n  links:\n    site: e.com\n---\n\nBody\n'
     await h.controller.render(text, 'doc.md', null)
-    const card = h.refs.content.querySelector('details.frontmatter-card')
-    const nestedTables = card.querySelectorAll('table.frontmatter-nested')
-    assert.equal(nestedTables.length, 2, 'one nested table for the object-array item, one for author')
-    assert.match(card.innerHTML, /name/)
-    assert.match(card.innerHTML, /Jane/)
+    const card = h.refs.content.querySelector('details.frontmatter-content')
+    assert.equal(card.querySelectorAll('table').length, 1, 'no nested tables inside cells')
+    const [itemsCell, authorCell] = card.querySelectorAll('tbody td')
+
+    const items = itemsCell.querySelectorAll(':scope > .frontmatter-item')
+    assert.equal(items.length, 2, 'one block per object-array item')
+    assert.deepEqual(
+      Array.from(items[0].querySelectorAll('.frontmatter-pair')).map(p => p.textContent),
+      ['name: x', 'value: y']
+    )
+
+    const pairs = authorCell.querySelectorAll(':scope > .frontmatter-object > .frontmatter-pair')
+    assert.equal(pairs[0].textContent, 'name: Jane')
+    assert.equal(pairs[0].querySelector('.frontmatter-key').textContent, 'name:', 'key is its own (grey) span')
+    assert.equal(pairs[1].querySelector('.frontmatter-object .frontmatter-pair').textContent, 'site: e.com')
   } finally {
     h.restore()
   }
@@ -708,7 +770,7 @@ test('render preserves newlines from a literal block scalar in a multiline div',
   const h = makeSnapshotHarness()
   try {
     await h.controller.render('---\nnote: |\n  line1\n  line2\n---\n\nBody\n', 'doc.md', null)
-    const multiline = h.refs.content.querySelector('details.frontmatter-card div.frontmatter-multiline')
+    const multiline = h.refs.content.querySelector('details.frontmatter-content div.frontmatter-multiline')
     assert.ok(multiline, 'multiline value renders in a preserved-whitespace div')
     assert.equal(multiline.textContent, 'line1\nline2\n')
   } finally {
@@ -721,8 +783,8 @@ test('render escapes malicious strings nested inside frontmatter arrays/objects'
   try {
     const text = '---\nitems:\n  - name: "<script>window.__pwned = true</script>"\n---\n\nBody\n'
     await h.controller.render(text, 'doc.md', null)
-    assert.equal(h.refs.content.querySelector('details.frontmatter-card script'), null)
-    assert.match(h.refs.content.querySelector('details.frontmatter-card').innerHTML, /&lt;script&gt;/)
+    assert.equal(h.refs.content.querySelector('details.frontmatter-content script'), null)
+    assert.match(h.refs.content.querySelector('details.frontmatter-content').innerHTML, /&lt;script&gt;/)
   } finally {
     h.restore()
   }
