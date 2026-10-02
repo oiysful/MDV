@@ -1335,8 +1335,34 @@ kbd {
   }
   .code-wrapper { box-shadow: none !important; border: 1px solid #d0d7de; }
   #content tr:hover td { background: transparent !important; }
-  /* A scrolling wrapper would clip a wide frontmatter table on paper -- let it lay out fully. */
+  /* Paper width is fixed, so a wide horizontal frontmatter table gets cut off. Re-flow the same
+     DOM as a vertical key | value table: thead/tbody/tr vanish into the grid, and column-wise
+     auto-flow puts every <th> in column 1 and every <td> in column 2, row i = key i + value i. */
   .frontmatter-scroll { overflow: visible !important; }
+  #content .frontmatter-scroll table {
+    display: grid; width: 100%;
+    grid-auto-flow: column;
+    grid-template-rows: repeat(var(--fm-keys, 1), auto);
+    grid-template-columns: minmax(auto, 30%) minmax(0, 1fr);
+  }
+  #content .frontmatter-scroll thead,
+  #content .frontmatter-scroll tbody,
+  #content .frontmatter-scroll tr { display: contents; }
+  #content .frontmatter-scroll th,
+  #content .frontmatter-scroll td {
+    min-width: 0; white-space: normal; overflow-wrap: anywhere; text-align: left;
+    border-bottom: 1px solid var(--border);
+  }
+  #content .frontmatter-scroll td { border-left: 1px solid var(--border); }
+  /* last row: the table's own border closes it */
+  #content .frontmatter-scroll th:last-child,
+  #content .frontmatter-scroll td:last-child { border-bottom: none; }
+  #content td.frontmatter-nowrap { white-space: normal; }
+  /* On paper the frontmatter always prints expanded, whatever its on-screen state, and the
+     summary's key list goes: the table already names every key. ::details-content is where
+     Chromium hides a closed <details>' content (content-visibility: hidden). */
+  #content details.frontmatter-content > summary { display: none; }
+  #content details.frontmatter-content::details-content { content-visibility: visible; }
 }
 
 @media (max-width: 700px) {

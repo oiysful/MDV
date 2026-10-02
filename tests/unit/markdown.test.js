@@ -1185,3 +1185,15 @@ test('buildToc gives every heading its slug id and a matching TOC href', async (
     h.restore()
   }
 })
+
+test('frontmatter table keeps its --fm-keys row count through sanitizing (print grid depends on it)', async () => {
+  const h = makeSnapshotHarness()
+  try {
+    await h.controller.render('---\na: 1\nb: 2\nc: 3\n---\n\n# Body\n', 'doc.md', null)
+    const table = h.refs.content.querySelector('details.frontmatter-content table')
+    assert.equal(table.getAttribute('style'), '--fm-keys: 3')
+    assert.equal(table.querySelectorAll('th').length, 3)
+  } finally {
+    h.restore()
+  }
+})

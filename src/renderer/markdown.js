@@ -297,7 +297,8 @@
   // Gitea-style: collapsed <details> whose summary lists the top-level keys in YAML order,
   // over a horizontal table (keys in <thead>, one row of values). The table takes the regular
   // `#content table` styling; .frontmatter-scroll lets the rare very wide case scroll instead
-  // of overflowing the page (and turns that off for print, which would otherwise clip it).
+  // of overflowing the page. Print turns the table into a vertical key | value grid instead
+  // (paper width is fixed); --fm-keys is the row count that grid needs, an app-computed integer.
   // "YAML order" has one exception: `fields` comes from Object.entries on a plain object, which
   // lists integer-like keys (`2024:`, `1:`) first in ascending order, ahead of string keys. The
   // same was true under js-yaml 4; accepted rather than switching the loader to Map output.
@@ -312,7 +313,7 @@
     }).join('')
     return `<details class="frontmatter-content"><summary title="${keyList}">`
       + `<span class="visually-hidden">메타데이터: </span>${FRONTMATTER_ICON}<span class="frontmatter-keys">${keyList}</span></summary>`
-      + `<div class="frontmatter-scroll"><table><thead><tr>${head}</tr></thead><tbody><tr>${cells}</tr></tbody></table></div></details>`
+      + `<div class="frontmatter-scroll"><table style="--fm-keys: ${fields.length}"><thead><tr>${head}</tr></thead><tbody><tr>${cells}</tr></tbody></table></div></details>`
   }
 
   // marked instances that already carry the intraword-tilde override (see createMarkdownController).
