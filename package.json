@@ -10,8 +10,8 @@
     "update:local": "bash scripts/update-local.sh",
     "install:release": "bash scripts/install-release.sh",
     "update:release": "bash scripts/update-release.sh",
-    "test:electron": "node --test --test-concurrency=4 tests/electron/*.test.js",
-    "test:e2e": "node --test --test-concurrency=4 --test-name-pattern=\"${E2E:-.}\" tests/electron/*.test.js",
+    "test:electron": "node --test --test-concurrency=${MDV_ELECTRON_CONCURRENCY:-4} tests/electron/*.test.js",
+    "test:e2e": "node --test --test-concurrency=${MDV_ELECTRON_CONCURRENCY:-4} --test-name-pattern=\"${E2E:-.}\" tests/electron/*.test.js",
     "test:unit": "node --test tests/unit/*.test.js",
     "test:controller": "node --test tests/controller/*.test.js"
   },
