@@ -242,6 +242,27 @@ test('extractFrontmatter keeps js-yaml 4 parity for merge keys and !!binary', ()
   assert.equal(result.body, 'Body\n')
 })
 
+// js-yaml 5's load() throws on an empty source instead of returning undefined, which would
+// route all three of these into the malformed-YAML fallback and leave both `---` lines in the
+// rendered body. An empty block is still frontmatter: strip it and render no card.
+test('extractFrontmatter strips an empty block (--- immediately followed by ---)', () => {
+  const result = extractFrontmatter('---\n---\n# Body\n')
+  assert.deepEqual(result.frontmatter, [])
+  assert.equal(result.body, '# Body\n')
+})
+
+test('extractFrontmatter strips a block that holds only blank/whitespace lines', () => {
+  const result = extractFrontmatter('---\n\n   \n\t\n---\n# Body\n')
+  assert.deepEqual(result.frontmatter, [])
+  assert.equal(result.body, '# Body\n')
+})
+
+test('extractFrontmatter strips a block that holds only comments', () => {
+  const result = extractFrontmatter('---\n# draft notes\n  # indented comment\n\n---\n# Body\n')
+  assert.deepEqual(result.frontmatter, [])
+  assert.equal(result.body, '# Body\n')
+})
+
 // --- extractHeadingsFromSource (pure-source-mode TOC tracking) ---
 
 test('extractHeadingsFromSource finds ATX headings and their correct line numbers', () => {

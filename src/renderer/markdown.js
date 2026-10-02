@@ -13,6 +13,9 @@
   const yamlSchema = yamlLib
     ? yamlLib.CORE_SCHEMA.withTags(yamlLib.timestampTag, yamlLib.mergeTag, yamlLib.binaryTag)
     : null
+  // A frontmatter block whose every line is blank or a YAML comment. js-yaml 5 throws on such
+  // a source ("the input is empty") where v4 returned undefined, so it is detected up front.
+  const EMPTY_YAML_LINE_RE = /^\s*(#.*)?$/
 
   function computeStats(text) {
     if (!text || !text.trim()) return { words: 0, minutes: 0 }
@@ -147,6 +150,8 @@
     const body = lines.slice(closingIndex + 1).join('\n')
     if (!yamlLib) return { frontmatter: null, body: text }
     const yamlLines = lines.slice(1, closingIndex)
+    // Empty / whitespace-only / comment-only: still frontmatter, just with no fields.
+    if (yamlLines.every(line => EMPTY_YAML_LINE_RE.test(line))) return { frontmatter: [], body }
     let parsed
     try {
       parsed = yamlLib.load(yamlLines.join('\n'), { schema: yamlSchema })
