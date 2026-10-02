@@ -422,7 +422,7 @@ ipcMain.handle('read-file', async (_, filePath) => {
 let lastDialogDir = null
 
 function rememberDialogDir(dir) {
-  if (typeof dir === 'string' && dir) lastDialogDir = dir
+  if (typeof dir === 'string' && path.isAbsolute(dir)) lastDialogDir = dir
 }
 
 // Save dialogs open next to the current document when the renderer passes its path; otherwise
@@ -433,7 +433,8 @@ function dialogStartDir(docPath) {
 }
 
 function saveDefaultPath(docPath, suggestedName, fallbackName) {
-  return path.join(dialogStartDir(docPath), path.basename(suggestedName || fallbackName))
+  const base = typeof suggestedName === 'string' && suggestedName ? path.basename(suggestedName) : ''
+  return path.join(dialogStartDir(docPath), base && base !== '.' && base !== '..' ? base : fallbackName)
 }
 
 ipcMain.handle('open-file-dialog', async (event) => {

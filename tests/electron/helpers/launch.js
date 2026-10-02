@@ -24,16 +24,60 @@ const ROOT = path.resolve(__dirname, '../../..')
 // exercises the real check passes `{ realUpdateCheck: true }` and should point
 // MDV_REPO_OWNER/MDV_REPO_NAME (also read by main.js) at a repo/tag it controls rather than
 // hitting the real oiysful/MDV repo.
+// Logs what a stalled Playwright action needs to be diagnosed: page visibility/focus, whether
+// rAF is ticking (Playwright's click "stable" check waits on it), and the tab/split state.
+// The synchronous part is read first so it survives a renderer whose rAF never fires.
+async function dumpDiagnostics(page) {
+  try {
+    const snapshot = await page.evaluate(() => ({
+      visibilityState: document.visibilityState,
+      hasFocus: document.hasFocus(),
+      title: document.title,
+      splitMode: document.getElementById('scroll-area')?.classList.contains('split-mode'),
+      tabs: [...document.querySelectorAll('#tab-list .file-tab')].map(tab => {
+        const rect = tab.getBoundingClientRect()
+        return { text: tab.textContent.trim(), cls: tab.className, selected: tab.getAttribute('aria-selected'), x: rect.x, w: rect.width }
+      }),
+    }))
+    const ticks = await Promise.race([
+      page.evaluate(() => new Promise(resolve => {
+        let n = 0
+        const end = performance.now() + 500
+        const tick = () => { n += 1; if (performance.now() < end) requestAnimationFrame(tick); else resolve(n) }
+        requestAnimationFrame(tick)
+      })),
+      new Promise(resolve => setTimeout(() => resolve('no rAF within 3s'), 3000)),
+    ])
+    console.error('[mdv-diagnostics]', JSON.stringify({ ...snapshot, rafTicksIn500ms: ticks }))
+  } catch (e) {
+    console.error('[mdv-diagnostics] unavailable:', e.message)
+  }
+}
+
+// Every Locator.click that times out dumps diagnostics before rethrowing, so a CI-only stall
+// leaves its renderer state in the log. Patched once, on the first page's Locator class.
+function instrumentLocatorClick(page) {
+  const proto = Object.getPrototypeOf(page.locator('body'))
+  if (proto.__mdvInstrumented) return
+  const click = proto.click
+  proto.click = async function instrumentedClick(...args) {
+    try {
+      return await click.apply(this, args)
+    } catch (e) {
+      if (e?.name === 'TimeoutError') await dumpDiagnostics(this.page())
+      throw e
+    }
+  }
+  proto.__mdvInstrumented = true
+}
+
 async function launchApp(options = {}) {
   const ownsUserDataDir = !options.userDataDir
   const userDataDir = options.userDataDir || fs.mkdtempSync(path.join(os.tmpdir(), 'mdv-userdata-'))
 
   const electronApp = await electron.launch({
     executablePath: electronBinary,
-    // node --test runs the files concurrently, so one test's window can cover another's.
-    // Chromium stops rendering occluded/backgrounded windows, which also stops the rAF
-    // Playwright's click "stable" check waits on -- two CI runs on Electron 44 hung 15s there.
-    args: ['.', '--disable-backgrounding-occluded-windows', '--disable-renderer-backgrounding'],
+    args: ['.'],
     cwd: ROOT,
     env: {
       ...process.env,
@@ -47,6 +91,7 @@ async function launchApp(options = {}) {
 
   const page = await electronApp.firstWindow()
   page.setDefaultTimeout(15000)
+  instrumentLocatorClick(page)
   await page.waitForFunction(() => {
     return Boolean(window.api && document.documentElement.dataset.rendererReady === 'true')
   })
@@ -89,6 +134,7 @@ module.exports = {
   ROOT,
   launchApp,
   closeApp,
+  dumpDiagnostics,
   stubCloseDialog,
   getCloseDialogCalls,
 }

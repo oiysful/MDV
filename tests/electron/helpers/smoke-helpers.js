@@ -33,6 +33,22 @@ async function getDialogCalls(electronApp) {
   return electronApp.evaluate(() => globalThis.__dialogCalls ?? [])
 }
 
+// Runs `trigger`, then waits (bounded) for ONE new dialog of `kind` and returns its defaultPath.
+// Counting before the trigger matters: a wait on UI state that an earlier step already satisfied
+// (e.g. document.title) resolves instantly and would read the previous dialog's options.
+async function waitForDialogDefaultPath(electronApp, kind, trigger, timeoutMs = 15000) {
+  const countOf = async () => (await getDialogCalls(electronApp)).filter(call => call.kind === kind).length
+  const before = await countOf()
+  await trigger()
+  const deadline = Date.now() + timeoutMs
+  while (Date.now() < deadline) {
+    const calls = (await getDialogCalls(electronApp)).filter(call => call.kind === kind)
+    if (calls.length > before) return calls[before].options.defaultPath
+    await new Promise(resolve => setTimeout(resolve, 50))
+  }
+  throw new Error(`no new ${kind} dialog within ${timeoutMs}ms`)
+}
+
 // Replaces shell.openExternal in the main process (same object main.js destructured)
 // so a link-click test can assert the URL was handed off without launching a real
 // browser. Records every URL in a main-process global the test can read back.
@@ -184,6 +200,7 @@ module.exports = {
   stubOpenDialog,
   stubSaveDialog,
   getDialogCalls,
+  waitForDialogDefaultPath,
   stubOpenExternal,
   getOpenExternalCalls,
   createTempMarkdown,
