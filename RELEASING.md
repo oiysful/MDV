@@ -7,6 +7,11 @@
 
 Releasing is the only thing that moves `main`. Work integrates on `develop`; a release is a deliberate pull request from `develop` into `main`, followed by a `v*` tag push that triggers `.github/workflows/release.yml`.
 
+> [!IMPORTANT]
+> **Pending for the next release — the first one that ships Electron 44** (develop since 2026-10-02, PR #31). Remove this box once done.
+> - **Homebrew cask minimum macOS.** Electron 44 dropped macOS 12, and the app now declares `LSMinimumSystemVersion 13.0`. `scripts/update-homebrew-tap.sh` (step 6) only bumps `version`/`sha256`, so after it runs, edit [`oiysful/homebrew-tap`](https://github.com/oiysful/homebrew-tap)'s `Casks/mdv.rb` by hand: `depends_on :macos` → `depends_on macos: ">= :ventura"`, and push. Not earlier — that would also block Monterey users from the current Electron 42 release, which still runs for them. Without it, Monterey users can install the new version but it will not launch.
+> - **Electron 44 CI-only stall.** Before opening the `develop` → `main` PR (step 2), check `develop`'s latest `test-electron` run. If it is red with one test stalled ~51s, that is the open stall in AGENTS.md NOTES ("Electron 44 CI-only stall"): read its `[mdv-diagnostics]` line before deciding, and do not treat a green re-run as a fix.
+
 1. Bump `version` in `package.json` — `npm version X.Y.Z --no-git-tag-version` updates both `package.json` and `package-lock.json` in one step (skip the git tag it would otherwise create; that's step 3 below). Also update the hardcoded `dist/MDV-X.Y.Z-arm64-mac.zip` example path in both README.md's and README.ko.md's "Build a distributable app" section — it's not templated, so it silently goes stale otherwise. Commit everything as `chore(release): bump version to X.Y.Z` on a branch off `develop`, and merge it into `develop` through a pull request like any other change.
 2. Open a pull request from `develop` to `main` and merge it. This is the act of releasing — `main` moves here and nowhere else.
 3. Tag the merge commit on `main` and push:

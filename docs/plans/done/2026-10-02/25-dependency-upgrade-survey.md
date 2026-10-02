@@ -170,6 +170,6 @@ marked 9가 첫 커밋의 CDN 주소(2023년 말 시점 버전)에서 굳어진 
   Dock을 앱 창으로 가득 채워 중단해야 했다(2에서 105초, 4에서 70초).
 - **새 설치 직후**: 병렬 첫 `require('electron')`이 바이너리 추출에서 경쟁해 "File exists (os error 17)"로 실패한다(오늘 발생).
   `node -e "require('electron')"`를 한 번 먼저 돌린다. CI에는 이미 이 단계가 있다.
-- **수동 확인**: 위 "스위트가 못 하는 수동 확인" 중 **SMB 볼륨 소실을 뺀 나머지는 Ian이 수행**했다.
+- **수동 확인**: 위 "스위트가 못 하는 수동 확인"은 SMB 볼륨 소실 시나리오까지 **전부 Ian이 수행**했다.
 - **Electron 44 CI 전용 stall**: 러너에서 한 테스트가 ~51–53초 멈췄다 실패한다. 진단 계기는 `tests/electron/helpers/launch.js`에
   들어 있고, 기록·가설·다음 단계는 AGENTS.md NOTES. 후퇴안은 Electron 43(2027-01-05 종료, macOS 12 유지).
