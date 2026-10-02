@@ -232,6 +232,16 @@ test('extractFrontmatter ignores a --- that is not on the document\'s first line
   assert.equal(result.body, text)
 })
 
+test('extractFrontmatter keeps js-yaml 4 parity for merge keys and !!binary', () => {
+  // js-yaml 5's default CORE schema has neither; without !!binary the whole block would throw
+  // and the raw YAML would leak into the body.
+  const text = '---\nbase: &b {x: 1}\nm:\n  <<: *b\n  y: 2\nbin: !!binary aGk=\n---\nBody\n'
+  const result = extractFrontmatter(text)
+  assert.deepEqual(result.frontmatter[1], { key: 'm', value: { x: 1, y: 2 } })
+  assert.deepEqual(Array.from(result.frontmatter[2].value), [104, 105])
+  assert.equal(result.body, 'Body\n')
+})
+
 // --- extractHeadingsFromSource (pure-source-mode TOC tracking) ---
 
 test('extractHeadingsFromSource finds ATX headings and their correct line numbers', () => {

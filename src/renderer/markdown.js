@@ -3,6 +3,16 @@
   // globalScope.jsyaml. Node (unit tests via require()): no such script tag ran, so fall
   // back to a real require -- mirrors sanitizeHtml's DOMPurify-or-escape degrade pattern.
   const yamlLib = globalScope.jsyaml || (typeof require === 'function' ? require('js-yaml') : null)
+  // js-yaml 5's default load() schema is plain YAML 1.2 CORE, which drops three things v4's
+  // default gave frontmatter: unquoted dates as Date (formatFrontmatterDate depends on it),
+  // `<<: *anchor` merge keys, and `!!binary` (without the tag the whole block throws and
+  // falls back to raw text). Add exactly those back. Not YAML11_SCHEMA: it also turns keys
+  // like `n:` into `false` and `1:23` into 83 -- more aggressive than v4 ever was.
+  // The loader's default safety limits (maxDepth, maxTotalMergeKeys) stay as they are --
+  // frontmatter comes from untrusted .md files.
+  const yamlSchema = yamlLib
+    ? yamlLib.CORE_SCHEMA.withTags(yamlLib.timestampTag, yamlLib.mergeTag, yamlLib.binaryTag)
+    : null
 
   function computeStats(text) {
     if (!text || !text.trim()) return { words: 0, minutes: 0 }
@@ -136,9 +146,10 @@
     if (closingIndex === -1) return { frontmatter: null, body: text }
     const body = lines.slice(closingIndex + 1).join('\n')
     if (!yamlLib) return { frontmatter: null, body: text }
+    const yamlLines = lines.slice(1, closingIndex)
     let parsed
     try {
-      parsed = yamlLib.load(lines.slice(1, closingIndex).join('\n'))
+      parsed = yamlLib.load(yamlLines.join('\n'), { schema: yamlSchema })
     } catch {
       // Malformed YAML inside otherwise-valid delimiters -- same "when ambiguous, leave it
       // alone" fallback as the no-closing-delimiter case above, rather than eating content.
