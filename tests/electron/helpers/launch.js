@@ -26,32 +26,42 @@ const ROOT = path.resolve(__dirname, '../../..')
 // hitting the real oiysful/MDV repo.
 // Logs what a stalled Playwright action needs to be diagnosed: page visibility/focus, whether
 // rAF is ticking (Playwright's click "stable" check waits on it), and the tab/split state.
-// The synchronous part is read first so it survives a renderer whose rAF never fires.
+// The snapshot is read before the rAF probe so a renderer whose rAF never fires still reports it.
 async function dumpDiagnostics(page) {
+  let timer
+  const deadline = new Promise(resolve => { timer = setTimeout(() => resolve('timed out after 3s'), 3000) })
   try {
-    const snapshot = await page.evaluate(() => ({
-      visibilityState: document.visibilityState,
-      hasFocus: document.hasFocus(),
-      title: document.title,
-      splitMode: document.getElementById('scroll-area')?.classList.contains('split-mode'),
-      tabs: [...document.querySelectorAll('#tab-list .file-tab')].map(tab => {
-        const rect = tab.getBoundingClientRect()
-        return { text: tab.textContent.trim(), cls: tab.className, selected: tab.getAttribute('aria-selected'), x: rect.x, w: rect.width }
-      }),
-    }))
-    const ticks = await Promise.race([
-      page.evaluate(() => new Promise(resolve => {
-        let n = 0
-        const end = performance.now() + 500
-        const tick = () => { n += 1; if (performance.now() < end) requestAnimationFrame(tick); else resolve(n) }
-        requestAnimationFrame(tick)
-      })),
-      new Promise(resolve => setTimeout(() => resolve('no rAF within 3s'), 3000)),
-    ])
-    console.error('[mdv-diagnostics]', JSON.stringify({ ...snapshot, rafTicksIn500ms: ticks }))
+    const result = await Promise.race([collectDiagnostics(page), deadline])
+    if (typeof result === 'string') console.error('[mdv-diagnostics] unavailable:', result)
+    else console.error('[mdv-diagnostics]', JSON.stringify(result))
   } catch (e) {
     console.error('[mdv-diagnostics] unavailable:', e.message)
+  } finally {
+    clearTimeout(timer)
   }
+}
+
+// A renderer whose main thread is blocked never answers page.evaluate, so dumpDiagnostics
+// bounds this whole collection, not just the rAF probe — the original TimeoutError must
+// still be rethrown within seconds.
+async function collectDiagnostics(page) {
+  const snapshot = await page.evaluate(() => ({
+    visibilityState: document.visibilityState,
+    hasFocus: document.hasFocus(),
+    title: document.title,
+    splitMode: document.getElementById('scroll-area')?.classList.contains('split-mode'),
+    tabs: [...document.querySelectorAll('#tab-list .file-tab')].map(tab => {
+      const rect = tab.getBoundingClientRect()
+      return { text: tab.textContent.trim(), cls: tab.className, selected: tab.getAttribute('aria-selected'), x: rect.x, w: rect.width }
+    }),
+  }))
+  const rafTicksIn500ms = await page.evaluate(() => new Promise(resolve => {
+    let n = 0
+    const end = performance.now() + 500
+    const tick = () => { n += 1; if (performance.now() < end) requestAnimationFrame(tick); else resolve(n) }
+    requestAnimationFrame(tick)
+  }))
+  return { ...snapshot, rafTicksIn500ms }
 }
 
 // Every Locator.click that times out dumps diagnostics before rethrowing, so a CI-only stall
