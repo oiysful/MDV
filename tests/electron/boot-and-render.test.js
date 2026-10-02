@@ -815,7 +815,7 @@ test('PDF export button sits right of print and saves a PDF', async () => {
   }
 })
 
-test('frontmatter table scrolls sideways on screen but prints as a vertical key/value table', async () => {
+test('frontmatter table scrolls sideways on screen but prints as a vertical key/value table without its summary', async () => {
   const { electronApp, page } = await launchApp()
 
   try {
@@ -846,8 +846,12 @@ test('frontmatter table scrolls sideways on screen but prints as a vertical key/
     })
     assert.deepEqual(screenShape, { headRows: 1, sameTop: true })
 
+    const summary = page.locator('details.frontmatter-content > summary')
+    assert.notEqual(await summary.evaluate(el => getComputedStyle(el).display), 'none')
+
     await page.emulateMedia({ media: 'print' })
     assert.equal(await wrapper.evaluate(el => getComputedStyle(el).overflowX), 'visible')
+    assert.equal(await summary.evaluate(el => getComputedStyle(el).display), 'none')
     const printed = await page.evaluate(() => {
       const limit = document.getElementById('content').getBoundingClientRect().right
       const ths = [...document.querySelectorAll('.frontmatter-scroll th')]

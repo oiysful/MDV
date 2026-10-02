@@ -1358,6 +1358,9 @@ kbd {
   #content .frontmatter-scroll th:last-child,
   #content .frontmatter-scroll td:last-child { border-bottom: none; }
   #content td.frontmatter-nowrap { white-space: normal; }
+  /* The key list is a screen affordance for the collapsed state; on paper the table already
+     names every key. A frontmatter block left collapsed therefore prints nothing at all. */
+  #content details.frontmatter-content > summary { display: none; }
 }
 
 @media (max-width: 700px) {
