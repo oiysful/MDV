@@ -200,38 +200,52 @@
   // RangeError and took the whole render() down. Capping aliases in the loader was rejected:
   // `maxAliases: 0` also breaks `<<: *anchor` merge keys, and any nonzero cap still allows
   // exponential fan-out (k aliases nest to 9^k). So the bound lives here, in `ctx`:
-  // - `nodes`: values rendered. 5000 is ~25x the largest real frontmatter we have seen (plan
-  //   26's survey of 575 files topped out at 13 top-level keys, a few hundred values with
-  //   nesting) and still renders in milliseconds.
+  // - `nodes`: values visited, null included -- a null leaf that cost nothing still emitted its
+  //   `, ` separator, so an all-null bomb slipped past both budgets. 5000 is ~25x the largest
+  //   real frontmatter we have seen (plan 26's survey of 575 files topped out at 13 top-level
+  //   keys, a few hundred values with nesting) and still renders in milliseconds. Since every
+  //   separator and wrapper belongs to a charged visit, markup is bounded by it too.
   // - `chars`: scalar/key text emitted. Node counting alone does not bound a long string
-  //   aliased thousands of times; 100k chars is far beyond any honest frontmatter.
-  // - `onPath`: composites on the current descent, to cut cycles. A repeated alias that is
-  //   not a cycle still renders (a merge key legitimately shares nested values) -- the two
-  //   budgets are what bound its repetition.
+  //   aliased thousands of times; 100k chars is far beyond any honest frontmatter. It counts
+  //   text *before* escaping, so the emitted HTML can be up to ~6x that (`"` -> `&quot;`),
+  //   i.e. ~600 KB in the worst case.
+  // - `depth`: composites on the current descent, capped at 100 like the loader's own maxDepth
+  //   -- which does not count aliases, so an alias chain could otherwise recurse until the stack
+  //   overflowed.
+  // - `onPath`: those same composites, to cut cycles. A repeated alias that is not a cycle
+  //   still renders (a merge key legitimately shares nested values) -- the budgets are what
+  //   bound its repetition.
   // Anything past a limit renders as a single `…` marker instead.
   const FRONTMATTER_NODE_BUDGET = 5000
   const FRONTMATTER_CHAR_BUDGET = 100000
+  const FRONTMATTER_MAX_DEPTH = 100
   const FRONTMATTER_TRUNCATED = '<span class="frontmatter-truncated" title="생략됨">…</span>'
 
   function createFrontmatterRenderContext() {
-    return { nodes: FRONTMATTER_NODE_BUDGET, chars: FRONTMATTER_CHAR_BUDGET, onPath: new WeakSet() }
+    return { nodes: FRONTMATTER_NODE_BUDGET, chars: FRONTMATTER_CHAR_BUDGET, depth: 0, onPath: new WeakSet() }
   }
 
   function frontmatterBudgetSpent(ctx) {
     return ctx.nodes <= 0 || ctx.chars <= 0
   }
 
-  // Cuts raw text to the remaining char budget *before* escaping, so an entity is never split.
+  // Cuts raw text to the remaining char budget *before* escaping, so an entity is never split
+  // -- and steps back off a lone high surrogate, so an astral character is never split either.
   function renderFrontmatterText(raw, ctx) {
-    const kept = raw.length > ctx.chars ? raw.slice(0, Math.max(0, ctx.chars)) : raw
+    let end = Math.min(raw.length, Math.max(0, ctx.chars))
+    if (end < raw.length && end > 0) {
+      const code = raw.charCodeAt(end - 1)
+      if (code >= 0xD800 && code <= 0xDBFF) end -= 1
+    }
+    const kept = end < raw.length ? raw.slice(0, end) : raw
     ctx.chars -= kept.length
     return escapeHtml(kept) + (kept.length < raw.length ? FRONTMATTER_TRUNCATED : '')
   }
 
   function renderFrontmatterValue(value, ctx) {
-    if (value === null || value === undefined) return ''
     if (frontmatterBudgetSpent(ctx)) return FRONTMATTER_TRUNCATED
     ctx.nodes -= 1
+    if (value === null || value === undefined) return ''
     if (value instanceof Date) return renderFrontmatterText(formatFrontmatterDate(value), ctx)
     // `!!set` loads as a Set, which Object.entries would render as nothing.
     if (value instanceof Set) return renderFrontmatterArray(Array.from(value), ctx)
@@ -239,11 +253,13 @@
     // than the budget can render (Object.entries on it would allocate one entry per byte).
     if (ArrayBuffer.isView(value)) return renderFrontmatterArray(Array.prototype.slice.call(value, 0, ctx.nodes + 1), ctx)
     if (typeof value === 'object') {
-      if (ctx.onPath.has(value)) return FRONTMATTER_TRUNCATED
+      if (ctx.onPath.has(value) || ctx.depth >= FRONTMATTER_MAX_DEPTH) return FRONTMATTER_TRUNCATED
       ctx.onPath.add(value)
+      ctx.depth += 1
       try {
         return Array.isArray(value) ? renderFrontmatterArray(value, ctx) : renderFrontmatterObject(value, ctx)
       } finally {
+        ctx.depth -= 1
         ctx.onPath.delete(value)
       }
     }

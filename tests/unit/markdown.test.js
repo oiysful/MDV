@@ -857,6 +857,40 @@ test('render shows a repeated (non-cyclic) alias in full each time', async () =>
   }
 })
 
+test('render bounds an alias bomb whose leaves are all null', async () => {
+  const h = makeSnapshotHarness()
+  try {
+    // A null leaf used to return before the budget was charged, so it cost no node and no char
+    // while its `, ` separator was still emitted: 300 nulls x 9^4 = ~2M separators unbounded.
+    const nulls = `[${Array(300).fill('~').join(', ')}]`
+    const text = `---\na: &a ${nulls}\nb: &b ${nineAliases('a')}\nc: &c ${nineAliases('b')}\n`
+      + `d: &d ${nineAliases('c')}\ne: ${nineAliases('d')}\n---\n# Body\n`
+    await h.controller.render(text, 'doc.md', null)
+    const card = h.refs.content.querySelector('details.frontmatter-content')
+    assert.ok(card.innerHTML.length < 200000, `card stays bounded (got ${card.innerHTML.length} chars)`)
+    assert.equal(h.refs.content.querySelector('h1').textContent, 'Body')
+  } finally {
+    h.restore()
+  }
+})
+
+test('render caps frontmatter nesting depth reached through an alias', async () => {
+  const h = makeSnapshotHarness()
+  try {
+    // Each literal nest stays under the loader's maxDepth (100, which does not count aliases),
+    // but `b` nests `a` inside 60 more levels: 120 deep for only ~180 rendered values. A long
+    // enough chain of these overflowed the stack and the card vanished.
+    const nest = inner => `${'['.repeat(60)}${inner}${']'.repeat(60)}`
+    await h.controller.render(`---\na: &a ${nest('x')}\nb: ${nest('*a')}\n---\n# Body\n`, 'doc.md', null)
+    const [aCell, bCell] = h.refs.content.querySelectorAll('details.frontmatter-content tbody td')
+    assert.equal(aCell.querySelector('.frontmatter-truncated'), null, '60 levels render in full')
+    assert.ok(bCell.querySelector('.frontmatter-truncated'), 'past 100 levels is cut with a marker')
+    assert.equal(h.refs.content.querySelector('h1').textContent, 'Body')
+  } finally {
+    h.restore()
+  }
+})
+
 test('render bounds a large !!binary frontmatter value', async () => {
   const h = makeSnapshotHarness()
   try {
