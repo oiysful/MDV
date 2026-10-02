@@ -10,6 +10,7 @@
 > [!IMPORTANT]
 > **다음 릴리스(Electron 44가 처음 들어가는 릴리스)에서 할 일** — 2026-10-02 PR #31로 develop에 들어감. 처리한 뒤 이 상자를 지우세요.
 > - **Homebrew cask 최소 macOS 버전.** Electron 44는 macOS 12 지원을 끊었고, 앱도 `LSMinimumSystemVersion 13.0`을 선언합니다. `scripts/update-homebrew-tap.sh`(6단계)는 `version`/`sha256`만 바꾸므로, 그 단계가 끝난 뒤 [`oiysful/homebrew-tap`](https://github.com/oiysful/homebrew-tap)의 `Casks/mdv.rb`에서 `depends_on :macos`를 `depends_on macos: ">= :ventura"`로 직접 고쳐 push합니다. 더 일찍 하면 안 됩니다 — Monterey에서 아직 잘 도는 현재 릴리스(Electron 42)까지 설치가 막힙니다. 빠뜨리면 Monterey 사용자는 새 버전을 설치는 하되 실행하지 못합니다.
+> - **README 최소 macOS.** 같은 릴리스에서 README.md의 Known Limitations에 `- Requires macOS 13 (Ventura) or later.`를, README.ko.md의 알려진 제한사항에 `- macOS 13(Ventura) 이상이 필요합니다.`를 추가합니다. 더 일찍 넣으면 안 됩니다 — 현재 릴리스는 아직 macOS 12에서 돕니다.
 > - **Electron 44 CI 전용 멈춤.** `develop` → `main` PR(2단계)을 열기 전에 `develop`의 최근 `test-electron` 결과를 확인하세요. 테스트 하나가 약 51초 멈춘 채 실패했다면 AGENTS.md NOTES의 "Electron 44 CI-only stall"입니다. 판단 전에 `[mdv-diagnostics]` 줄을 먼저 읽고, 재실행해서 초록이 나온 것을 해결로 보지 마세요.
 
 1. `package.json`의 `version`을 올립니다 — `npm version X.Y.Z --no-git-tag-version`을 쓰면 `package.json`과 `package-lock.json`을 한 번에 갱신할 수 있습니다(git 태그는 자동으로 만들지 않도록 스킵 — 태그는 아래 3단계에서 직접 만듭니다). README.md와 README.ko.md의 "배포용 앱 빌드" 섹션에 하드코딩된 `dist/MDV-X.Y.Z-arm64-mac.zip` 예시 경로도 함께 갱신하세요 — 자동으로 채워지는 값이 아니라서 안 챙기면 조용히 오래된 값으로 남습니다. 이 모든 변경을 `chore(release): bump version to X.Y.Z` 커밋으로 묶고, 다른 변경과 마찬가지로 `develop`에서 브랜치를 만들어 풀 리퀘스트로 `develop`에 머지합니다.

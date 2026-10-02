@@ -23,6 +23,7 @@ Everything else follows the numbered flow below.
    ```
    npm run test:electron
    ```
+   On a fresh `npm ci`, run `node -e "require('electron')"` once first, or the parallel test files race to extract the Electron binary. Concurrency comes from `MDV_ELECTRON_CONCURRENCY` (default 4; CI uses 2).
 5. Merge the PR into `develop` (merge commit, matching existing history). The branch is deleted automatically on merge. Squash and rebase merges are available but are a deliberate per-PR choice, not the default.
 6. Releasing is a separate, explicit act: open a pull request from `develop` to `main`, merge it, then follow [RELEASING.md](RELEASING.md). Nothing reaches `main` any other way.
 

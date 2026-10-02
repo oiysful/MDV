@@ -23,6 +23,7 @@ MDV는 오래 사는 브랜치 두 개를 둡니다. **`develop`은 작업이 �
    ```
    npm run test:electron
    ```
+   새로 `npm ci` 한 직후에는 `node -e "require('electron')"`를 한 번 먼저 실행하세요. 그러지 않으면 병렬로 도는 테스트 파일들이 Electron 바이너리를 동시에 풀다가 충돌합니다. 동시 실행 수는 `MDV_ELECTRON_CONCURRENCY`가 정합니다(기본 4, CI는 2).
 5. PR을 `develop`에 머지합니다(기존 히스토리와 동일하게 merge commit 방식). 브랜치는 머지 시 자동으로 삭제됩니다. squash 머지와 rebase 머지도 쓸 수 있지만 기본값이 아니라 PR마다 명시적으로 선택하는 경우에만 씁니다.
 6. 릴리스는 별도의 명시적 행위입니다: `develop`에서 `main`으로 풀 리퀘스트를 열어 머지한 뒤 [RELEASING.ko.md](RELEASING.ko.md)를 따릅니다. 다른 어떤 경로로도 `main`에 반영하지 않습니다.
 
