@@ -1,8 +1,10 @@
 # 26. 프론트매터를 Gitea 방식으로 렌더하기
 
 ## 상태
-**조사 완료, 구현 미착수 (2026-10-02).** 요청(Ian): Gitea처럼 — 마크다운 표와 같은 가로 표로 그리고, `<details>`의
-summary에 "메타데이터" 대신 **필드 이름을 나열**한다. **계획 25의 js-yaml 5 PR 뒤에 착수**한다(아래 "순서").
+**구현·검증 완료 (2026-10-02).** PR #33(Gitea 방식 렌더 — `details.frontmatter-content`, summary = 아이콘 + 키를 `, `로 이은
+목록 + 시각적으로 숨긴 "메타데이터: ", 가로 표, 배열은 쉼표 한 줄, 중첩 객체는 `키: 값` 줄, 날짜·숫자·불리언 칸은 nowrap),
+PR #34(보안: 렌더 예산), PR #35(인쇄/PDF)로 develop에 머지했다. 계획 25의 js-yaml 5 PR(#32) 뒤에 착수한다는 순서를 지켰다.
+**계획서와 달라진 점은 맨 아래 "착수 결과" 절.** 아래는 조사 당시 본문이다.
 
 ## 요약
 
@@ -130,4 +132,17 @@ Electron 44(기한 10/20) → 저위험 묶음 → KaTeX → js-yaml 5 → **이
 - Context7 `/websites/deepwiki_go-gitea_gitea` — 프론트매터가 TOC·언어 등 렌더 옵션을 설정한다는 개요만 있고 표시 모드 설명은
   없었다. 그래서 위 소스·테스트를 기준 자료로 삼았다.
 - MDV 현재 구현: `src/renderer/markdown.js` `renderFrontmatterCard`/`renderFrontmatterValue`, `index.html`의 `.frontmatter-*` 규칙,
-  계획 14(`done/2026-08-14/14-frontmatter-yaml-structures.md`)
+  계획 14(`../2026-08-14/14-frontmatter-yaml-structures.md`)
+
+## 착수 결과 (2026-10-02) — 계획과 달라진 점
+
+- **인쇄/PDF는 계획의 "`overflow: visible` + 펼쳐 인쇄"가 아니라 세로 배치로 바뀌었다 (PR #35).** 프론트매터는 화면에서 접혀
+  있어도 **항상 펼쳐서** 인쇄한다(`::details-content { content-visibility: visible }`). summary는 숨기고, 표는 세로 `키 | 값`
+  격자로 다시 흘린다(`--fm-keys` 인라인 스타일 + `grid-auto-flow: column`) — 키가 많은 가로 표가 종이 폭에서 잘리지 않게 하려는 것.
+  Ian이 빌드한 앱에서 직접 확인했다.
+- **정수 키 순서 예외**: summary·표의 키 순서는 YAML 순서라고 계획했지만, JS 객체는 정수형 키(`1:`, `2:`)를 삽입 순서와
+  무관하게 앞으로 올린다. 이 경우만 YAML 순서와 어긋나는 것을 알려진 예외로 둔다.
+- **렌더 예산 (PR #34, 보안)**: 신뢰할 수 없는 YAML이 렌더러를 부풀릴 수 있어 상한을 뒀다 — 값 5000개 / 100k자(이스케이프 전
+  기준, 최악 ~6배 ≈ 600KB HTML), null을 포함한 모든 방문이 노드 1개로 계산, 깊이 100(= 로더 `maxDepth`), `onPath` WeakSet으로
+  순환 절단, `render()`의 try/catch 최후 방어. 보안 리뷰 2회, `memory-security.md`에 기록됨. 계획 25 §2가 "기본값 유지"로 기대했던
+  alias 방어는 로더가 아니라 이 예산이 맡는다(`maxAliases` 기본은 무제한).

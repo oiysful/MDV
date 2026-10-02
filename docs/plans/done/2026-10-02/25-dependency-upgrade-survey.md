@@ -1,7 +1,14 @@
 # 25. 전체 의존성 최신화 조사
 
 ## 상태
-**조사 완료·결정 완료, 구현 미착수 (2026-10-02).** 결정(Ian): **Electron은 44**(macOS 12 지원 종료를 감수, 최소 버전을 앱·cask에 명시), **mermaid 12는 나중에**(취약 의존성이 업스트림에서 고쳐져 override 없이 올릴 수 있을 때 시각 검토와 함께) — 이번 묶음은 1~4번 PR. marked 9가 첫 커밋의 CDN 주소(2023년 말 시점 버전)에서 굳어진 것으로
+**구현·검증 완료 (2026-10-02).** Electron 44.4.5 + Playwright 1.63.0(PR #31), highlight.js 11.12.0 + jsdom 30.1.1(PR #29),
+KaTeX 0.18.9(PR #30), js-yaml 5.4.2(PR #32)가 develop에 머지됐다. 결정(Ian)대로 **Electron은 44**, **mermaid 12는 보류**.
+develop 097bdac 실측: unit 267 / controller 13 / Electron 113 전부 통과, Electron 스위트 51초(로컬 동시성 4).
+**남은 것**: ① cask(`oiysful/tap/mdv`, 별도 리포)의 `depends_on macos: ">= :ventura"`는 Electron 44 릴리스 시점의 **TODO**.
+② mermaid 12(취약 의존성이 업스트림에서 고쳐질 때)와 marked 18(계획 24)은 계속 보류. ③ **Electron 44 CI 전용 stall이
+열려 있다** — Ian이 이를 알고 #31을 머지했다. 서명과 진단은 AGENTS.md NOTES의 "Open (2026-10-02)" 항목.
+아래는 조사 당시 본문이며, 구현 중 달라진 점은 맨 아래 "착수 결과" 절에 모았다.
+marked 9가 첫 커밋의 CDN 주소(2023년 말 시점 버전)에서 굳어진 것으로
 드러난 뒤(계획 24), 나머지 의존성도 같은 기준으로 점검했다. 문서만이 아니라 **실험 worktree에서 marked를 뺀
 전부를 실제로 올려 단계별로 테스트**했고, 그 결과가 이 문서의 근거다. 결정할 것은 두 가지다:
 **Electron 43과 44 중 어디로**, **mermaid 12를 지금 들일지**.
@@ -79,10 +86,10 @@
 | 변경 | MDV 영향 | 대응 (실험으로 확인) |
 |---|---|---|
 | 브라우저 빌드가 `dist/browser/`로 이동, `dist/js-yaml.min.js` 없음 | `index.html:18` | `node_modules/js-yaml/dist/browser/js-yaml.umd.min.js` — 같은 전역 `jsyaml`, `load` 그대로 |
-| `load()` 기본 스키마가 **YAML 1.2 CORE**(timestamp·merge 없음) | **프론트매터 `date: 2026-08-05`가 `Date`가 아니라 문자열** — 날짜 표시 포맷(`formatFrontmatterDate`)이 안 탄다. 단위 테스트 1건 실패 | `new Schema([...CORE_SCHEMA.tags, timestampTag, mergeTag, binaryTag])` — v4와 같은 결과 확인(날짜·`<<: *anchor` 병합·`!!binary`). binary를 빼면 `!!binary` 태그에서 예외 → 프론트매터 전체가 원문 노출 |
+| `load()` 기본 스키마가 **YAML 1.2 CORE**(timestamp·merge 없음) | **프론트매터 `date: 2026-08-05`가 `Date`가 아니라 문자열** — 날짜 표시 포맷(`formatFrontmatterDate`)이 안 탄다. 단위 테스트 1건 실패 | `new Schema([...CORE_SCHEMA.tags, timestampTag, mergeTag, binaryTag])` — v4와 같은 결과 확인(**실제 구현은 `CORE_SCHEMA.withTags(timestampTag, mergeTag, binaryTag, omapTag, setTag, pairsTag)`** — v4 기본 스키마에 있던 `omap`/`set`/`pairs`까지 같이 되살렸다)(날짜·`<<: *anchor` 병합·`!!binary`). binary를 빼면 `!!binary` 태그에서 예외 → 프론트매터 전체가 원문 노출 |
 | `YAML11_SCHEMA` | — | **쓰지 않는다.** 날짜는 살지만 `n:` 키가 `false`, `1:23`이 83이 되는 등 v4보다 공격적 |
 | **빈 입력이면 예외** | **테스트가 못 잡는 회귀**: `---\n---`, 빈 줄만·주석만 있는 프론트매터가 develop에선 제거되는데 v5에선 `catch`로 빠져 `---` 두 줄이 본문에 그대로 남는다 | 파싱 전에 공백·주석뿐인지 검사해 `frontmatter: []`로 처리. **세 경우 각각 단위 테스트 추가** |
-| 새 보안 한도 `maxDepth`(100)·`maxAliases`·`maxTotalMergeKeys` | 신뢰할 수 없는 `.md`의 YAML 폭탄 방어 — 이득 | 기본값 유지 |
+| 새 보안 한도 `maxDepth`(100)·`maxAliases`·`maxTotalMergeKeys` | 신뢰할 수 없는 `.md`의 YAML 폭탄 방어 — 이득 | 기본값 유지. **정정(2026-10-02): 기본값이 alias 한도를 주지는 않는다** — `maxAliases` 기본은 -1(무제한)이고, 제한되는 건 `maxDepth` 100과 `maxTotalMergeKeys` 10000뿐이다. alias 확장은 로더가 아니라 렌더러가 막는다(PR #34 렌더 예산, 계획 26 "착수 결과") |
 
 ## 3. mermaid 11 → 12 — 결정 필요
 
@@ -145,3 +152,24 @@
 - Context7 `/electron/electron` — `docs/breaking-changes.md` "v43: Dialog defaultPath now defaults to Downloads directory"(마지막 경로 기억 패턴 예시 포함), `docs/api/dialog.md`
 - Context7 `/mermaid-js/mermaid` — `docs/syntax/flowchart.md` "Default theme, look and layout (v12.0.0+)", `docs/intro/syntax-reference.md` (`layout: dagre`, `look: classic`)
 - marked: 계획 24 (`docs/plans/24-marked-upgrade.md`)
+
+## 착수 결과 (2026-10-02)
+
+| PR | 내용 |
+|---|---|
+| #29 | highlight.js 11.12.0 + jsdom 30.1.1 |
+| #30 | KaTeX 0.18.9 |
+| #32 | js-yaml 5.4.2 — 스키마 `CORE_SCHEMA.withTags(timestampTag, mergeTag, binaryTag, omapTag, setTag, pairsTag)`. 빈·공백·주석뿐·CRLF·`...` 프론트매터는 `EMPTY_YAML_LINE_RE`로 제거(위 "테스트가 못 잡는 회귀" 해소). `!!set`(Set)은 목록으로 렌더 |
+| #31 | Electron 44.4.5 + Playwright 1.63.0 — `build.mac.minimumSystemVersion: "13.0"` |
+
+- **대화상자 설계(실제 구현)**: 마지막 폴더를 `lastDialogDir`로 기억한다. 열기는 기억한 폴더, 없으면 Documents. 저장·PDF는
+  **현재 문서의 폴더**에서 시작하되, 경로는 렌더러가 넘긴 절대 `docPath`에서 얻고 쓰기 대상으로는 쓰지 않는다.
+- **로컬 동시성**: `MDV_ELECTRON_CONCURRENCY`(npm 스크립트 기본 4, CI는 `ci-electron.yml` env에서 2). `node --test`는
+  **처음 받은 `--test-concurrency`를 유지**한다 — `=4 … --test-concurrency=2`가 4로 돌았고(실측), `npm run test:electron --
+  --test-concurrency=2`가 CI를 한 번 조용히 4로 돌렸다. 그래서 중복 플래그 대신 환경 변수로 바꿨다. 기본값(10코어에서 워커 9)은
+  Dock을 앱 창으로 가득 채워 중단해야 했다(2에서 105초, 4에서 70초).
+- **새 설치 직후**: 병렬 첫 `require('electron')`이 바이너리 추출에서 경쟁해 "File exists (os error 17)"로 실패한다(오늘 발생).
+  `node -e "require('electron')"`를 한 번 먼저 돌린다. CI에는 이미 이 단계가 있다.
+- **수동 확인**: 위 "스위트가 못 하는 수동 확인" 중 **SMB 볼륨 소실을 뺀 나머지는 Ian이 수행**했다.
+- **Electron 44 CI 전용 stall**: 러너에서 한 테스트가 ~51–53초 멈췄다 실패한다. 진단 계기는 `tests/electron/helpers/launch.js`에
+  들어 있고, 기록·가설·다음 단계는 AGENTS.md NOTES. 후퇴안은 Electron 43(2027-01-05 종료, macOS 12 유지).
