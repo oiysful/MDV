@@ -30,7 +30,10 @@ async function launchApp(options = {}) {
 
   const electronApp = await electron.launch({
     executablePath: electronBinary,
-    args: ['.'],
+    // node --test runs the files concurrently, so one test's window can cover another's.
+    // Chromium stops rendering occluded/backgrounded windows, which also stops the rAF
+    // Playwright's click "stable" check waits on -- two CI runs on Electron 44 hung 15s there.
+    args: ['.', '--disable-backgrounding-occluded-windows', '--disable-renderer-backgrounding'],
     cwd: ROOT,
     env: {
       ...process.env,
