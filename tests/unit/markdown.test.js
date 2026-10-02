@@ -242,6 +242,17 @@ test('extractFrontmatter keeps js-yaml 4 parity for merge keys and !!binary', ()
   assert.equal(result.body, 'Body\n')
 })
 
+test('extractFrontmatter keeps js-yaml 4 parity for !!omap, !!set and !!pairs', () => {
+  // v4's default schema carried all three; without them the tag throws and the raw block leaks.
+  const text = '---\no: !!omap [a: 1, b: 2]\ns: !!set {x, y}\np: !!pairs [k: 1, k: 2]\n---\nBody\n'
+  const result = extractFrontmatter(text)
+  assert.deepEqual(result.frontmatter.map(f => f.key), ['o', 's', 'p'])
+  assert.deepEqual(result.frontmatter[0].value, [{ a: 1 }, { b: 2 }])
+  assert.deepEqual(Array.from(result.frontmatter[1].value), ['x', 'y'])
+  assert.deepEqual(result.frontmatter[2].value, [['k', 1], ['k', 2]])
+  assert.equal(result.body, 'Body\n')
+})
+
 // js-yaml 5's load() throws on an empty source instead of returning undefined, which would
 // route all three of these into the malformed-YAML fallback and leave both `---` lines in the
 // rendered body. An empty block is still frontmatter: strip it and render no card.
@@ -261,6 +272,32 @@ test('extractFrontmatter strips a block that holds only comments', () => {
   const result = extractFrontmatter('---\n# draft notes\n  # indented comment\n\n---\n# Body\n')
   assert.deepEqual(result.frontmatter, [])
   assert.equal(result.body, '# Body\n')
+})
+
+test('extractFrontmatter strips a blank/comment-only block in a CRLF file', () => {
+  // Splitting on \n leaves a trailing \r on every line, and `.` does not match \r.
+  const result = extractFrontmatter('---\r\n\r\n# c\r\n---\r\nbody')
+  assert.deepEqual(result.frontmatter, [])
+  assert.equal(result.body, 'body')
+})
+
+test('extractFrontmatter strips a block holding only the YAML document-end marker', () => {
+  for (const block of ['...', '... # end', '# c\n...']) {
+    const result = extractFrontmatter(`---\n${block}\n---\nbody`)
+    assert.deepEqual(result.frontmatter, [], JSON.stringify(block))
+    assert.equal(result.body, 'body')
+  }
+})
+
+test('extractFrontmatter does not treat an indented ... or ...#c as the document-end marker', () => {
+  // Both are plain scalars to YAML: the marker must start the line, and a comment needs a
+  // preceding space. A scalar top level is not a mapping, so the text is left untouched.
+  for (const block of ['   ...', '...#c']) {
+    const text = `---\n${block}\n---\nbody`
+    const result = extractFrontmatter(text)
+    assert.equal(result.frontmatter, null, JSON.stringify(block))
+    assert.equal(result.body, text)
+  }
 })
 
 // --- extractHeadingsFromSource (pure-source-mode TOC tracking) ---

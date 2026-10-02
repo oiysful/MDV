@@ -3,19 +3,28 @@
   // globalScope.jsyaml. Node (unit tests via require()): no such script tag ran, so fall
   // back to a real require -- mirrors sanitizeHtml's DOMPurify-or-escape degrade pattern.
   const yamlLib = globalScope.jsyaml || (typeof require === 'function' ? require('js-yaml') : null)
-  // js-yaml 5's default load() schema is plain YAML 1.2 CORE, which drops three things v4's
-  // default gave frontmatter: unquoted dates as Date (formatFrontmatterDate depends on it),
-  // `<<: *anchor` merge keys, and `!!binary` (without the tag the whole block throws and
-  // falls back to raw text). Add exactly those back. Not YAML11_SCHEMA: it also turns keys
-  // like `n:` into `false` and `1:23` into 83 -- more aggressive than v4 ever was.
+  // js-yaml 5's default load() schema is plain YAML 1.2 CORE, which drops what v4's default
+  // gave frontmatter: unquoted dates as Date (formatFrontmatterDate depends on it),
+  // `<<: *anchor` merge keys, and the `!!binary`/`!!omap`/`!!set`/`!!pairs` tags (an unknown
+  // tag throws, and the whole block falls back to raw text). Add exactly those back. Not
+  // YAML11_SCHEMA: it also turns keys like `n:` into `false` and `1:23` into 83 -- more
+  // aggressive than v4 ever was. One difference remains: v5's `!!set` is a real Set, where v4
+  // gave `{ x: null }`; renderFrontmatterValue shows it as a list.
   // The loader's default safety limits (maxDepth, maxTotalMergeKeys) stay as they are --
   // frontmatter comes from untrusted .md files.
   const yamlSchema = yamlLib
-    ? yamlLib.CORE_SCHEMA.withTags(yamlLib.timestampTag, yamlLib.mergeTag, yamlLib.binaryTag)
+    ? yamlLib.CORE_SCHEMA.withTags(
+      yamlLib.timestampTag, yamlLib.mergeTag, yamlLib.binaryTag,
+      yamlLib.omapTag, yamlLib.setTag, yamlLib.pairsTag,
+    )
     : null
-  // A frontmatter block whose every line is blank or a YAML comment. js-yaml 5 throws on such
-  // a source ("the input is empty") where v4 returned undefined, so it is detected up front.
-  const EMPTY_YAML_LINE_RE = /^\s*(#.*)?$/
+  // A frontmatter block whose every line is blank, a YAML comment, or the `...` document-end
+  // marker (optionally commented). js-yaml 5 throws on such a source ("the input is empty")
+  // where v4 returned undefined, so it is detected up front. The marker must start the line
+  // and a comment after it needs whitespace first -- `   ...` and `...#c` are plain scalars.
+  // `[^\r\n]` rather than `.`, and the trailing `[ \t\r]*`: in a CRLF file every line still
+  // ends in \r after the split on \n, and `.` does not match \r.
+  const EMPTY_YAML_LINE_RE = /^(?:\s*(?:#[^\r\n]*)?|\.\.\.(?:[ \t]+#[^\r\n]*)?)[ \t\r]*$/
 
   function computeStats(text) {
     if (!text || !text.trim()) return { words: 0, minutes: 0 }
@@ -176,6 +185,8 @@
   function renderFrontmatterValue(value) {
     if (value === null || value === undefined) return ''
     if (value instanceof Date) return escapeHtml(formatFrontmatterDate(value))
+    // `!!set` loads as a Set, which Object.entries would render as nothing.
+    if (value instanceof Set) return renderFrontmatterValue(Array.from(value))
     if (Array.isArray(value)) {
       if (!value.length) return ''
       const items = value.map(item => `<li>${renderFrontmatterValue(item)}</li>`).join('')
