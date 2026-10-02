@@ -1358,9 +1358,11 @@ kbd {
   #content .frontmatter-scroll th:last-child,
   #content .frontmatter-scroll td:last-child { border-bottom: none; }
   #content td.frontmatter-nowrap { white-space: normal; }
-  /* The key list is a screen affordance for the collapsed state; on paper the table already
-     names every key. A frontmatter block left collapsed therefore prints nothing at all. */
+  /* On paper the frontmatter always prints expanded, whatever its on-screen state, and the
+     summary's key list goes: the table already names every key. ::details-content is where
+     Chromium hides a closed <details>' content (content-visibility: hidden). */
   #content details.frontmatter-content > summary { display: none; }
+  #content details.frontmatter-content::details-content { content-visibility: visible; }
 }
 
 @media (max-width: 700px) {

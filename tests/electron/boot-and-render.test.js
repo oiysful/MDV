@@ -815,7 +815,7 @@ test('PDF export button sits right of print and saves a PDF', async () => {
   }
 })
 
-test('frontmatter table scrolls sideways on screen but prints as a vertical key/value table without its summary', async () => {
+test('frontmatter table scrolls sideways on screen but prints expanded as a vertical key/value table without its summary', async () => {
   const { electronApp, page } = await launchApp()
 
   try {
@@ -849,7 +849,13 @@ test('frontmatter table scrolls sideways on screen but prints as a vertical key/
     const summary = page.locator('details.frontmatter-content > summary')
     assert.notEqual(await summary.evaluate(el => getComputedStyle(el).display), 'none')
 
+    // Collapse it again: print must show the table regardless of the on-screen state.
+    await page.evaluate(() => { document.querySelector('details.frontmatter-content').open = false })
+    assert.equal(await wrapper.evaluate(el => el.checkVisibility()), false)
+
     await page.emulateMedia({ media: 'print' })
+    assert.equal(await page.evaluate(() => document.querySelector('details.frontmatter-content').open), false)
+    assert.equal(await wrapper.evaluate(el => el.checkVisibility()), true, 'collapsed frontmatter must print expanded')
     assert.equal(await wrapper.evaluate(el => getComputedStyle(el).overflowX), 'visible')
     assert.equal(await summary.evaluate(el => getComputedStyle(el).display), 'none')
     const printed = await page.evaluate(() => {
