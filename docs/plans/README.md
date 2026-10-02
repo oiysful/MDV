@@ -19,7 +19,7 @@
 
 ## [`25-dependency-upgrade-survey.md`](./25-dependency-upgrade-survey.md) — 전체 의존성 최신화 조사 (2026-10-02 조사)
 
-착수 계획이 아니라 결정 대기 중인 조사 보고서. marked 9가 첫 커밋 CDN 주소에서 굳어졌다는 발견(계획 24) 뒤 나머지도 같은 기준으로 점검했고, 실험 worktree에서 marked를 뺀 전부를 실제로 올려 단계별로 테스트했다(Electron 44.4.5 포함 109/109). **기한이 있는 건 Electron 하나 — 42는 2026-10-20 지원 종료.** 43에서 열기/저장 대화상자가 마지막 폴더 대신 다운로드 폴더에서 열리고, 44는 macOS 12를 끊는다. 실험이 찾은, 테스트가 못 잡는 회귀: js-yaml 5가 빈 프론트매터에서 예외를 던져 `---` 두 줄이 본문에 남고, 기본 스키마가 날짜를 문자열로 읽는다(CORE+timestamp+merge+binary로 v4와 동일 확인). mermaid 12는 배치가 ELK로 바뀌고(`classic`+`dagre`로도 완전 복원 안 됨), 취약한 `lodash-es`를 끌고 와 감사 게이트에 걸리며(override로 해소 확인), 앱이 405 → 469MB가 된다. 결정 대기: Electron 43/44, mermaid 12 도입 시점.
+착수 계획이 아니라 결정 대기 중인 조사 보고서. marked 9가 첫 커밋 CDN 주소에서 굳어졌다는 발견(계획 24) 뒤 나머지도 같은 기준으로 점검했고, 실험 worktree에서 marked를 뺀 전부를 실제로 올려 단계별로 테스트했다(Electron 44.4.5 포함 109/109). **기한이 있는 건 Electron 하나 — 42는 2026-10-20 지원 종료.** 43에서 열기/저장 대화상자가 마지막 폴더 대신 다운로드 폴더에서 열리고, 44는 macOS 12를 끊는다. 실험이 찾은, 테스트가 못 잡는 회귀: js-yaml 5가 빈 프론트매터에서 예외를 던져 `---` 두 줄이 본문에 남고, 기본 스키마가 날짜를 문자열로 읽는다(CORE+timestamp+merge+binary로 v4와 동일 확인). mermaid 12는 배치가 ELK로 바뀌고(`classic`+`dagre`로도 완전 복원 안 됨), 취약한 `lodash-es`를 끌고 와 감사 게이트에 걸리며(override로 해소 확인), 앱이 405 → 469MB가 된다. **결정(Ian, 2026-10-02): Electron 44, mermaid 12는 나중에.**
 
 ## [`24-marked-upgrade.md`](./24-marked-upgrade.md) — marked 9.1.6 → 18 업그레이드와 파싱 O(n²) 대응 (2026-10-01 조사·A 보류)
 
