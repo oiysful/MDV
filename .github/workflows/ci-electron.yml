@@ -97,5 +97,14 @@ jobs:
       # So: do not tune this number in response to a flaky Electron test. That diagnosis has
       # been wrong twice here, and concurrency only ever moved the frequency. Raising it purely
       # for wall-clock speed is a separate question and fair game on its own merits.
+      #
+      # The value lives in package.json's test:electron script, read from
+      # MDV_ELECTRON_CONCURRENCY (local default 4). It used to be appended here as
+      # `npm run test:electron -- --test-concurrency=2`, but node --test keeps the FIRST
+      # --test-concurrency it is given, so once the script carried its own value CI silently
+      # ran at 4 -- and on 2026-10-02 (PR #31, run 36955734874) two tests stalled ~51s with the
+      # renderer not answering page.evaluate. Set it through the environment instead.
       - name: Electron smoke suite
-        run: npm run test:electron -- --test-concurrency=2
+        env:
+          MDV_ELECTRON_CONCURRENCY: 2
+        run: npm run test:electron

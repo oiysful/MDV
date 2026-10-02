@@ -24,6 +24,82 @@ const ROOT = path.resolve(__dirname, '../../..')
 // exercises the real check passes `{ realUpdateCheck: true }` and should point
 // MDV_REPO_OWNER/MDV_REPO_NAME (also read by main.js) at a repo/tag it controls rather than
 // hitting the real oiysful/MDV repo.
+// Logs what a stalled Playwright wait needs to be diagnosed. Each probe has its own deadline
+// and always prints, so the line tells apart "frames stopped" (renderer answers, rAF dead,
+// renderer CPU near 0), "renderer busy" (renderer does not answer, renderer CPU high) and a
+// crash. The main-process probe goes through electronApp, which stays responsive either way.
+const electronAppByPage = new WeakMap()
+
+function withDeadline(promise, ms) {
+  let timer
+  const deadline = new Promise(resolve => { timer = setTimeout(() => resolve(`no answer within ${ms}ms`), ms) })
+  return Promise.race([promise, deadline])
+    .catch(e => `error: ${e.message}`)
+    .finally(() => clearTimeout(timer))
+}
+
+async function dumpDiagnostics(page) {
+  const electronApp = electronAppByPage.get(page)
+  const [renderer, raf, main] = await Promise.all([
+    withDeadline(page.evaluate(() => ({
+      visibilityState: document.visibilityState,
+      hasFocus: document.hasFocus(),
+      title: document.title,
+      splitMode: document.getElementById('scroll-area')?.classList.contains('split-mode'),
+      tabs: [...document.querySelectorAll('#tab-list .file-tab')].map(tab => {
+        const rect = tab.getBoundingClientRect()
+        return { text: tab.textContent.trim(), cls: tab.className, selected: tab.getAttribute('aria-selected'), x: rect.x, w: rect.width }
+      }),
+    })), 2000),
+    withDeadline(page.evaluate(() => new Promise(resolve => {
+      let n = 0
+      const end = performance.now() + 500
+      const tick = () => { n += 1; if (performance.now() < end) requestAnimationFrame(tick); else resolve(n) }
+      requestAnimationFrame(tick)
+    })), 2000),
+    electronApp
+      ? withDeadline(electronApp.evaluate(({ app, BrowserWindow }) => ({
+        windows: BrowserWindow.getAllWindows().map(win => ({
+          visible: win.isVisible(),
+          focused: win.isFocused(),
+          minimized: win.isMinimized(),
+          crashed: win.webContents.isCrashed(),
+          backgroundThrottling: win.webContents.getBackgroundThrottling(),
+          rendererPid: win.webContents.getOSProcessId(),
+        })),
+        metrics: app.getAppMetrics().map(m => ({
+          pid: m.pid,
+          type: m.type,
+          cpu: Math.round(m.cpu.percentCPUUsage * 10) / 10,
+          idleWakeups: m.cpu.idleWakeupsPerSecond,
+        })),
+      })), 2000)
+      : 'no electronApp registered for this page',
+  ])
+  console.error('[mdv-diagnostics]', JSON.stringify({ renderer, rafTicksIn500ms: raf, main }))
+}
+
+// Every Locator.click and Page.waitForFunction that times out dumps diagnostics before
+// rethrowing, so a CI-only stall leaves its state in the log. Patched once per prototype.
+function instrumentTimeouts(page) {
+  const wrap = (proto, name, pageOf) => {
+    const flag = `__mdvInstrumented_${name}`
+    if (proto[flag]) return
+    const original = proto[name]
+    proto[name] = async function instrumented(...args) {
+      try {
+        return await original.apply(this, args)
+      } catch (e) {
+        if (e?.name === 'TimeoutError') await dumpDiagnostics(pageOf(this))
+        throw e
+      }
+    }
+    proto[flag] = true
+  }
+  wrap(Object.getPrototypeOf(page.locator('body')), 'click', locator => locator.page())
+  wrap(Object.getPrototypeOf(page), 'waitForFunction', p => p)
+}
+
 async function launchApp(options = {}) {
   const ownsUserDataDir = !options.userDataDir
   const userDataDir = options.userDataDir || fs.mkdtempSync(path.join(os.tmpdir(), 'mdv-userdata-'))
@@ -44,6 +120,8 @@ async function launchApp(options = {}) {
 
   const page = await electronApp.firstWindow()
   page.setDefaultTimeout(15000)
+  electronAppByPage.set(page, electronApp)
+  instrumentTimeouts(page)
   await page.waitForFunction(() => {
     return Boolean(window.api && document.documentElement.dataset.rendererReady === 'true')
   })
@@ -86,6 +164,7 @@ module.exports = {
   ROOT,
   launchApp,
   closeApp,
+  dumpDiagnostics,
   stubCloseDialog,
   getCloseDialogCalls,
 }

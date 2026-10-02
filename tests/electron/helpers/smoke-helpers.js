@@ -8,22 +8,45 @@ const BASIC_MD = path.join(ROOT, 'tests/fixtures/basic.md')
 const EXPLORER_DIR = path.join(ROOT, 'tests/fixtures/explorer')
 const ROOT_MD = path.join(ROOT, 'tests/fixtures/explorer/root.md')
 
+// Both stubs record the options main.js passed (defaultPath etc.) in a main-process global.
 async function stubOpenDialog(electronApp, filePaths) {
   await electronApp.evaluate(({ dialog }, result) => {
-    dialog.showOpenDialog = async () => ({
-      canceled: false,
-      filePaths: result.filePaths,
-    })
+    globalThis.__dialogCalls = globalThis.__dialogCalls ?? []
+    dialog.showOpenDialog = async (_win, options) => {
+      globalThis.__dialogCalls.push({ kind: 'open', options })
+      return { canceled: false, filePaths: result.filePaths }
+    }
   }, { filePaths })
 }
 
 async function stubSaveDialog(electronApp, filePath) {
   await electronApp.evaluate(({ dialog }, result) => {
-    dialog.showSaveDialog = async () => ({
-      canceled: false,
-      filePath: result.filePath,
-    })
+    globalThis.__dialogCalls = globalThis.__dialogCalls ?? []
+    dialog.showSaveDialog = async (_win, options) => {
+      globalThis.__dialogCalls.push({ kind: 'save', options })
+      return { canceled: false, filePath: result.filePath }
+    }
   }, { filePath })
+}
+
+async function getDialogCalls(electronApp) {
+  return electronApp.evaluate(() => globalThis.__dialogCalls ?? [])
+}
+
+// Runs `trigger`, then waits (bounded) for ONE new dialog of `kind` and returns its defaultPath.
+// Counting before the trigger matters: a wait on UI state that an earlier step already satisfied
+// (e.g. document.title) resolves instantly and would read the previous dialog's options.
+async function waitForDialogDefaultPath(electronApp, kind, trigger, timeoutMs = 15000) {
+  const countOf = async () => (await getDialogCalls(electronApp)).filter(call => call.kind === kind).length
+  const before = await countOf()
+  await trigger()
+  const deadline = Date.now() + timeoutMs
+  while (Date.now() < deadline) {
+    const calls = (await getDialogCalls(electronApp)).filter(call => call.kind === kind)
+    if (calls.length > before) return calls[before].options.defaultPath
+    await new Promise(resolve => setTimeout(resolve, 50))
+  }
+  throw new Error(`no new ${kind} dialog within ${timeoutMs}ms`)
 }
 
 // Replaces shell.openExternal in the main process (same object main.js destructured)
@@ -176,6 +199,8 @@ module.exports = {
   ROOT_MD,
   stubOpenDialog,
   stubSaveDialog,
+  getDialogCalls,
+  waitForDialogDefaultPath,
   stubOpenExternal,
   getOpenExternalCalls,
   createTempMarkdown,

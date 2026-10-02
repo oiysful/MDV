@@ -10,8 +10,8 @@
     "update:local": "bash scripts/update-local.sh",
     "install:release": "bash scripts/install-release.sh",
     "update:release": "bash scripts/update-release.sh",
-    "test:electron": "node --test tests/electron/*.test.js",
-    "test:e2e": "node --test --test-name-pattern=\"${E2E:-.}\" tests/electron/*.test.js",
+    "test:electron": "node --test --test-concurrency=${MDV_ELECTRON_CONCURRENCY:-4} tests/electron/*.test.js",
+    "test:e2e": "node --test --test-concurrency=${MDV_ELECTRON_CONCURRENCY:-4} --test-name-pattern=\"${E2E:-.}\" tests/electron/*.test.js",
     "test:unit": "node --test tests/unit/*.test.js",
     "test:controller": "node --test tests/controller/*.test.js"
   },
@@ -28,16 +28,17 @@
     "mermaid": "^11.16.0"
   },
   "devDependencies": {
-    "electron": "^42.3.0",
+    "electron": "^44.4.5",
     "electron-builder": "^26.8.1",
     "jsdom": "^30.1.1",
-    "playwright": "^1.60.0"
+    "playwright": "^1.63.0"
   },
   "build": {
     "appId": "com.ian.mdv",
     "productName": "MDV",
     "mac": {
       "target": "zip",
+      "minimumSystemVersion": "13.0",
       "icon": "assets/icon.icns"
     },
     "fileAssociations": [
