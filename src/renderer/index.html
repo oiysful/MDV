@@ -1258,26 +1258,32 @@ kbd {
 #content tr:last-child td { border-bottom: none; }
 #content tr:hover td { background: var(--hover); }
 
-/* Frontmatter meta card — collapsed by default (no `open` attribute), Obsidian-properties-ish. */
-.frontmatter-card {
-  margin: 0 0 1.2em; padding: 0.5em 0.9em;
-  border: 1px solid var(--border); border-radius: var(--radius-sm);
-  background: var(--subtle); font-size: 0.85em;
-}
-.frontmatter-card summary {
-  cursor: pointer; font-weight: 600; color: var(--text-muted);
+/* Frontmatter — Gitea-style: collapsed by default (no `open` attribute), the summary lists the
+   top-level keys on one line, and the body is a horizontal table that takes the regular
+   `#content table` rules above (no separate card box). */
+.frontmatter-content { margin: 0 0 1.2em; }
+.frontmatter-content summary {
+  cursor: pointer; font-size: 0.85em; font-weight: 600; color: var(--text-muted);
   user-select: none;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
 }
-.frontmatter-card[open] summary { margin-bottom: 0.6em; }
-.frontmatter-table { width: 100%; border-collapse: collapse; }
-.frontmatter-table th, .frontmatter-table td {
-  padding: 4px 8px; text-align: left; vertical-align: top;
-  border: none;
-}
-.frontmatter-table th { color: var(--text-muted); font-weight: 600; white-space: nowrap; width: 1%; }
-.frontmatter-list { list-style: none; margin: 0.2em 0; padding-left: 0.9em; border-left: 2px solid var(--border); }
-.frontmatter-table.frontmatter-nested { margin: 0.2em 0; font-size: 0.95em; }
+.frontmatter-icon { vertical-align: middle; margin: 0 0.25em; }
+.frontmatter-scroll { overflow-x: auto; }
+#content .frontmatter-scroll table { margin: 0.5em 0 0; }
+#content .frontmatter-scroll td { vertical-align: top; }
+/* Only types that must not break: a date split as `2026-` / `09-30` reads as two values.
+   Strings wrap naturally with no min-width -- a min-width rule is what overflowed 8+ keys. */
+#content td.frontmatter-nowrap { white-space: nowrap; }
+.frontmatter-key { color: var(--text-muted); }
+.frontmatter-object .frontmatter-object { padding-left: 0.9em; }
+.frontmatter-item + .frontmatter-item { margin-top: 0.3em; }
 .frontmatter-multiline { white-space: pre-wrap; }
+
+/* Visible to screen readers only. */
+.visually-hidden {
+  position: absolute !important; width: 1px; height: 1px; padding: 0; margin: -1px;
+  overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; border: 0;
+}
 
 #content img {
   max-width: 100%; border-radius: var(--radius-md); border: 1px solid var(--border);
@@ -1328,6 +1334,8 @@ kbd {
   }
   .code-wrapper { box-shadow: none !important; border: 1px solid #d0d7de; }
   #content tr:hover td { background: transparent !important; }
+  /* A scrolling wrapper would clip a wide frontmatter table on paper -- let it lay out fully. */
+  .frontmatter-scroll { overflow: visible !important; }
 }
 
 @media (max-width: 700px) {
