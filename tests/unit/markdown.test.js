@@ -790,6 +790,121 @@ test('render escapes malicious strings nested inside frontmatter arrays/objects'
   }
 })
 
+// --- Frontmatter render budget (security): aliases are references, so a tiny YAML block can
+// describe an exponentially large tree, or a cycle. Rendering must stay bounded and must never
+// take the document body down with it.
+
+const nineAliases = name => `[${Array(9).fill(`*${name}`).join(', ')}]`
+
+test('render bounds a billion-laughs alias bomb in frontmatter', async () => {
+  const h = makeSnapshotHarness()
+  try {
+    // 9^6 = 531441 leaves if expanded as a tree; this produced tens of MB of HTML unbounded.
+    const text = '---\na: &a [x, x, x, x, x, x, x, x, x]\n'
+      + `b: &b ${nineAliases('a')}\nc: &c ${nineAliases('b')}\nd: &d ${nineAliases('c')}\n`
+      + `e: &e ${nineAliases('d')}\nf: &f ${nineAliases('e')}\n---\n# Body\n`
+    const started = Date.now()
+    await h.controller.render(text, 'doc.md', null)
+    const elapsed = Date.now() - started
+    const card = h.refs.content.querySelector('details.frontmatter-content')
+    assert.ok(card.innerHTML.length < 200000, `card stays bounded (got ${card.innerHTML.length} chars)`)
+    assert.ok(card.querySelector('.frontmatter-truncated'), 'the cut-off is marked')
+    assert.ok(elapsed < 2000, `render finishes quickly (took ${elapsed}ms)`)
+    assert.equal(h.refs.content.querySelector('h1').textContent, 'Body')
+  } finally {
+    h.restore()
+  }
+})
+
+test('render bounds a long string aliased many times in frontmatter', async () => {
+  const h = makeSnapshotHarness()
+  try {
+    // Few nodes, but each one is a 2000-char string: 729 copies = ~1.5M chars without a char budget.
+    const text = `---\ns: &s ${'y'.repeat(2000)}\nb: &b ${nineAliases('s')}\nc: &c ${nineAliases('b')}\nd: ${nineAliases('c')}\n---\nBody\n`
+    await h.controller.render(text, 'doc.md', null)
+    const card = h.refs.content.querySelector('details.frontmatter-content')
+    assert.ok(card.innerHTML.length < 300000, `card stays bounded (got ${card.innerHTML.length} chars)`)
+    assert.ok(card.querySelector('.frontmatter-truncated'))
+  } finally {
+    h.restore()
+  }
+})
+
+test('render survives a self-referencing frontmatter anchor and still renders the body', async () => {
+  const h = makeSnapshotHarness()
+  try {
+    // Used to recurse until RangeError and reject render() entirely.
+    await h.controller.render('---\na: &a [x, *a]\nb: ok\n---\n# Body\n', 'doc.md', null)
+    const cells = h.refs.content.querySelectorAll('details.frontmatter-content tbody td')
+    assert.match(cells[0].textContent, /^x/)
+    assert.ok(cells[0].querySelector('.frontmatter-truncated'), 'the cycle is cut with a marker')
+    assert.equal(cells[1].textContent, 'ok')
+    assert.equal(h.refs.content.querySelector('h1').textContent, 'Body')
+  } finally {
+    h.restore()
+  }
+})
+
+test('render shows a repeated (non-cyclic) alias in full each time', async () => {
+  const h = makeSnapshotHarness()
+  try {
+    await h.controller.render('---\nbase: &a {x: 1}\nm: *a\nn: *a\n---\nBody\n', 'doc.md', null)
+    const cells = Array.from(h.refs.content.querySelectorAll('details.frontmatter-content tbody td'))
+    assert.deepEqual(cells.map(td => td.textContent), ['x: 1', 'x: 1', 'x: 1'])
+    assert.equal(h.refs.content.querySelector('.frontmatter-truncated'), null)
+  } finally {
+    h.restore()
+  }
+})
+
+test('render bounds an alias bomb whose leaves are all null', async () => {
+  const h = makeSnapshotHarness()
+  try {
+    // A null leaf used to return before the budget was charged, so it cost no node and no char
+    // while its `, ` separator was still emitted: 300 nulls x 9^4 = ~2M separators unbounded.
+    const nulls = `[${Array(300).fill('~').join(', ')}]`
+    const text = `---\na: &a ${nulls}\nb: &b ${nineAliases('a')}\nc: &c ${nineAliases('b')}\n`
+      + `d: &d ${nineAliases('c')}\ne: ${nineAliases('d')}\n---\n# Body\n`
+    await h.controller.render(text, 'doc.md', null)
+    const card = h.refs.content.querySelector('details.frontmatter-content')
+    assert.ok(card.innerHTML.length < 200000, `card stays bounded (got ${card.innerHTML.length} chars)`)
+    assert.equal(h.refs.content.querySelector('h1').textContent, 'Body')
+  } finally {
+    h.restore()
+  }
+})
+
+test('render caps frontmatter nesting depth reached through an alias', async () => {
+  const h = makeSnapshotHarness()
+  try {
+    // Each literal nest stays under the loader's maxDepth (100, which does not count aliases),
+    // but `b` nests `a` inside 60 more levels: 120 deep for only ~180 rendered values. A long
+    // enough chain of these overflowed the stack and the card vanished.
+    const nest = inner => `${'['.repeat(60)}${inner}${']'.repeat(60)}`
+    await h.controller.render(`---\na: &a ${nest('x')}\nb: ${nest('*a')}\n---\n# Body\n`, 'doc.md', null)
+    const [aCell, bCell] = h.refs.content.querySelectorAll('details.frontmatter-content tbody td')
+    assert.equal(aCell.querySelector('.frontmatter-truncated'), null, '60 levels render in full')
+    assert.ok(bCell.querySelector('.frontmatter-truncated'), 'past 100 levels is cut with a marker')
+    assert.equal(h.refs.content.querySelector('h1').textContent, 'Body')
+  } finally {
+    h.restore()
+  }
+})
+
+test('render bounds a large !!binary frontmatter value', async () => {
+  const h = makeSnapshotHarness()
+  try {
+    const blob = Buffer.alloc(50000, 7).toString('base64')
+    await h.controller.render(`---\nbin: !!binary ${blob}\n---\nBody\n`, 'doc.md', null)
+    const cell = h.refs.content.querySelector('details.frontmatter-content tbody td')
+    assert.match(cell.textContent, /^7, 7, 7/, 'bytes show like a number array')
+    assert.ok(cell.querySelector('.frontmatter-truncated'), 'the cut-off is marked')
+    assert.ok(cell.innerHTML.length < 50000, `cell stays bounded (got ${cell.innerHTML.length} chars)`)
+  } finally {
+    h.restore()
+  }
+})
+
 // This suite's other harnesses omit mermaidLib on purpose (the getMermaidLib() ||
 // globalScope.mermaid fallback), which is what proves the jsdom-without-mermaid guard below.
 // These tests inject a stub explicitly to exercise the actual run()-calling path.

@@ -192,28 +192,102 @@
   // would grow the whole row) and an object is compact `key: value` lines (a nested table
   // inside a cell stacks header backgrounds and reads as clutter). Every key and value goes
   // through escapeHtml -- they all come from untrusted YAML.
-  function renderFrontmatterValue(value) {
-    if (value === null || value === undefined) return ''
-    if (value instanceof Date) return escapeHtml(formatFrontmatterDate(value))
-    // `!!set` loads as a Set, which Object.entries would render as nothing.
-    if (value instanceof Set) return renderFrontmatterValue(Array.from(value))
-    if (Array.isArray(value)) {
-      if (!value.length) return ''
-      if (!value.some(isFrontmatterComposite)) return value.map(renderFrontmatterValue).join(', ')
-      return value.map(item => `<div class="frontmatter-item">${renderFrontmatterValue(item)}</div>`).join('')
+  //
+  // Rendering is bounded (security). YAML aliases are references, so js-yaml loads them in
+  // linear time -- but rendering walks the resulting graph as a tree, and a 7-line
+  // "billion laughs" block (each level an array of nine aliases to the level above) expands
+  // to tens of MB of HTML, while a self-referencing anchor (`a: &a [x, *a]`) recursed until
+  // RangeError and took the whole render() down. Capping aliases in the loader was rejected:
+  // `maxAliases: 0` also breaks `<<: *anchor` merge keys, and any nonzero cap still allows
+  // exponential fan-out (k aliases nest to 9^k). So the bound lives here, in `ctx`:
+  // - `nodes`: values visited, null included -- a null leaf that cost nothing still emitted its
+  //   `, ` separator, so an all-null bomb slipped past both budgets. 5000 is ~25x the largest
+  //   real frontmatter we have seen (plan 26's survey of 575 files topped out at 13 top-level
+  //   keys, a few hundred values with nesting) and still renders in milliseconds. Since every
+  //   separator and wrapper belongs to a charged visit, markup is bounded by it too.
+  // - `chars`: scalar/key text emitted. Node counting alone does not bound a long string
+  //   aliased thousands of times; 100k chars is far beyond any honest frontmatter. It counts
+  //   text *before* escaping, so the emitted HTML can be up to ~6x that (`"` -> `&quot;`),
+  //   i.e. ~600 KB in the worst case.
+  // - `depth`: composites on the current descent, capped at 100 like the loader's own maxDepth
+  //   -- which does not count aliases, so an alias chain could otherwise recurse until the stack
+  //   overflowed.
+  // - `onPath`: those same composites, to cut cycles. A repeated alias that is not a cycle
+  //   still renders (a merge key legitimately shares nested values) -- the budgets are what
+  //   bound its repetition.
+  // Anything past a limit renders as a single `…` marker instead.
+  const FRONTMATTER_NODE_BUDGET = 5000
+  const FRONTMATTER_CHAR_BUDGET = 100000
+  const FRONTMATTER_MAX_DEPTH = 100
+  const FRONTMATTER_TRUNCATED = '<span class="frontmatter-truncated" title="생략됨">…</span>'
+
+  function createFrontmatterRenderContext() {
+    return { nodes: FRONTMATTER_NODE_BUDGET, chars: FRONTMATTER_CHAR_BUDGET, depth: 0, onPath: new WeakSet() }
+  }
+
+  function frontmatterBudgetSpent(ctx) {
+    return ctx.nodes <= 0 || ctx.chars <= 0
+  }
+
+  // Cuts raw text to the remaining char budget *before* escaping, so an entity is never split
+  // -- and steps back off a lone high surrogate, so an astral character is never split either.
+  function renderFrontmatterText(raw, ctx) {
+    let end = Math.min(raw.length, Math.max(0, ctx.chars))
+    if (end < raw.length && end > 0) {
+      const code = raw.charCodeAt(end - 1)
+      if (code >= 0xD800 && code <= 0xDBFF) end -= 1
     }
-    if (typeof value === 'object') return renderFrontmatterObject(value)
-    const text = escapeHtml(String(value))
+    const kept = end < raw.length ? raw.slice(0, end) : raw
+    ctx.chars -= kept.length
+    return escapeHtml(kept) + (kept.length < raw.length ? FRONTMATTER_TRUNCATED : '')
+  }
+
+  function renderFrontmatterValue(value, ctx) {
+    if (frontmatterBudgetSpent(ctx)) return FRONTMATTER_TRUNCATED
+    ctx.nodes -= 1
+    if (value === null || value === undefined) return ''
+    if (value instanceof Date) return renderFrontmatterText(formatFrontmatterDate(value), ctx)
+    // `!!set` loads as a Set, which Object.entries would render as nothing.
+    if (value instanceof Set) return renderFrontmatterArray(Array.from(value), ctx)
+    // `!!binary` loads as a Uint8Array. Show it like any number array, and copy no more bytes
+    // than the budget can render (Object.entries on it would allocate one entry per byte).
+    if (ArrayBuffer.isView(value)) return renderFrontmatterArray(Array.prototype.slice.call(value, 0, ctx.nodes + 1), ctx)
+    if (typeof value === 'object') {
+      if (ctx.onPath.has(value) || ctx.depth >= FRONTMATTER_MAX_DEPTH) return FRONTMATTER_TRUNCATED
+      ctx.onPath.add(value)
+      ctx.depth += 1
+      try {
+        return Array.isArray(value) ? renderFrontmatterArray(value, ctx) : renderFrontmatterObject(value, ctx)
+      } finally {
+        ctx.depth -= 1
+        ctx.onPath.delete(value)
+      }
+    }
+    const text = renderFrontmatterText(String(value), ctx)
     return text.includes('\n') ? `<div class="frontmatter-multiline">${text}</div>` : text
   }
 
-  function renderFrontmatterObject(obj) {
+  function renderFrontmatterArray(items, ctx) {
+    if (!items.length) return ''
+    const composite = items.some(isFrontmatterComposite)
+    const parts = []
+    for (const item of items) {
+      if (frontmatterBudgetSpent(ctx)) { parts.push(FRONTMATTER_TRUNCATED); break }
+      const html = renderFrontmatterValue(item, ctx)
+      parts.push(composite ? `<div class="frontmatter-item">${html}</div>` : html)
+    }
+    return parts.join(composite ? '' : ', ')
+  }
+
+  function renderFrontmatterObject(obj, ctx) {
     const entries = Object.entries(obj)
     if (!entries.length) return ''
-    const lines = entries.map(([key, value]) => (
-      `<div class="frontmatter-pair"><span class="frontmatter-key">${escapeHtml(key)}:</span> ${renderFrontmatterValue(value)}</div>`
-    )).join('')
-    return `<div class="frontmatter-object">${lines}</div>`
+    const lines = []
+    for (const [key, value] of entries) {
+      if (frontmatterBudgetSpent(ctx)) { lines.push(`<div class="frontmatter-pair">${FRONTMATTER_TRUNCATED}</div>`); break }
+      lines.push(`<div class="frontmatter-pair"><span class="frontmatter-key">${renderFrontmatterText(key, ctx)}:</span> ${renderFrontmatterValue(value, ctx)}</div>`)
+    }
+    return `<div class="frontmatter-object">${lines.join('')}</div>`
   }
 
   // Inline (not an icon font or <img>) so it can't fail to load -- Gitea shipped exactly that
@@ -231,9 +305,10 @@
     if (!fields.length) return ''
     const keyList = escapeHtml(fields.map(({ key }) => key).join(', '))
     const head = fields.map(({ key }) => `<th>${escapeHtml(key)}</th>`).join('')
+    const ctx = createFrontmatterRenderContext()
     const cells = fields.map(({ value }) => {
       const noWrap = value instanceof Date || typeof value === 'number' || typeof value === 'boolean'
-      return `<td${noWrap ? ' class="frontmatter-nowrap"' : ''}>${renderFrontmatterValue(value)}</td>`
+      return `<td${noWrap ? ' class="frontmatter-nowrap"' : ''}>${renderFrontmatterValue(value, ctx)}</td>`
     }).join('')
     return `<details class="frontmatter-content"><summary title="${keyList}">`
       + `<span class="visually-hidden">메타데이터: </span>${FRONTMATTER_ICON}<span class="frontmatter-keys">${keyList}</span></summary>`
@@ -733,7 +808,16 @@
       if (MERMAID_FENCE_RE.test(body)) pending.push(ensureMermaidLoaded())
       if (LATEX_FENCE_RE.test(body)) pending.push(ensureKatexLoaded())
       if (pending.length) await Promise.all(pending)
-      const frontmatterHtml = frontmatter ? sanitizeHtml(renderFrontmatterCard(frontmatter)) : ''
+      // The card comes from untrusted YAML; whatever goes wrong rendering it must never cost
+      // the reader the document body (renderFrontmatterCard is bounded, this is the backstop).
+      let frontmatterHtml = ''
+      if (frontmatter) {
+        try {
+          frontmatterHtml = sanitizeHtml(renderFrontmatterCard(frontmatter))
+        } catch {
+          frontmatterHtml = ''
+        }
+      }
       refs.content.innerHTML = frontmatterHtml + renderMarkdown(body)
       await runMermaidBlocks(refs.content)
       const imagePaths = await resolveRenderedImagePaths(docPath)
