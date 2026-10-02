@@ -8,22 +8,29 @@ const BASIC_MD = path.join(ROOT, 'tests/fixtures/basic.md')
 const EXPLORER_DIR = path.join(ROOT, 'tests/fixtures/explorer')
 const ROOT_MD = path.join(ROOT, 'tests/fixtures/explorer/root.md')
 
+// Both stubs record the options main.js passed (defaultPath etc.) in a main-process global.
 async function stubOpenDialog(electronApp, filePaths) {
   await electronApp.evaluate(({ dialog }, result) => {
-    dialog.showOpenDialog = async () => ({
-      canceled: false,
-      filePaths: result.filePaths,
-    })
+    globalThis.__dialogCalls = globalThis.__dialogCalls ?? []
+    dialog.showOpenDialog = async (_win, options) => {
+      globalThis.__dialogCalls.push({ kind: 'open', options })
+      return { canceled: false, filePaths: result.filePaths }
+    }
   }, { filePaths })
 }
 
 async function stubSaveDialog(electronApp, filePath) {
   await electronApp.evaluate(({ dialog }, result) => {
-    dialog.showSaveDialog = async () => ({
-      canceled: false,
-      filePath: result.filePath,
-    })
+    globalThis.__dialogCalls = globalThis.__dialogCalls ?? []
+    dialog.showSaveDialog = async (_win, options) => {
+      globalThis.__dialogCalls.push({ kind: 'save', options })
+      return { canceled: false, filePath: result.filePath }
+    }
   }, { filePath })
+}
+
+async function getDialogCalls(electronApp) {
+  return electronApp.evaluate(() => globalThis.__dialogCalls ?? [])
 }
 
 // Replaces shell.openExternal in the main process (same object main.js destructured)
@@ -176,6 +183,7 @@ module.exports = {
   ROOT_MD,
   stubOpenDialog,
   stubSaveDialog,
+  getDialogCalls,
   stubOpenExternal,
   getOpenExternalCalls,
   createTempMarkdown,

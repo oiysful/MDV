@@ -278,7 +278,7 @@
       if (!tab) return
       if (ensurePreviewRendered) await ensurePreviewRendered()
       const suggestedName = `${(tab.filename || 'untitled.md').replace(/\.(md|markdown)$/i, '')}.pdf`
-      const res = await withPrintPalette(() => api.exportPdf(suggestedName))
+      const res = await withPrintPalette(() => api.exportPdf(suggestedName, tab.path))
       if (res.error) {
         alert(`PDF 내보내기 실패: ${res.error}`)
         return

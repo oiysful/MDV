@@ -417,13 +417,34 @@ ipcMain.handle('read-file', async (_, filePath) => {
   }
 })
 
+// Electron 43+ no longer remembers the last folder a dialog used and opens in Downloads, so
+// main remembers it: the directory of the last selection made through any MDV dialog.
+let lastDialogDir = null
+
+function rememberDialogDir(dir) {
+  if (typeof dir === 'string' && dir) lastDialogDir = dir
+}
+
+// Save dialogs open next to the current document when the renderer passes its path; otherwise
+// (untitled tab, open dialogs) in the last remembered folder, else Documents.
+function dialogStartDir(docPath) {
+  if (typeof docPath === 'string' && path.isAbsolute(docPath)) return path.dirname(docPath)
+  return lastDialogDir || app.getPath('documents')
+}
+
+function saveDefaultPath(docPath, suggestedName, fallbackName) {
+  return path.join(dialogStartDir(docPath), path.basename(suggestedName || fallbackName))
+}
+
 ipcMain.handle('open-file-dialog', async (event) => {
   const win = BrowserWindow.fromWebContents(event.sender)
   const result = await dialog.showOpenDialog(win, {
+    defaultPath: dialogStartDir(),
     properties: ['openFile', 'multiSelections'],
     filters: [{ name: 'Markdown', extensions: ['md', 'markdown'] }],
   })
   if (result.canceled) return { cancelled: true }
+  rememberDialogDir(path.dirname(result.filePaths[0]))
   const files = await Promise.all(result.filePaths.map(async fp => {
     try {
       return { content: await fs.promises.readFile(fp, 'utf-8'), filename: path.basename(fp), path: fp }
@@ -437,9 +458,11 @@ ipcMain.handle('open-file-dialog', async (event) => {
 ipcMain.handle('open-folder-dialog', async (event) => {
   const win = BrowserWindow.fromWebContents(event.sender)
   const result = await dialog.showOpenDialog(win, {
+    defaultPath: dialogStartDir(),
     properties: ['openDirectory'],
   })
   if (result.canceled) return { cancelled: true }
+  rememberDialogDir(result.filePaths[0])
   return { path: result.filePaths[0] }
 })
 
@@ -469,26 +492,28 @@ ipcMain.handle('save-file', async (_, filePath, content) => {
   }
 })
 
-ipcMain.handle('save-file-dialog', async (event, suggestedName) => {
+ipcMain.handle('save-file-dialog', async (event, suggestedName, docPath) => {
   const win = BrowserWindow.fromWebContents(event.sender)
   const result = await dialog.showSaveDialog(win, {
-    defaultPath: suggestedName || 'untitled.md',
+    defaultPath: saveDefaultPath(docPath, suggestedName, 'untitled.md'),
     filters: [{ name: 'Markdown', extensions: ['md', 'markdown'] }],
   })
   if (result.canceled) return { cancelled: true }
+  rememberDialogDir(path.dirname(result.filePath))
   return { path: result.filePath }
 })
 
-ipcMain.handle('export-pdf', async (event, suggestedName) => {
+ipcMain.handle('export-pdf', async (event, suggestedName, docPath) => {
   const win = BrowserWindow.fromWebContents(event.sender)
   if (!win) return { ok: false, error: '활성 창을 찾을 수 없습니다.' }
 
   try {
     const result = await dialog.showSaveDialog(win, {
-      defaultPath: suggestedName || 'untitled.pdf',
+      defaultPath: saveDefaultPath(docPath, suggestedName, 'untitled.pdf'),
       filters: [{ name: 'PDF', extensions: ['pdf'] }],
     })
     if (result.canceled || !result.filePath) return { cancelled: true }
+    rememberDialogDir(path.dirname(result.filePath))
 
     const data = await win.webContents.printToPDF({
       printBackground: true,
