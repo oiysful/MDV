@@ -62,6 +62,15 @@ accepted_risks: []
 # History 2026-08-10 and Lessons Learned for the recheck-after date.
 # 2026-09-15: both applied (dompurify 3.4.15, mermaid 11.17.2) by a plain `npm audit fix`,
 # so they are no longer pending.
+# 2026-10-07 PENDING (not accepted risks): two new highs turned the CI audit gate red on develop
+# (43a6b21). Both fixes sit inside min-release-age=7, and Ian chose to WAIT rather than allowlist:
+#   - source-map-js 1.2.1 -> 1.2.2 (GHSA-68fv-2mgg-jv7q), via jsdom (test devDep); installable after 2026-10-07 23:08 KST
+#   - http-cache-semantics 4.2.0 -> 4.3.0 (GHSA-ch52-4w7c-c8xp), via electron-builder > @electron/get (build-time
+#     Electron download, not shipped); installable after 2026-10-11 11:56 KST
+# Recheck on/after 2026-10-11 with a plain `npm audit fix`. Until then a red `test` job is EXPECTED, and any
+# third name in the audit output is new and must be looked at -- the red gate does not hide it if you read it.
+# Also seen, moderate (gate ignores it): katex <=0.18.1 nested under mermaid (GHSA-238p-pmpm-9mq7) -- a RUNTIME
+# dep; the only offered fix is `--force` downgrading mermaid to 10.8.0, so not taken. Revisit with mermaid 12.
 
 ## Never Ask Again
 # Rule IDs to skip confirmation for (already reviewed)
