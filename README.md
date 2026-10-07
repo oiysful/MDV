@@ -28,8 +28,6 @@ MDV supports three distribution paths: Homebrew, GitHub Release installs, and di
 brew install --cask oiysful/tap/mdv
 ```
 
-After installing, run `mdv --reset-cache` once to clear stale session data from older versions.
-
 This uses the [`oiysful/homebrew-tap`](https://github.com/oiysful/homebrew-tap) cask, which tracks the same `MDV-*-arm64-mac.zip` release asset as the `install:release` path below and clears the quarantine attribute automatically after install. Apple Silicon (arm64) only — see [Known Limitations](#known-limitations).
 
 Note: `brew` requires the full `<user>/<repo>/<cask>` form for a one-shot install — `oiysful/tap` alone will not resolve. Once tapped (`brew tap oiysful/tap`), the bare `mdv` name also works, but plain `brew install mdv` (without `--cask`) would instead install an unrelated Homebrew Core formula also named `mdv`, so always keep `--cask` and the full path in scripts/docs.

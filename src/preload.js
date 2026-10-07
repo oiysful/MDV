@@ -1,8 +1,6 @@
 const { contextBridge, ipcRenderer, webUtils } = require('electron')
 
 contextBridge.exposeInMainWorld('api', {
-  ipc:             ipcRenderer,
-  invoke:          (channel, ...args) => ipcRenderer.invoke(channel, ...args),
   readFile:        (p)    => ipcRenderer.invoke('read-file', p),
   openFileDialog:  ()     => ipcRenderer.invoke('open-file-dialog'),
   openFolderDialog:()     => ipcRenderer.invoke('open-folder-dialog'),
