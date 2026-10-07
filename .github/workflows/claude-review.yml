@@ -1,0 +1,77 @@
+name: Claude PR review
+
+# Plan 27 (docs/plans/27-pr-auto-review-bot.md). Read-only AI review of each PR, posted as comments.
+#
+# Auth is `github_token: GITHUB_TOKEN`, not the Claude GitHub App. The App path exchanges an OIDC
+# token and the server rejects it unless this file is identical to the copy on the DEFAULT branch
+# (main). main is release-only here, so every develop PR would get a 401 until the next release.
+#
+# Re-review is the `claude-review` label, not an `@claude` comment: issue_comment events always run
+# the default branch's workflow file, which would not exist until a release. `labeled` is a
+# pull_request event and runs this PR's own copy. Remove and re-add the label to review again.
+#
+# No `synchronize`: the Pro subscription token shares its usage limit with local Claude Code.
+#
+# concurrency is job-level ON PURPOSE. At workflow level, an unrelated label (`bug`) would start a
+# run that joins the group and cancels the in-progress review before the job's `if` skips it.
+#
+# Not a required check (main has no required status checks -- 2026-09-18). A red run here blocks
+# nothing; an expired CLAUDE_CODE_OAUTH_TOKEN shows up as an auth failure in this job only.
+on:
+  pull_request:
+    branches: [main, develop]
+    types: [opened, ready_for_review, reopened, labeled]
+
+jobs:
+  review:
+    if: >-
+      github.event.pull_request.draft == false &&
+      github.event.pull_request.head.repo.full_name == github.repository &&
+      (github.event.action != 'labeled' || github.event.label.name == 'claude-review')
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    concurrency:
+      group: claude-review-${{ github.event.pull_request.number }}
+      cancel-in-progress: true
+    permissions:
+      contents: read
+      pull-requests: write
+      issues: write
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 1
+
+      - uses: anthropics/claude-code-action@v1
+        with:
+          claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          claude_args: |
+            --model claude-sonnet-5-5
+            --max-turns 25
+            --allowedTools "Read,Grep,Glob,Bash(gh pr diff:*),Bash(gh pr view:*),Bash(gh pr comment:*),mcp__github_inline_comment__create_inline_comment"
+          prompt: |
+            REPO: ${{ github.repository }}
+            PR NUMBER: ${{ github.event.pull_request.number }}
+
+            MDV(Electron 기반 macOS 마크다운 뷰어/에디터)의 이 PR을 리뷰하라.
+            `gh pr diff`로 변경을 보고, 필요하면 저장소 파일을 읽어 맥락을 확인하라.
+            AGENTS.md에 이 저장소의 규칙과 알려진 함정이 있다.
+
+            아래 축에서 **실제 결함**만 찾는다:
+            1. Electron 보안 — contextIsolation/sandbox/nodeIntegration, preload가 노출하는 API,
+               IPC 핸들러의 입력 검증과 경로 탈출.
+            2. 렌더러 XSS — DOMPurify를 거치지 않는 HTML, innerHTML, data-* 속성에 원문을 저장할 때의
+               base64 규칙(AGENTS.md).
+            3. 이중 언어 문서 — README/CONTRIBUTING/RELEASING 중 한쪽만 바뀌었으면 `.ko.md` 짝 누락.
+            4. 테스트 — 동작 변경에 테스트가 따라왔는지, 고정 지연이나 만료되는 관측 창 같은
+               플레이크 패턴(AGENTS.md NOTES).
+            5. 성능 — 마크다운 파이프라인의 O(n²) 패턴(예: marked 인라인 확장의 start()).
+
+            출력 규칙:
+            - 확실한 결함은 해당 줄에 인라인 코멘트로 단다.
+            - 전체 요약은 PR 코멘트 하나로 단다. 이 PR에 네가 이전에 단 요약 코멘트가 있으면
+              `gh pr comment --edit-last`로 갱신하라.
+            - 결함이 없으면 요약에 그렇게만 쓴다. 스타일 지적, 칭찬, 일반론은 쓰지 않는다.
+            - 모든 코멘트는 한국어로 쓴다.
+            - 코드를 수정하거나 커밋하지 말고, 테스트나 앱을 실행하려 하지 마라.
