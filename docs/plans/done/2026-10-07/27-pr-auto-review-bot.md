@@ -1,7 +1,15 @@
 # 27. PR 자동 리뷰 봇 (claude-code-action)
 
 ## 상태
-**계획 (2026-10-07).** 착수 전. Ian 수동 작업(secret 등록)이 선행 조건.
+**구현·검증 완료 (2026-10-07, PR #36 → develop `d02ceee`, squash).** 검증표 전 항목 통과:
+- 인증: Pro 구독 토큰 401/429 없음(업스트림 #1613/#1614 미재현). `github_token` 경로로 App 없이 동작, 작성자 `github-actions[bot]`.
+- 첫 리뷰 42초: 워크플로 1파일 PR에 "결함 없음" — 정확.
+- 심은 결함(preload에서 `ipcRenderer` 통째 노출 + 무검증 `invoke`, README만 수정): **둘 다 지적**하고 의도하지 않은 결함(존재하지 않는 `mdv --reset-cache` 안내)까지 grep으로 찾아냄. 인라인 3 + 요약 1, 한국어.
+- 푸시만으로는 재실행 안 됨; `claude-review` 라벨로 1회 실행(52초); 진행 중 붙인 `documentation` 라벨은 skipped로 끝나고 리뷰를 취소하지 않음(잡 레벨 concurrency).
+- 요약은 `--edit-last`로 갱신 — PR 코멘트 1개 유지.
+- 시험 중 결함 커밋에 대한 라벨 부착·머지는 Claude Code auto mode가 막아 Ian이 직접 수행.
+
+아래는 계획 당시 본문이다.
 
 ## 배경과 결정 경위
 

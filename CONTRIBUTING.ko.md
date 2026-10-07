@@ -19,6 +19,7 @@ MDV는 오래 사는 브랜치 두 개를 둡니다. **`develop`은 작업이 �
 2. 작고 집중된 단위로 커밋합니다: 한 커밋에는 하나의 논리적 변경만 담고, 그 변경에 해당하는 경로만 stage 합니다. 작업이 눈에 보이도록 풀 리퀘스트를 일찍 엽니다.
    - 작업 중 `develop`이 앞서 나갔다면 **merge 하지 말고 그 위로 rebase** 합니다. 이미 푸시한 브랜치는 `--force-with-lease`로 갱신하되, 그 브랜치의 소유자가 본인 혼자일 때만 그렇게 합니다.
 3. 머지 전에 CI가 통과해야 합니다. `.github/workflows/ci.yml`은 문서만 바뀐 경우를 포함해 모든 푸시·PR에서 `npm run test:unit`, `npm run test:controller`, 의존성 감사(audit) 게이트를 돌립니다(약 15초). `.github/workflows/ci-electron.yml`은 Electron 스모크 스위트(macOS 러너, 약 4분)를 돌리며 문서만 바뀐 변경에서는 건너뜁니다. 제외 경로 목록과, `tests/fixtures/*.md`는 왜 계속 트리거해야 하는지는 그 파일에 적혀 있습니다.
+   - `.github/workflows/claude-review.yml`은 PR이 열리거나, 다시 열리거나, 리뷰 준비 상태가 될 때 읽기 전용 AI 리뷰를 코멘트로 남깁니다(작성자 `github-actions[bot]`). 푸시할 때마다 돌지는 않습니다. 새 커밋 뒤 다시 리뷰받으려면 `claude-review` 라벨을 뗐다가 다시 붙이세요. 참고용이며 필수 체크가 아니고, 사람의 승인을 대신하지 않습니다.
 4. 푸시하기 전에 최소 한 번은 로컬에서 Electron 스모크 스위트를 실행하세요([AGENTS.md](AGENTS.md)의 테스트 티어 참고) — 이제 CI도 이를 실행하지만, 로컬 실행이 macOS 러너를 기다리는 것보다 실패를 더 빨리 알려줍니다:
    ```
    npm run test:electron

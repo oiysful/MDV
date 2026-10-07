@@ -17,10 +17,7 @@
 - [done/2026-09-23/](./done/2026-09-23/) — [21](./done/2026-09-23/21-electron-suite-audit.md) Electron 스위트 전수 조사의 마무리(권고 4 기각·5 부분 채택·6 보류·§4 유지 결정, 그 결정이 남긴 `theme.js` 단위 커버리지 16건과 목차 중간 지점 단언까지 반영 — PR #19), [22](./done/2026-09-23/22-volume-loss-file-watch-abort.md) 외장·네트워크 볼륨 소실 시 파일 워처 abort 크래시(`/Volumes` 경로만 폴링 백엔드로, 두 워처에 없던 `error` 리스너 — PR #18). 2026-09-23 구현·검증 완료. **22의 실기 확인도 끝났다(2026-09-23, Ian) — SMB 공유의 `.md`를 연 채 인터넷을 끊었고 앱은 살아남았다.** 곁다리로 드러난 `theme.js` 결함(알 수 없는 저장값 하나로 테마 버튼 영구 사망)은 이슈 #20 → PR #21로 별도 수정.
 - [done/2026-10-01/](./done/2026-10-01/) — [23](./done/2026-10-01/23-root-scroll-width-and-tilde-strike.md) 전체 창 6px 스크롤(mermaid가 body에 남기는 툴팁 — PR #25), 본문 폭 60em + 소스 모드 mermaid 호스트 폭 결함(PR #26), 단어 내부 단일 물결 취소선(PR #24). 2026-10-01 구현·검증 완료. 남은 marked `emStrong` O(n²)는 업스트림 문제로 확인 — 별도 계획.
 - [done/2026-10-02/](./done/2026-10-02/) — [25](./done/2026-10-02/25-dependency-upgrade-survey.md) 전체 의존성 최신화(Electron 44.4.5 + Playwright 1.63 — PR #31, highlight.js 11.12 + jsdom 30 — #29, KaTeX 0.18.9 — #30, js-yaml 5.4.2 — #32; mermaid 12·marked 18은 보류), [26](./done/2026-10-02/26-frontmatter-gitea-style.md) 프론트매터 Gitea 방식 렌더(가로 표·키 나열 summary — #33, 렌더 예산 — #34, 인쇄/PDF 세로 격자 — #35). 2026-10-02 구현·검증 완료. 남은 것: Electron 44 CI 전용 stall(AGENTS.md NOTES), cask `depends_on macos` TODO.
-
-## [`27-pr-auto-review-bot.md`](./27-pr-auto-review-bot.md) — PR 자동 리뷰 봇 (2026-10-07 계획·advisor 검토)
-
-서버형 봇 ai-git-bot은 상시 서버·공개 webhook·쓰기 PAT가 필요해 기각하고, `anthropics/claude-code-action@v1`을 GitHub Actions에서 돌린다. 인증은 Pro 구독 토큰(`CLAUDE_CODE_OAUTH_TOKEN`). **main이 릴리스 전용이라는 점이 설계를 정했다** — App 토큰 경로는 워크플로가 기본 브랜치(main)와 같아야 해서 develop PR이 401로 실패하므로 `GITHUB_TOKEN` 경로를 쓰고(App 설치 불필요), `@claude` 코멘트 트리거도 main 워크플로로만 돌아 재리뷰는 `claude-review` 라벨로 한다. 트리거는 opened·ready_for_review·reopened·labeled(푸시마다 재리뷰 안 함), Sonnet + 25턴 상한, 읽기·코멘트 도구만. 구독 토큰 401 업스트림 이슈(#1613/#1614)가 열려 있어 폴백은 API 키.
+- [done/2026-10-07/](./done/2026-10-07/) — [27](./done/2026-10-07/27-pr-auto-review-bot.md) PR 자동 리뷰 봇(`anthropics/claude-code-action@v1`, PR #36). 서버형 ai-git-bot은 기각. main이 릴리스 전용이라 App 토큰 대신 `GITHUB_TOKEN`, `@claude` 대신 `claude-review` 라벨로 재리뷰. 심은 결함 2건 모두 지적 + 의도하지 않은 1건까지 찾음. 2026-10-07 구현·검증 완료.
 
 ## [`24-marked-upgrade.md`](./24-marked-upgrade.md) — marked 9.1.6 → 18 업그레이드와 파싱 O(n²) 대응 (2026-10-01 조사·A 보류)
 

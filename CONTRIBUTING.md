@@ -19,6 +19,7 @@ Everything else follows the numbered flow below.
 2. Commit in small, focused steps: one logical change per commit, staging only the paths that change belongs to. Open a pull request early so work is visible.
    - If `develop` moves ahead while you work, **rebase onto it rather than merging it back in**. Force-push a branch you already pushed with `--force-with-lease`, and only when you are its sole owner.
 3. Before merging, CI must pass. `.github/workflows/ci.yml` runs `npm run test:unit`, `npm run test:controller`, and a dependency audit gate on every push and PR, including documentation-only ones — it takes about 15s. `.github/workflows/ci-electron.yml` runs the Electron smoke suite (macOS runner, ~4min) and is skipped when a change touches only documentation; that file lists the excluded paths and explains why `tests/fixtures/*.md` must keep triggering it.
+   - `.github/workflows/claude-review.yml` posts a read-only AI review (comments from `github-actions[bot]`) when a PR is opened, reopened, or marked ready for review — not on every push. To review again after new commits, remove and re-add the `claude-review` label. It is advisory, not a required check, and does not replace human approval.
 4. Run the Electron smoke suite locally at least once before pushing (see [AGENTS.md](AGENTS.md) test tiers) — CI now runs it too, but a local run surfaces failures faster than waiting on the macOS runner:
    ```
    npm run test:electron
