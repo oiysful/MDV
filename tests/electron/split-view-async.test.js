@@ -163,8 +163,13 @@ test('split view restores active tab when async preview finishes after tab switc
 
     await page.locator('#tab-list .file-tab').filter({ hasText: 'async-a.md' }).click()
     await page.waitForFunction(() => document.title === 'async-a')
+    // Entering split view force-closes #sidebar, sliding the tab strip ~266px left over .25s. A
+    // tab click whose point is taken near the end of that slide lands on the NEXT tab's close
+    // button once the strip settles -- on CI that closed the target tab outright (2026-10-07).
+    await armSidebarTransitionWatch(page)
     await emitRendererCommand(electronApp, 'toggleSplitView')
     await page.waitForFunction(() => document.getElementById('scroll-area').classList.contains('split-mode'))
+    await waitForSidebarTransition(page)
 
     await page.evaluate(() => {
       const originalReadImageDataUrl = window.api.readImageDataUrl
@@ -215,8 +220,11 @@ test('split view keeps active tab when dirty restore render finishes after tab s
 
     await page.locator('#tab-list .file-tab').filter({ hasText: 'restore-a.md' }).click()
     await page.waitForFunction(() => document.title === 'restore-a')
+    // Same sidebar-slide wait as the async-a test above.
+    await armSidebarTransitionWatch(page)
     await emitRendererCommand(electronApp, 'toggleSplitView')
     await page.waitForFunction(() => document.getElementById('scroll-area').classList.contains('split-mode'))
+    await waitForSidebarTransition(page)
 
     await page.evaluate(() => {
       const originalReadImageDataUrl = window.api.readImageDataUrl
