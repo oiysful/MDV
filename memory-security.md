@@ -90,7 +90,14 @@ custom_rules: []
 #   last_rotated: YYYY-MM-DD
 #   rotation_policy: 90days
 #   status: ok | due | overdue
-secrets: {}
+secrets:
+  CLAUDE_CODE_OAUTH_TOKEN:   # GitHub Actions secret, used only by .github/workflows/claude-review.yml (plan 27)
+    created: 2026-10-07
+    last_rotated: 2026-10-07
+    rotation_policy: on expiry   # `claude setup-token` token; an expired one shows as an auth failure in the review job only
+    status: ok
+    scope: Pro subscription OAuth (Claude inference only); job runs with GITHUB_TOKEN limited to contents:read, pull-requests:write, issues:write and read-only tools
+    rotate_how: Ian runs `claude setup-token` then `gh secret set CLAUDE_CODE_OAUTH_TOKEN -R oiysful/MDV` in a separate terminal (never via `!` in a Claude session -- the token would land in the transcript)
 
 ## Incident History
 - none
