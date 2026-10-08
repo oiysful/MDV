@@ -1,0 +1,98 @@
+name: E44 stall experiment (plan 28, do not merge)
+
+# Throwaway: lives only on the Draft PR for ci/e44-stall-experiment and is closed with it.
+# Question: does the Electron 44 CI-only ~51s frame stall go away with hardware acceleration
+# off (--disable-gpu)? Everything except MDV_ELECTRON_EXTRA_ARGS matches ci-electron.yml.
+# Metric is the number of tests that took >40s (a stall), NOT pass/fail -- a stall that
+# releases outside a 15s wait still passes. Decision rule is fixed in docs/plans/28-*.md.
+#
+# The include list is interleaved on purpose: matrix jobs are created in list order and
+# macOS runs ~5 at a time, so grouping by variant would put the two arms in different time
+# windows, and these stalls have clustered in time before (2026-10-02).
+on:
+  pull_request:
+    branches: [develop]
+
+jobs:
+  run:
+    name: ${{ matrix.variant }}-${{ matrix.rep }}
+    runs-on: macos-latest
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { variant: baseline, rep: 1, extra: '' }
+          - { variant: disable-gpu, rep: 1, extra: '--disable-gpu' }
+          - { variant: baseline, rep: 2, extra: '' }
+          - { variant: disable-gpu, rep: 2, extra: '--disable-gpu' }
+          - { variant: baseline, rep: 3, extra: '' }
+          - { variant: disable-gpu, rep: 3, extra: '--disable-gpu' }
+          - { variant: baseline, rep: 4, extra: '' }
+          - { variant: disable-gpu, rep: 4, extra: '--disable-gpu' }
+          - { variant: baseline, rep: 5, extra: '' }
+          - { variant: disable-gpu, rep: 5, extra: '--disable-gpu' }
+          - { variant: baseline, rep: 6, extra: '' }
+          - { variant: disable-gpu, rep: 6, extra: '--disable-gpu' }
+          - { variant: baseline, rep: 7, extra: '' }
+          - { variant: disable-gpu, rep: 7, extra: '--disable-gpu' }
+          - { variant: baseline, rep: 8, extra: '' }
+          - { variant: disable-gpu, rep: 8, extra: '--disable-gpu' }
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Ensure Electron binary is downloaded
+        run: node -e "require('electron')"
+
+      - name: Electron smoke suite
+        env:
+          MDV_ELECTRON_CONCURRENCY: 2
+          MDV_ELECTRON_EXTRA_ARGS: ${{ matrix.extra }}
+        run: |
+          set -o pipefail
+          npm run test:electron 2>&1 | tee electron.log
+
+      # Runs even when the suite failed: a stall caught inside a 15s wait fails the suite, and
+      # those are exactly the jobs that must be counted.
+      - name: Count stalls
+        if: always()
+        env:
+          VARIANT: ${{ matrix.variant }}
+          REP: ${{ matrix.rep }}
+          EXTRA: ${{ matrix.extra }}
+        run: |
+          node -e '
+          const fs = require("fs")
+          const log = fs.existsSync("electron.log") ? fs.readFileSync("electron.log", "utf8") : ""
+          const lines = log.split("\n")
+          const stalls = []
+          let current = null
+          for (const line of lines) {
+            const t = line.match(/^(?:not )?ok \d+ - (.*)$/) || line.match(/^[✔✖] (.*?) \(([\d.]+)ms\)$/)
+            if (t) { current = t[1]; if (t[2] && +t[2] > 40000) stalls.push([current, +t[2]]); continue }
+            const d = line.match(/^\s+duration_ms: ([\d.]+)/)
+            if (d && current && +d[1] > 40000) { stalls.push([current, +d[1]]); current = null }
+          }
+          const seen = new Set(); for (let i = stalls.length - 1; i >= 0; i--) { const k = stalls[i].join("|"); if (seen.has(k)) stalls.splice(i, 1); else seen.add(k) }
+          const gpu = lines.filter(l => l.includes("[mdv-gpu-status]"))
+          const hwOff = gpu.length > 0 && gpu.every(l => l.includes("\"gpu_compositing\":\"disabled"))
+          const valid = process.env.EXTRA ? hwOff : true
+          const toc = /not ok \d+ - source-mode TOC rebuild keeps the active entry/.test(log) || /✖ source-mode TOC rebuild keeps the active entry/.test(log)
+          const pass = (log.match(/^(?:ℹ|#) pass (\d+)/m) || [])[1], fail = (log.match(/^(?:ℹ|#) fail (\d+)/m) || [])[1]
+          const out = [
+            `### ${process.env.VARIANT}-${process.env.REP}`,
+            `RESULT variant=${process.env.VARIANT} rep=${process.env.REP} valid=${valid} stalls=${stalls.length} pass=${pass} fail=${fail} toc61_failed=${toc} gpu_status_lines=${gpu.length}`,
+            ...stalls.map(([n, ms]) => `- stall ${Math.round(ms)}ms: ${n}`),
+          ].join("\n")
+          console.log(out)
+          fs.appendFileSync(process.env.GITHUB_STEP_SUMMARY, out + "\n")
+          '
