@@ -312,6 +312,21 @@ test('extractHeadingsFromSource finds ATX headings and their correct line number
   ])
 })
 
+test('extractHeadingsFromSource skips a frontmatter block and keeps line numbers relative to the whole text', () => {
+  // Without the skip, `---\ntitle: X\n---` lexes as hr + paragraph + setext underline -> a bogus
+  // h2 "title: X" at the top of the source-mode TOC, and the Cmd+U heading pairing breaks.
+  const text = '---\ntitle: X\ntags: [a]\n---\n\n# Doc\n\n## Section 1\n'
+  assert.deepEqual(
+    extractHeadingsFromSource(text, marked).map(h => [h.depth, h.text, h.line]),
+    [[1, 'Doc', 5], [2, 'Section 1', 7]],
+  )
+  // A thematic break that is not frontmatter is left alone.
+  assert.deepEqual(
+    extractHeadingsFromSource('# Doc\n\n---\n\n## After\n', marked).map(h => [h.text, h.line]),
+    [['Doc', 0], ['After', 4]],
+  )
+})
+
 test('extractHeadingsFromSource ignores a "#" inside a fenced code block', () => {
   const text = '# Real Heading\n\n```bash\n# not a heading, just a shell comment\necho hi\n```\n\n## Also Real\n'
   const headings = extractHeadingsFromSource(text, marked)

@@ -197,3 +197,61 @@ test('leaving source mode keeps the reading position in the preview', async () =
     await cleanup?.()
   }
 })
+
+// Advisor review of plan 28 step 3: two document classes the first fixture never exercised.
+// Frontmatter used to lex as hr + paragraph + setext `---`, giving the source side a bogus h2
+// so the heading lists never paired. And a tall image right above a heading: render() awaits
+// the data URL assignment, not image decode, so the preview offsets read on exit could be
+// short by the image's height.
+const TALL_SVG = '<svg xmlns="http://www.w3.org/2000/svg" width="400" height="900"><rect width="400" height="900" fill="#ccc"/></svg>'
+const FM_DOC = `---\ntitle: Position\ntags: [a, b]\n---\n\n${DOC.replace('## Section 25', '![tall](tall.svg)\n\n## Section 25')}`
+
+async function openFrontmatterImageDoc(electronApp, page) {
+  const tempDir = await fs.mkdtemp(path.join(os.tmpdir(), 'mdv-smoke-position-fm-'))
+  const docPath = path.join(tempDir, 'position-fm.md')
+  await fs.writeFile(docPath, FM_DOC, 'utf-8')
+  await fs.writeFile(path.join(tempDir, 'tall.svg'), TALL_SVG, 'utf-8')
+  await page.waitForSelector('#empty')
+  await stubOpenDialog(electronApp, [docPath])
+  await emitRendererCommand(electronApp, 'openFile')
+  await page.waitForFunction(() => document.title === 'position-fm')
+  await page.waitForFunction(() => document.querySelector('#content img')?.complete && document.querySelector('#content img').naturalHeight > 0)
+  return () => fs.rm(tempDir, { recursive: true, force: true })
+}
+
+test('frontmatter and a tall image above a heading: Cmd+U still pairs headings both ways', async () => {
+  const { electronApp, page } = await launchApp()
+  let cleanup
+  try {
+    cleanup = await openFrontmatterImageDoc(electronApp, page)
+    // No bogus "title: …" entry in the source-mode TOC either.
+    await scrollPreviewToHeading(page, 'Section 12')
+    await enterSource(page, electronApp)
+    const tocTexts = await page.evaluate(() => [...document.querySelectorAll('#toc-list a')].map(a => a.textContent))
+    assert.equal(tocTexts[0], 'Section 1', `source-mode TOC starts with ${JSON.stringify(tocTexts[0])}`)
+    const s = await sourceState(page)
+    assert.ok(Math.abs(s.topLine - s.headingLine[12]) <= 2, `top line ${s.topLine}, '## Section 12' is line ${s.headingLine[12]}`)
+    assert.equal(s.caret, s.headingLineEnd[12], 'caret at the end of the TOC-active heading line')
+
+    // Exit with '## Section 25' at the top: the 900px image sits right above it in the preview.
+    await page.evaluate(() => {
+      const sa = document.getElementById('scroll-area')
+      const ed = document.getElementById('source-editor')
+      const cs = getComputedStyle(ed)
+      const baseTop = ed.getBoundingClientRect().top - sa.getBoundingClientRect().top + sa.scrollTop + parseFloat(cs.paddingTop)
+      sa.scrollTop = baseTop + ed.value.split('\n').indexOf('## Section 25') * parseFloat(cs.lineHeight)
+    })
+    await leaveSource(page, electronApp)
+    const result = await page.evaluate(() => {
+      const sa = document.getElementById('scroll-area')
+      const h = [...document.querySelectorAll('#content h2')].find(el => el.textContent === 'Section 25')
+      return { headingTop: h.offsetTop - sa.offsetTop, scrollTop: sa.scrollTop, clientHeight: sa.clientHeight }
+    })
+    // The heading must be at (or just below) the top of the view, not pushed off by the image.
+    const offset = result.headingTop - result.scrollTop
+    assert.ok(offset >= -4 && offset < result.clientHeight / 4, `'Section 25' is ${offset}px from the top of the view`)
+  } finally {
+    await closeApp(electronApp)
+    await cleanup?.()
+  }
+})
