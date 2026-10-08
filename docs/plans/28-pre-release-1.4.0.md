@@ -109,6 +109,15 @@ baseline 실패율 ~40%를 가정하면 disable-gpu가 우연히 8회 연속 0�
 **그 잡에도 멈춤이 있었는지** 같이 본다 — 멈춤 있는 잡에서만 실패하면 "멈춤의 여파" 가설, 멈춤 없는 잡에서도 실패하면 자체 결함.
 10-07 실패는 다른 파일의 51초 멈춤이 풀린 지 약 1초 뒤에 시작했다.
 
+### 2단계 결과 (2026-10-08) — 테스트 결함, 수정
+- 경쟁 가설 중 "멈춤 여파"는 1단계 실험에서 기각(#61 실패 3잡 모두 멈춤 없음). `buildToc()` 쌍둥이도 아님 — 소스 모드는 `rebuildSourceModeToc` 경로.
+- 원인: `toggleSource`의 `requestAnimationFrame(focusEditor)`. 새로 넣은 textarea 값은 커서가 끝에 있어 `focus()`가 `#scroll-area`를 커서까지
+  스크롤한다. CI의 느린 프레임에서 이 포커스가 테스트의 `scrollTop = 0` **뒤**에 실행돼 화면이 문서 중간으로 밀렸다.
+- 강제 프로브: rAF를 붙잡았다가 고정 뒤에 풀면 `#section-5`, `scrollTop` 363(창 높이에 따라 구간이 달라짐, CI는 `#section-6`).
+  같은 800ms 지연에서 고친 순서는 `#toc-rebuild-doc`, `scrollTop` 0.
+- 수정: 두 소스 모드 목차 테스트에서 위치를 고정하기 전에 `document.activeElement?.id === 'source-editor'`를 기다린다(저장소에 이미 있는 패턴).
+  앱 코드 변경 없음. 진입 시 끝으로 스크롤되는 동작 자체는 이번 범위 밖(별도 UX 판단).
+
 ## 3. audit fix — 2026-10-11 11:56 KST 이후
 
 `memory-security.md` 2026-10-07 항목대로 plain `npm audit fix`(`--force` 금지). 기대 결과: `source-map-js` 1.2.2, `http-cache-semantics` 4.3.0.
