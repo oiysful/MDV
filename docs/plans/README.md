@@ -19,9 +19,9 @@
 - [done/2026-10-02/](./done/2026-10-02/) — [25](./done/2026-10-02/25-dependency-upgrade-survey.md) 전체 의존성 최신화(Electron 44.4.5 + Playwright 1.63 — PR #31, highlight.js 11.12 + jsdom 30 — #29, KaTeX 0.18.9 — #30, js-yaml 5.4.2 — #32; mermaid 12·marked 18은 보류), [26](./done/2026-10-02/26-frontmatter-gitea-style.md) 프론트매터 Gitea 방식 렌더(가로 표·키 나열 summary — #33, 렌더 예산 — #34, 인쇄/PDF 세로 격자 — #35). 2026-10-02 구현·검증 완료. 남은 것: Electron 44 CI 전용 stall(AGENTS.md NOTES), cask `depends_on macos` TODO.
 - [done/2026-10-07/](./done/2026-10-07/) — [27](./done/2026-10-07/27-pr-auto-review-bot.md) PR 자동 리뷰 봇(`anthropics/claude-code-action@v1`, PR #36). 서버형 ai-git-bot은 기각. main이 릴리스 전용이라 App 토큰 대신 `GITHUB_TOKEN`, `@claude` 대신 `claude-review` 라벨로 재리뷰. 심은 결함 2건 모두 지적 + 의도하지 않은 1건까지 찾음. 2026-10-07 구현·검증 완료.
 
-## [`28-pre-release-1.4.0.md`](./28-pre-release-1.4.0.md) — v1.4.0 릴리스 전 정리 (2026-10-08 계획·advisor 검토)
+## [`28-pre-release-1.4.0.md`](./28-pre-release-1.4.0.md) — v1.4.0 릴리스 전 정리 (2026-10-08 계획·advisor 검토, 1·2단계 완료)
 
-순서(Ian 승인): **1** Electron 44 CI 멈춤을 측정으로 가른다 — 기존 로그로 러너 전체가 아니라 앱 단위 멈춤임을 먼저 확인했고, Draft 실험 PR에서 baseline과 `--disable-gpu`를 8회씩 시간상 섞어 돌려 "40초 넘은 테스트 수"로 판정(기준은 실험 전에 고정, 플래그 적용은 러너에서 잡마다 확인). **2** 10-07 처음 나온 목차 테스트 #61 실패(`#section-6`)를 회귀로 조사 — `buildToc()` 쌍둥이 결함과 멈춤 여파가 경쟁 가설. **3** audit fix(10-11 이후). **4** Electron 44.7.0(10-15 이후). **5** 보안 재감사. **6** 릴리스(RELEASING.md 박스 3개 포함).
+**진행(2026-10-08): 1단계 — baseline 8/16 잡 멈춤 vs `--disable-gpu` 0/16 → CI에서만 GPU 끔(PR #39). 2단계 — #61은 소스 모드의 rAF 지연 포커스가 위치 고정 뒤에 스크롤한 테스트 결함(PR #40). 남은 것: 3~6.** 순서(Ian 승인): **1** Electron 44 CI 멈춤을 측정으로 가른다 — 기존 로그로 러너 전체가 아니라 앱 단위 멈춤임을 먼저 확인했고, Draft 실험 PR에서 baseline과 `--disable-gpu`를 8회씩 시간상 섞어 돌려 "40초 넘은 테스트 수"로 판정(기준은 실험 전에 고정, 플래그 적용은 러너에서 잡마다 확인). **2** 10-07 처음 나온 목차 테스트 #61 실패(`#section-6`)를 회귀로 조사 — `buildToc()` 쌍둥이 결함과 멈춤 여파가 경쟁 가설. **3** audit fix(10-11 이후). **4** Electron 44.7.0(10-15 이후). **5** 보안 재감사. **6** 릴리스(RELEASING.md 박스 3개 포함).
 
 ## [`24-marked-upgrade.md`](./24-marked-upgrade.md) — marked 9.1.6 → 18 업그레이드와 파싱 O(n²) 대응 (2026-10-01 조사·A 보류)
 
