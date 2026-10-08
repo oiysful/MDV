@@ -208,6 +208,17 @@ baseline 실패율 ~40%를 가정하면 disable-gpu가 우연히 8회 연속 0�
 - `focus({ preventScroll: true })` 이후에도 Chromium이 textarea 내부 스크롤을 건드릴 수 있다 — textarea는 `autoResizeEditor`로 내부 스크롤이
   없으므로(높이 = scrollHeight) 해당 없음을 테스트 1에서 함께 확인.
 
+### 3단계 결과 (2026-10-08)
+- 구현: `markdown.js`에 `getPreviewHeadings`(오프셋 갱신 후 반환)/`getSourceHeadings`, `editor.js`에 순수 함수 `buildAnchorTops`·`captureReadingPosition`·
+  `resolveReadingPosition`·`headingDepthsMatch`·`computeSourceCaret`, `toggleSource`는 전환 전 캡처 → `applySourceMode()` 후 적용, `focusEditor`는 `preventScroll`.
+  분할 뷰 → 소스 전환과 탭 전환 복원은 범위 밖(그대로).
+- 짝 판정은 텍스트가 아니라 **개수 + 깊이**(엔티티 디코딩 차이로 `A &amp; B`가 어긋나는 것을 피함).
+- 새 Electron 테스트 `source-mode-position.test.js` 4건 — 수정 전 코드에서 **올바른 이유로** 실패 확인(진입이 351행=끝, 맨 위 진입도 7309px,
+  이탈이 Section 25 대신 Section 7). 첫 실행은 `createTempMarkdown`이 내용 아닌 경로를 받는 설정 오류였고 메시지를 읽어 걸러냄.
+- 단위 테스트 5건. 변형 검증: 화면 밖 판정 제거 → 단위 실패, 앵커 재생을 전체 비율로 교체 → Electron 3/4 실패(맨 위 진입은 어느 쪽이든 0이라 통과가 맞음).
+- "긴 구간 중간에서 헤딩이 화면 위 밖" 경우는 이 문서 구성의 소스 쪽에서 만들기 어려워(긴 구간이 소스에선 한 줄) 단위 테스트로 검증.
+- 전체: unit 272 / controller 13 / Electron 117 통과.
+
 ## 4. audit fix — 2026-10-11 11:56 KST 이후
 
 `memory-security.md` 2026-10-07 항목대로 plain `npm audit fix`(`--force` 금지). 기대 결과: `source-map-js` 1.2.2, `http-cache-semantics` 4.3.0.

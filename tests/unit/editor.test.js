@@ -13,6 +13,11 @@ const {
   setScrollRatio,
   createSplitScrollSync,
   computeSplitGridColumns,
+  buildAnchorTops,
+  captureReadingPosition,
+  resolveReadingPosition,
+  headingDepthsMatch,
+  computeSourceCaret,
 } = require('../../src/renderer/editor.js')
 
 function createClassList() {
@@ -469,4 +474,61 @@ test('computeSplitGridColumns clamps the left pane so the right pane keeps its m
 test('computeSplitGridColumns degrades gracefully when the container is narrower than both minimums combined', () => {
   // 300 + 7 + 320 = 627 > containerWidth (600), so the max-left clamp itself floors at minLeft.
   assert.equal(computeSplitGridColumns(400, 600), '300px 7px minmax(320px, 1fr)')
+})
+
+// Plan 28 step 3: the Cmd+U reading position, carried through heading anchors.
+test('buildAnchorTops adds the top and max-scroll anchors and keeps them in range and in order', () => {
+  assert.deepEqual(buildAnchorTops([100, 400], 1000), [0, 100, 400, 1000])
+  // The last headings of a short tail can sit below the furthest reachable scrollTop.
+  assert.deepEqual(buildAnchorTops([100, 1200, 1500], 1000), [0, 100, 1000, 1000, 1000])
+  assert.deepEqual(buildAnchorTops([], 800), [0, 800])
+  assert.deepEqual(buildAnchorTops([50], -20), [0, 0, 0])
+})
+
+test('captureReadingPosition records the anchor segment, the fraction into it, and the whole ratio', () => {
+  const anchors = [0, 100, 400, 1000]
+  assert.deepEqual(captureReadingPosition(0, anchors), { index: 0, fraction: 0, ratio: 0 })
+  assert.deepEqual(captureReadingPosition(250, anchors), { index: 1, fraction: 0.5, ratio: 0.25 })
+  assert.deepEqual(captureReadingPosition(1000, anchors), { index: 2, fraction: 1, ratio: 1 })
+  // Zero-length segments (clamped anchors) don't divide by zero.
+  assert.deepEqual(captureReadingPosition(1000, [0, 1000, 1000]), { index: 1, fraction: 0, ratio: 1 })
+  assert.deepEqual(captureReadingPosition(0, [0, 0]), { index: 0, fraction: 0, ratio: 0 })
+})
+
+test('resolveReadingPosition replays the segment on paired anchors and falls back to the ratio otherwise', () => {
+  const position = captureReadingPosition(250, [0, 100, 400, 1000])
+  // Same segment, different heights on the other side: halfway between its 2nd and 3rd anchors.
+  assert.equal(resolveReadingPosition(position, [0, 300, 500, 2000], true), 400)
+  // Not paired (heading lists differ, or wrap mode): whole-document ratio.
+  assert.equal(resolveReadingPosition(position, [0, 300, 500, 2000], false), 500)
+  assert.equal(resolveReadingPosition(position, [0, 2000], true), 500)
+  // Top stays at the top in both modes.
+  const top = captureReadingPosition(0, [0, 100, 1000])
+  assert.equal(resolveReadingPosition(top, [0, 700, 3000], true), 0)
+  assert.equal(resolveReadingPosition(top, [0, 3000], false), 0)
+})
+
+test('headingDepthsMatch pairs by count and depth, not text', () => {
+  assert.equal(headingDepthsMatch([{ depth: 1 }, { depth: 2 }], [{ depth: 1 }, { depth: 2 }]), true)
+  assert.equal(headingDepthsMatch([{ depth: 1 }, { depth: 2 }], [{ depth: 1 }, { depth: 3 }]), false)
+  // A heading nested in a blockquote shows up in the preview only.
+  assert.equal(headingDepthsMatch([{ depth: 2 }, { depth: 2 }], [{ depth: 2 }]), false)
+  assert.equal(headingDepthsMatch([], []), true)
+})
+
+test('computeSourceCaret: end of the visible TOC heading line, else the start of the top visible line', () => {
+  // 20 lines of 10px from scroll offset 0; headings on lines 2 and 10; viewport 100px tall.
+  const text = Array.from({ length: 20 }, (_, i) => (i === 2 || i === 10 ? `## H${i}` : `line ${i}`)).join('\n')
+  const lineStart = n => text.split('\n').slice(0, n).join('\n').length + (n > 0 ? 1 : 0)
+  const base = { text, headingLines: [2, 10], lineTop: 0, lineHeight: 10, clientHeight: 100, trackLines: true, ratio: 0 }
+  // Heading line 10 at the very top: caret at the end of '## H10'.
+  assert.equal(computeSourceCaret({ ...base, scrollTop: 100 }), lineStart(10) + '## H10'.length)
+  // Active heading within 24px below the top still counts and is on screen.
+  assert.equal(computeSourceCaret({ ...base, scrollTop: 80 }), lineStart(10) + '## H10'.length)
+  // Deep into the section (line 10 is above the viewport): start of the top visible line.
+  assert.equal(computeSourceCaret({ ...base, scrollTop: 135 }), lineStart(14))
+  // Before the first heading: no active heading -> top visible line.
+  assert.equal(computeSourceCaret({ ...base, headingLines: [12], scrollTop: 0 }), 0)
+  // Wrap mode: line math doesn't hold -> the line at the same ratio through the text.
+  assert.equal(computeSourceCaret({ ...base, trackLines: false, scrollTop: 999, ratio: 0.5 }), lineStart(10))
 })

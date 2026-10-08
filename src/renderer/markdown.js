@@ -944,6 +944,20 @@
       })
     }
 
+    // Reading-position anchors for the Cmd+U toggle (editor.js, plan 28 step 3). Preview tops
+    // are only meaningful while #content is visible -- hidden, offsetTop collapses to 0 -- so
+    // callers read this in preview mode, or after applySourceMode() has flipped back to it.
+    // Depth rather than text is what pairs the two lists: textContent decodes entities while
+    // the source side's label is regex-stripped HTML, so `## A &amp; B` would never compare equal.
+    function getPreviewHeadings() {
+      refreshHeadingOffsets()
+      return cachedHeadings.filter(heading => heading.el).map(heading => ({ top: heading.top, depth: Number(heading.el.tagName.slice(1)) }))
+    }
+
+    function getSourceHeadings(text) {
+      return extractHeadingsFromSource(text, markedLib).map(heading => ({ line: heading.line, depth: heading.depth }))
+    }
+
     return {
       render,
       renderMarkdown,
@@ -953,6 +967,8 @@
       resetEmptyStats,
       refreshTocActive,
       refreshHeadingOffsets,
+      getPreviewHeadings,
+      getSourceHeadings,
       rebuildSourceModeToc,
       clearImageCache,
       clearImageCacheEntry,

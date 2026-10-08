@@ -133,6 +133,80 @@
     element.scrollTop = maxScroll > 0 ? maxScroll * clampRatio(ratio) : 0
   }
 
+  // Cmd+U reading position (plan 28 step 3). Preview and source heights differ section by
+  // section -- a code block is taller in source, a wrapped paragraph or an image taller in
+  // preview -- so one whole-document ratio drifts by screens in a long file. Headings exist on
+  // both sides one-to-one, so they are the anchors: the position is captured as "which anchor
+  // segment, how far into it" and replayed on the other side's segment. The document top and
+  // the maximum scroll are implicit first/last anchors, so text before the first heading or
+  // after the last needs no special case and "entered from the top stays at the top" holds by
+  // construction. Anchors are clamped into [0, maxScroll] and kept non-decreasing (the last
+  // headings of a short tail can sit below the furthest reachable scrollTop).
+  function buildAnchorTops(headingTops, maxScroll) {
+    const max = Math.max(0, maxScroll)
+    const anchors = [0]
+    for (const top of headingTops) anchors.push(Math.min(max, Math.max(anchors[anchors.length - 1], top)))
+    anchors.push(max)
+    return anchors
+  }
+
+  function captureReadingPosition(scrollTop, anchors) {
+    const max = anchors[anchors.length - 1]
+    const ratio = max > 0 ? clampRatio(scrollTop / max) : 0
+    let index = 0
+    for (let i = 0; i < anchors.length - 1; i += 1) {
+      if (anchors[i] <= scrollTop) index = i
+    }
+    const span = anchors[index + 1] - anchors[index]
+    const fraction = span > 0 ? clampRatio((scrollTop - anchors[index]) / span) : 0
+    return { index, fraction, ratio }
+  }
+
+  // `paired` is the caller's judgement that both sides' heading lists line up (same count, same
+  // depths); when they don't -- a heading nested in a blockquote is visible to the preview but
+  // not to the source scan, or wrap mode breaks line-based tops -- fall back to the ratio rather
+  // than pair the wrong headings.
+  function resolveReadingPosition(position, anchors, paired) {
+    const max = anchors[anchors.length - 1]
+    if (paired && position.index < anchors.length - 1) {
+      const from = anchors[position.index]
+      return from + position.fraction * (anchors[position.index + 1] - from)
+    }
+    return max * position.ratio
+  }
+
+  function headingDepthsMatch(a, b) {
+    return a.length === b.length && a.every((heading, index) => heading.depth === b[index].depth)
+  }
+
+  // Where the caret goes on entering source mode (Ian, 2026-10-08): the end of the TOC-active
+  // heading's line -- the heading refreshTocActive highlights, same `top - 24 <= scrollTop`
+  // rule -- if that line is on screen, otherwise the start of the top visible line. Either way
+  // the caret is visible, so the first keystroke doesn't scroll. `lineTop` is the scroll offset
+  // of line 0 (baseTop + paddingTop); `trackLines` is false in wrap mode, where line * lineHeight
+  // doesn't hold, and the caret then goes to the line at the same ratio through the text.
+  function computeSourceCaret({ text, headingLines, lineTop, lineHeight, scrollTop, clientHeight, trackLines, ratio }) {
+    const lines = String(text).split('\n')
+    const lineStart = index => {
+      let offset = 0
+      for (let i = 0; i < index; i += 1) offset += lines[i].length + 1
+      return offset
+    }
+    if (!trackLines || !(lineHeight > 0)) {
+      return lineStart(Math.min(lines.length - 1, Math.floor(clampRatio(ratio) * lines.length)))
+    }
+    let active = -1
+    for (const line of headingLines) {
+      if (lineTop + line * lineHeight - 24 <= scrollTop) active = line
+    }
+    if (active >= 0) {
+      const top = lineTop + active * lineHeight
+      if (top >= scrollTop - 1 && top + lineHeight <= scrollTop + clientHeight) return lineStart(active) + lines[active].length
+    }
+    const topLine = Math.min(lines.length - 1, Math.max(0, Math.ceil((scrollTop - lineTop) / lineHeight)))
+    return lineStart(topLine)
+  }
+
   // Echo suppression by value, not by a single-slot arm/disarm flag: a wheel gesture fires a
   // burst of scroll events per pane, not one. With a flag armed on write and cleared on the
   // first matching event, a second echo arriving before the next write re-arms could slip
@@ -455,6 +529,15 @@
         return
       }
 
+      // Capture the reading position in the mode we are leaving, BEFORE anything switches: each
+      // side's heading tops are only valid while that side is laid out. Leaving source mode,
+      // render() below runs with #content still hidden, so its buildToc() caches offsetTop 0
+      // for every heading; entering it, applySourceMode() hides #content and overwrites the TOC
+      // cache with source entries. The position is therefore carried as (anchor segment,
+      // fraction) and applied only once the new mode's layout is live -- don't move the capture
+      // after render() or the apply before applySourceMode().
+      const readingPosition = captureToggleReadingPosition()
+
       if (sourceMode) {
         // Always render here, even if `edited` reads back equal to getMarkdown() -- saveFile()
         // (document-flow.js's syncTabContentForSave) also calls setMarkdown() to keep the save
@@ -474,7 +557,70 @@
 
       sourceMode = !sourceMode
       applySourceMode()
+      applyToggleReadingPosition(readingPosition)
+      // Still deferred a frame (tests wait for it -- AGENTS.md NOTES), but it no longer decides
+      // the scroll: focusEditor() uses preventScroll, and the caret was placed on screen above.
       if (sourceMode) requestAnimationFrame(focusEditor)
+    }
+
+    function getSourceGeometryTops(refs, text) {
+      const geometry = computeSourceModeGeometry(refs)
+      const lineTop = geometry.baseTop + geometry.paddingTop
+      const headings = markdownController.getSourceHeadings(text)
+      return { geometry, lineTop, headings, tops: headings.map(heading => lineTop + heading.line * geometry.lineHeight) }
+    }
+
+    function captureToggleReadingPosition() {
+      const refs = getRefs()
+      const scrollArea = refs.scrollArea
+      const maxScroll = scrollArea.scrollHeight - scrollArea.clientHeight
+      if (!markdownController) return null
+      if (sourceMode) {
+        const source = getSourceGeometryTops(refs, refs.sourceEditor.value)
+        return {
+          from: 'source',
+          headings: source.headings,
+          trackLines: source.geometry.trackActive,
+          position: captureReadingPosition(scrollArea.scrollTop, buildAnchorTops(source.tops, maxScroll)),
+        }
+      }
+      const headings = markdownController.getPreviewHeadings()
+      return {
+        from: 'preview',
+        headings,
+        trackLines: true,
+        position: captureReadingPosition(scrollArea.scrollTop, buildAnchorTops(headings.map(heading => heading.top), maxScroll)),
+      }
+    }
+
+    function applyToggleReadingPosition(captured) {
+      if (!captured) return
+      const refs = getRefs()
+      const scrollArea = refs.scrollArea
+      const maxScroll = scrollArea.scrollHeight - scrollArea.clientHeight
+      if (sourceMode && captured.from === 'preview') {
+        const text = refs.sourceEditor.value
+        const source = getSourceGeometryTops(refs, text)
+        const paired = source.geometry.trackActive && headingDepthsMatch(captured.headings, source.headings)
+        scrollArea.scrollTop = resolveReadingPosition(captured.position, buildAnchorTops(source.tops, maxScroll), paired)
+        const caret = computeSourceCaret({
+          text,
+          headingLines: source.headings.map(heading => heading.line),
+          lineTop: source.lineTop,
+          lineHeight: source.geometry.lineHeight,
+          scrollTop: scrollArea.scrollTop,
+          clientHeight: scrollArea.clientHeight,
+          trackLines: source.geometry.trackActive,
+          ratio: captured.position.ratio,
+        })
+        refs.sourceEditor.setSelectionRange(caret, caret)
+        return
+      }
+      if (!sourceMode && captured.from === 'source') {
+        const headings = markdownController.getPreviewHeadings()
+        const paired = captured.trackLines && headingDepthsMatch(captured.headings, headings)
+        scrollArea.scrollTop = resolveReadingPosition(captured.position, buildAnchorTops(headings.map(heading => heading.top), maxScroll), paired)
+      }
     }
 
     async function toggleSplitView() {
@@ -512,8 +658,11 @@
       applySourceMode()
     }
 
+    // preventScroll: the caller owns the scroll position. A plain focus() scrolls to the caret,
+    // which after a fresh `.value` assignment sits at the end of the document -- the Cmd+U jump
+    // plan 28 step 3 fixed.
     function focusEditor() {
-      getRefs().sourceEditor.focus()
+      getRefs().sourceEditor.focus({ preventScroll: true })
     }
 
     function openInSourceMode() {
@@ -710,6 +859,11 @@
     createEditorController,
     getScrollRatio,
     setScrollRatio,
+    buildAnchorTops,
+    captureReadingPosition,
+    resolveReadingPosition,
+    headingDepthsMatch,
+    computeSourceCaret,
     createSplitScrollSync,
     buildLineNumberText,
     getLineEnd,
