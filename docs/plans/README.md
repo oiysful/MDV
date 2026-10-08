@@ -19,6 +19,10 @@
 - [done/2026-10-02/](./done/2026-10-02/) — [25](./done/2026-10-02/25-dependency-upgrade-survey.md) 전체 의존성 최신화(Electron 44.4.5 + Playwright 1.63 — PR #31, highlight.js 11.12 + jsdom 30 — #29, KaTeX 0.18.9 — #30, js-yaml 5.4.2 — #32; mermaid 12·marked 18은 보류), [26](./done/2026-10-02/26-frontmatter-gitea-style.md) 프론트매터 Gitea 방식 렌더(가로 표·키 나열 summary — #33, 렌더 예산 — #34, 인쇄/PDF 세로 격자 — #35). 2026-10-02 구현·검증 완료. 남은 것: Electron 44 CI 전용 stall(AGENTS.md NOTES), cask `depends_on macos` TODO.
 - [done/2026-10-07/](./done/2026-10-07/) — [27](./done/2026-10-07/27-pr-auto-review-bot.md) PR 자동 리뷰 봇(`anthropics/claude-code-action@v1`, PR #36). 서버형 ai-git-bot은 기각. main이 릴리스 전용이라 App 토큰 대신 `GITHUB_TOKEN`, `@claude` 대신 `claude-review` 라벨로 재리뷰. 심은 결함 2건 모두 지적 + 의도하지 않은 1건까지 찾음. 2026-10-07 구현·검증 완료.
 
+## [`28-pre-release-1.4.0.md`](./28-pre-release-1.4.0.md) — v1.4.0 릴리스 전 정리 (2026-10-08 계획·advisor 검토)
+
+순서(Ian 승인): **1** Electron 44 CI 멈춤을 측정으로 가른다 — 기존 로그로 러너 전체가 아니라 앱 단위 멈춤임을 먼저 확인했고, Draft 실험 PR에서 baseline과 `--disable-gpu`를 8회씩 시간상 섞어 돌려 "40초 넘은 테스트 수"로 판정(기준은 실험 전에 고정, 플래그 적용은 러너에서 잡마다 확인). **2** 10-07 처음 나온 목차 테스트 #61 실패(`#section-6`)를 회귀로 조사 — `buildToc()` 쌍둥이 결함과 멈춤 여파가 경쟁 가설. **3** audit fix(10-11 이후). **4** Electron 44.7.0(10-15 이후). **5** 보안 재감사. **6** 릴리스(RELEASING.md 박스 3개 포함).
+
 ## [`24-marked-upgrade.md`](./24-marked-upgrade.md) — marked 9.1.6 → 18 업그레이드와 파싱 O(n²) 대응 (2026-10-01 조사·A 보류)
 
 **A는 구현·검증 후 보류(Draft PR #28, Ian 결정)**: 기본 marked 18 자체에 회귀 3건 — 인용문 lazy continuation O(n²)(6ms → 695ms), 백틱 포함 코드 스팬 뒤 굵게 소실, 숫자 참조 이중 디코딩 — 이 있고 #4099도 그대로라, 지금 머지하면 고치는 것 없이 회귀만 들인다. 재개 조건은 업스트림 수정. B(파싱 시간 상한)는 미결. 아래는 조사 당시 요약. 계획 23의 codex 2차 리뷰 P1(짝 없는 `*`의 O(n²))에서 출발했고, **"업그레이드하면 풀린다"는 처음 가정이 실측으로 뒤집혔다** — 9부터 18까지 모든 메이저에서 `'*xa '`×8000이 약 3.4~4초로 같고, `'~a '`는 17부터 오히려 13배 나빠졌다. 업스트림 이슈 #4099·수정 PR #4103(열림)이 있고 메인테이너 권장은 Worker 파싱. 그래서 목표를 둘로 나눴다: **A. 업그레이드**(#4103을 받을 전제; 실험 worktree에서 단위 테스트 21건 실패 — 코드블럭 16·Alert 4·물결 기대값 1, 실질 원인은 `code`·`blockquote` 렌더러 시그니처 두 곳과 `index.html` 경로 한 줄, `blockquote`는 두 줄로 해결 확인), **B. 파싱 시간 상한**(업스트림 대기 / Worker+타임아웃 / 자체 패치 — A 이후 결정). 계획 23의 물결 규칙은 18에서도 그대로 동작함을 확인했다.
