@@ -362,6 +362,11 @@ test('TOC scrollspy tracks scroll position in pure source mode instead of sticki
     await emitRendererCommand(electronApp, 'toggleSource')
     await page.waitForFunction(() => document.getElementById('scroll-area').classList.contains('source-mode'))
     await page.waitForFunction(() => document.querySelectorAll('#toc-list a').length === 13)
+    // toggleSource focuses the editor one frame later (requestAnimationFrame(focusEditor)), and that
+    // focus scrolls #scroll-area to the caret at the end of the freshly assigned value. On a slow
+    // CI frame it lands AFTER the scrollTop pin below and moves the view mid-document (#61: active
+    // entry '#section-6', 2026-10-07/08). Wait for it so the pin is the last scroll.
+    await page.waitForFunction(() => document.activeElement?.id === 'source-editor')
 
     // Entering source mode focuses the textarea, and Chromium moves the cursor to the end of
     // a freshly-assigned .value, which scrolls the view to show it -- unrelated to TOC
@@ -420,6 +425,8 @@ test('source-mode TOC rebuild keeps the active entry without waiting for a scrol
     await emitRendererCommand(electronApp, 'toggleSource')
     await page.waitForFunction(() => document.getElementById('scroll-area').classList.contains('source-mode'))
     await page.waitForFunction(() => document.querySelectorAll('#toc-list a').length === 13)
+    // Same deferred-focus wait as the test above.
+    await page.waitForFunction(() => document.activeElement?.id === 'source-editor')
 
     await page.evaluate(() => { document.getElementById('scroll-area').scrollTop = 0 })
     await page.waitForFunction(() => document.querySelector('#toc-list a.active')?.getAttribute('href') === '#toc-rebuild-doc')
