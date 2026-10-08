@@ -249,6 +249,33 @@ RELEASING.md 상단 박스 3개(cask `depends_on macos: ">= :ventura"`, README/R
 README 버전 문자열은 자동 갱신되지 않음(메모리 `mdv-homebrew-distribution`). 업데이트 배너 실기 확인은 메모리 `mdv-update-banner-live-test` 순서.
 머지·태그 푸시는 auto mode가 막을 수 있으므로 Ian이 실행할 명령을 정확히 건넨다.
 
+### 7a. 리뷰 봇을 `claude[bot]`으로 전환 — v1.4.0 릴리스 PR에 함께 싣는다 (Ian 결정, 2026-10-08)
+**왜 지금 `github-actions`인가**: `claude-review.yml`이 `github_token: GITHUB_TOKEN`을 넘기기 때문(액션 faq "Why aren't comments posted as
+claude[bot]?" — 넘긴 토큰의 신원으로 코멘트가 달린다; `bot_name`/`bot_id`는 git 커밋 작성자에만 쓰여 코멘트 이름을 못 바꾼다). 넘긴 이유는 계획 27:
+Claude App 경로는 OIDC 교환 시 **워크플로가 기본 브랜치(main)와 글자 하나까지 같아야** 하는데 main은 릴리스 전용이라 아직 그 파일이 없다.
+
+**검토하고 버린 대안**(2026-10-08, Ian과 논의):
+- main에 같은 내용을 직접 넣기 — 임시 저장소 실측으로 같은 내용이면 이후 develop→main 머지가 충돌 없이 합쳐지지만(양쪽이 다르게 고치면 충돌),
+  "main은 릴리스 PR로만" 규칙의 예외이고, develop에서 워크플로를 고칠 때마다 다음 릴리스까지 리뷰가 401이라 예외가 반복될 길을 연다.
+- 워크플로만 담은 1.3.1 hotfix — develop엔 이미 v1.3.0 이후 전부가 있어 hotfix 브랜치 + 체리픽(같은 규칙 예외), 태그 푸시가 앱 빌드·Release·cask를 돌려
+  사용자에게 **변경 없는 업데이트 배너**, main 1.3.1 vs develop 1.4.0의 `package.json` 버전 충돌로 되머지 절차 추가.
+- 직접 만든 GitHub App(`<이름>[bot]`) — 기본 브랜치 제약은 없지만 App 개인키라는 장기 secret이 는다. 이름 하나에 비해 보안 비용이 크다.
+
+**절차**
+1. (릴리스 전, develop) `claude-review.yml`에서 `github_token` 줄 삭제, `permissions`에 `id-token: write` 추가(App 경로의 OIDC에 필요 — 액션 faq "OIDC
+   authentication errors"). 주석의 "App 경로를 안 쓰는 이유"를 "릴리스로 main과 동일해진 뒤 App 경로" 로 갱신. `--edit-last` 지시는 그대로 둬도 되고,
+   `use_sticky_comment: true`로 바꿀지는 4번에서 결정.
+   - **이 PR 자신과 이후 릴리스 전까지의 develop PR 리뷰는 401로 실패한다**(main에 아직 같은 파일이 없으므로) — 예상된 실패, 필수 체크 아님.
+     그래서 이 변경은 **릴리스 PR 직전**, develop에 마지막으로 들어가는 PR로 한다.
+2. (Ian, 1번 전 아무 때나) Claude GitHub App 설치: https://github.com/apps/claude → `oiysful` → **Only select repositories: `oiysful/MDV`**.
+   설치만으로는 아무것도 바뀌지 않는다(워크플로가 `github_token`을 넘기는 동안은 App 토큰을 쓰지 않음).
+3. v1.4.0 develop→main 머지로 main과 develop의 워크플로가 같아짐 → 그다음 develop 대상 PR부터 `claude[bot]`으로 달리는지 확인. 실패하면 로그에서
+   `Workflow validation failed`(내용 불일치) / OIDC 오류(`id-token` 누락) / 설치 범위를 순서대로 본다.
+   - 릴리스 PR(develop→main) 자체의 리뷰는 PR 쪽 워크플로가 main과 다를 수 있어 실패할 수 있다 — 무시.
+4. (선택) `@claude` 코멘트 재리뷰(issue_comment는 main의 워크플로로 돈다 → 이제 가능), `use_sticky_comment`. 켤지는 그때 Ian 결정.
+5. AGENTS.md "PR auto-review" 항목, CONTRIBUTING(.ko) 한 줄("comments from `github-actions[bot]`"), 메모리 `mdv-pr-review-bot` 갱신.
+- **이후 규칙**: 워크플로를 develop에서 고치면 다음 릴리스까지 develop PR 리뷰가 실패한다 — 고칠 일이 생기면 릴리스 직전에 몰아서.
+
 ## 일정 요약
 
 | 단계 | 가장 빠른 착수 | 의존 |
@@ -260,3 +287,4 @@ README 버전 문자열은 자동 갱신되지 않음(메모리 `mdv-homebrew-di
 | 5 Electron 44.7.0 | 10-15 04:26 KST | 1이 기각이면 후보 (a)로 겸함 |
 | 6 보안 재감사 | 4·5 머지 후 | 의존성이 확정된 뒤에 봐야 의미 |
 | 7 릴리스 | 1~6 완료 후 | 1의 결론이 "열림"이어도 RELEASING 박스 규칙에 따라 진행 가능 — Ian 판단 |
+| 7a 리뷰 봇 `claude[bot]` 전환 | 릴리스 PR 직전(develop 마지막 PR) | Ian의 Claude App 설치(아무 때나) |
