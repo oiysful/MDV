@@ -100,13 +100,19 @@ function instrumentTimeouts(page) {
   wrap(Object.getPrototypeOf(page), 'waitForFunction', p => p)
 }
 
+// Extra Chromium/Electron switches for every launch, space-separated (plan 28: the CI-only
+// Electron 44 stall experiment passes `--disable-gpu` here). Test plumbing only -- src/ is
+// untouched, so the shipped app never sees these.
+const extraArgs = (process.env.MDV_ELECTRON_EXTRA_ARGS || '').split(/\s+/).filter(Boolean)
+let gpuStatusLogged = false
+
 async function launchApp(options = {}) {
   const ownsUserDataDir = !options.userDataDir
   const userDataDir = options.userDataDir || fs.mkdtempSync(path.join(os.tmpdir(), 'mdv-userdata-'))
 
   const electronApp = await electron.launch({
     executablePath: electronBinary,
-    args: ['.'],
+    args: [...extraArgs, '.'],
     cwd: ROOT,
     env: {
       ...process.env,
@@ -125,6 +131,14 @@ async function launchApp(options = {}) {
   await page.waitForFunction(() => {
     return Boolean(window.api && document.documentElement.dataset.rendererReady === 'true')
   })
+
+  // Proves the switches actually took effect on this machine, once per test file: a run that
+  // claims `--disable-gpu` but still reports hardware compositing is invalid, not "no effect".
+  if (extraArgs.length && !gpuStatusLogged) {
+    gpuStatusLogged = true
+    const status = await electronApp.evaluate(({ app }) => app.getGPUFeatureStatus())
+    console.error('[mdv-gpu-status]', JSON.stringify({ extraArgs, status }))
+  }
 
   return { electronApp, page, userDataDir }
 }

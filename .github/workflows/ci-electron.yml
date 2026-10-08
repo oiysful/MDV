@@ -104,7 +104,19 @@ jobs:
       # --test-concurrency it is given, so once the script carried its own value CI silently
       # ran at 4 -- and on 2026-10-02 (PR #31, run 36955734874) two tests stalled ~51s with the
       # renderer not answering page.evaluate. Set it through the environment instead.
+      #
+      # --disable-gpu (CI only, 2026-10-08, plan 28): on Electron 44 a GitHub macOS runner
+      # intermittently froze one app's frames for ~51s (renderer not answering, CPU 0), failing
+      # whichever test happened to be waiting. A Draft-PR experiment (PR #38, run 37730245504,
+      # two attempts, arms interleaved in time) measured it: baseline stalled in 8 of 16 jobs
+      # (12 stalls), --disable-gpu in 0 of 16, with every --disable-gpu job's [mdv-gpu-status]
+      # line confirming hardware compositing was off. So the stall lives in the hardware-
+      # accelerated rendering path on the runner's virtual GPU. The switch is test plumbing
+      # (tests/electron/helpers/launch.js); the shipped app and local runs keep the GPU, so
+      # local `npm run test:electron` still covers hardware compositing. If a ~51s stall shows
+      # up here again, first check that [mdv-gpu-status] still reads disabled_software.
       - name: Electron smoke suite
         env:
           MDV_ELECTRON_CONCURRENCY: 2
+          MDV_ELECTRON_EXTRA_ARGS: --disable-gpu
         run: npm run test:electron
