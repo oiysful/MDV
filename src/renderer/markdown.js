@@ -91,9 +91,17 @@
   // nested tokens doesn't cleanly fix it either -- a nested token's `raw` lacks the `> `
   // prefix and won't match the outer source.
   function extractHeadingsFromSource(text, markedLib) {
-    const normalized = String(text == null ? '' : text)
+    const full = String(text == null ? '' : text)
       .replace(/\r\n|\r/g, '\n')
       .replace(/\t/g, '    ')
+    // Scan only what the preview renders: a frontmatter block lexes as an hr, a paragraph and a
+    // setext `---` underline, which put a bogus h2 ("title: X …") at the top of the source-mode
+    // TOC and broke the Cmd+U heading pairing (plan 28 step 3). Same extractFrontmatter() the
+    // preview uses, so the two agree on what counts as frontmatter; `line` stays relative to
+    // the whole text, which is what the textarea shows.
+    const { body } = extractFrontmatter(full)
+    const lineOffset = body === full ? 0 : full.split('\n').length - body.split('\n').length
+    const normalized = body
     const tokens = markedLib.lexer(normalized)
     const headings = []
     let searchFrom = 0
@@ -108,7 +116,7 @@
         idx = match ? searchFrom + match.index : -1
       }
       if (idx === -1) continue
-      const line = normalized.slice(0, idx).split('\n').length - 1
+      const line = normalized.slice(0, idx).split('\n').length - 1 + lineOffset
       // parseInline keeps emphasis/code-span markup out of the label; textContent-strip via
       // regex is visual-only (never assigned as innerHTML), so raw HTML in a heading source
       // (`## <script>x</script>Title`) can cosmetically diverge from what #content's real
@@ -944,6 +952,20 @@
       })
     }
 
+    // Reading-position anchors for the Cmd+U toggle (editor.js, plan 28 step 3). Preview tops
+    // are only meaningful while #content is visible -- hidden, offsetTop collapses to 0 -- so
+    // callers read this in preview mode, or after applySourceMode() has flipped back to it.
+    // Depth rather than text is what pairs the two lists: textContent decodes entities while
+    // the source side's label is regex-stripped HTML, so `## A &amp; B` would never compare equal.
+    function getPreviewHeadings() {
+      refreshHeadingOffsets()
+      return cachedHeadings.filter(heading => heading.el).map(heading => ({ top: heading.top, depth: Number(heading.el.tagName.slice(1)) }))
+    }
+
+    function getSourceHeadings(text) {
+      return extractHeadingsFromSource(text, markedLib).map(heading => ({ line: heading.line, depth: heading.depth }))
+    }
+
     return {
       render,
       renderMarkdown,
@@ -953,6 +975,8 @@
       resetEmptyStats,
       refreshTocActive,
       refreshHeadingOffsets,
+      getPreviewHeadings,
+      getSourceHeadings,
       rebuildSourceModeToc,
       clearImageCache,
       clearImageCacheEntry,

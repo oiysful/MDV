@@ -148,7 +148,7 @@ baseline 실패율 ~40%를 가정하면 disable-gpu가 우연히 8회 연속 0�
   - 왜 전체 비율이 아니라 헤딩인가: 미리보기와 소스의 높이 비는 구간마다 다르다(코드블럭은 소스가 길고, 이미지·mermaid·표는 미리보기가 길다).
     전체 비율 하나로는 긴 문서 중간에서 수 화면씩 어긋난다. 헤딩은 양쪽에 1:1로 존재하는 유일한 대응점.
   - **짝 맞추기 가정 실측(2026-10-08)**: `extractHeadingsFromSource`는 최상위 h1~h3만 보고(인용문·목록 안 헤딩은 못 봄, 함수 주석에 기록된 한계),
-    미리보기 `#content h1,h2,h3`는 중첩까지 본다. 이 저장소 `*.md` 83개(tests 제외)에서 두 목록을 비교 → **83/83 완전 일치**(어긋남 0).
+    미리보기 `#content h1,h2,h3`는 중첩까지 본다. 이 저장소 `*.md` 83개(tests 제외)에서 두 목록을 비교 → 83/83 일치. **단 이 측정은 소스 쪽에 전체 텍스트, 미리보기 쪽에 프론트매터를 뗀 본문을 넣었고, 저장소 문서엔 프론트매터가 없어서 프론트매터 문서를 전혀 재지 못했다**(advisor 검토에서 지적). 직접 재 보니 프론트매터는 hr + 문단 + setext `---`로 읽혀 소스 쪽에 가짜 h2가 생겨 **항상 어긋났다** → 3단계 결과에서 수정.
     그래도 중첩 헤딩이 있는 문서는 생길 수 있으므로: 두 목록의 텍스트가 같은 순서로 일치할 때만 헤딩 앵커를 쓰고, 아니면 **암묵적 맨 위·맨 끝
     앵커만**(= 문서 전체 비율)으로 떨어진다 — 틀린 짝을 맞추느니 덜 정확한 쪽.
   - 보간 함수는 순수 함수로 분리해 `tests/unit`에서 검증(앵커 쌍 배열 + 위치 → 반대편 위치).
@@ -203,10 +203,26 @@ baseline 실패율 ~40%를 가정하면 disable-gpu가 우연히 8회 연속 0�
   유지**(포커스는 여전히 rAF로 늦게 온다).
 
 ### 위험
-- 이미지·mermaid가 늦게 렌더되면 이탈 직후 `offsetTop`이 바뀐다 → 이탈 위치 적용은 `render()`가 이미지 해석까지 await한 뒤라 대부분 안전,
-  mermaid는 `runMermaidBlocks` await 뒤. 그 이후의 지연 로딩(KaTeX 폰트 등)은 수 px 수준이라 허용.
+- 이미지·mermaid가 늦게 렌더되면 이탈 직후 `offsetTop`이 바뀐다. `render()`는 data URL **대입**까지만 await하고 디코드는 기다리지 않는다(advisor 지적 —
+  "대부분 안전"은 검증 전 주장이었다). **실측(2026-10-08, 로컬)**: 소스 모드에서 캐시에 없는 새 1200px SVG를 헤딩 바로 위에 넣고 나와도 전환 순간
+  `img.complete`, 높이 1202px, 헤딩은 화면 맨 위 1px — 3회 모두 동일. 이미 열린 900px SVG 위 헤딩도 Electron 테스트로 고정. 남는 위험: 큰 래스터 이미지의
+  디코드가 전환보다 늦는 경우는 재지 않았다 — 생기면 적용 전에 `img.decode()`를 기다리는 것이 처방.
 - `focus({ preventScroll: true })` 이후에도 Chromium이 textarea 내부 스크롤을 건드릴 수 있다 — textarea는 `autoResizeEditor`로 내부 스크롤이
   없으므로(높이 = scrollHeight) 해당 없음을 테스트 1에서 함께 확인.
+
+### 3단계 결과 (2026-10-08)
+- 구현: `markdown.js`에 `getPreviewHeadings`(오프셋 갱신 후 반환)/`getSourceHeadings`, `editor.js`에 순수 함수 `buildAnchorTops`·`captureReadingPosition`·
+  `resolveReadingPosition`·`headingDepthsMatch`·`computeSourceCaret`, `toggleSource`는 전환 전 캡처 → `applySourceMode()` 후 적용, `focusEditor`는 `preventScroll`.
+  분할 뷰 → 소스 전환과 탭 전환 복원은 범위 밖(그대로).
+- 짝 판정은 텍스트가 아니라 **개수 + 깊이**(엔티티 디코딩 차이로 `A &amp; B`가 어긋나는 것을 피함).
+- 새 Electron 테스트 `source-mode-position.test.js` 4건 — 수정 전 코드에서 **올바른 이유로** 실패 확인(진입이 351행=끝, 맨 위 진입도 7309px,
+  이탈이 Section 25 대신 Section 7). 첫 실행은 `createTempMarkdown`이 내용 아닌 경로를 받는 설정 오류였고 메시지를 읽어 걸러냄.
+- 단위 테스트 5건. 변형 검증: 화면 밖 판정 제거 → 단위 실패, 앵커 재생을 전체 비율로 교체 → Electron 3/4 실패(맨 위 진입은 어느 쪽이든 0이라 통과가 맞음).
+- "긴 구간 중간에서 헤딩이 화면 위 밖" 경우는 이 문서 구성의 소스 쪽에서 만들기 어려워(긴 구간이 소스에선 한 줄) 단위 테스트로 검증.
+- **advisor 완료 검토 후 추가**: 프론트매터 문서는 소스 쪽 가짜 h2 때문에 짝이 항상 어긋났다(소스 모드 목차에도 "title: …" 항목이 뜨던 기존 결함) →
+  `extractHeadingsFromSource`가 미리보기와 같은 `extractFrontmatter()`로 본문만 읽고 줄 번호엔 뗀 줄 수를 더함. 단위 1건 + Electron 1건(프론트매터 + 헤딩 위
+  900px 이미지, 진입·이탈 양방향). 수정을 되돌리면 새 Electron 테스트가 실패함을 확인.
+- 전체: unit 273 / controller 13 / Electron 118 통과(프론트매터 수정 후 재측정).
 
 ## 4. audit fix — 2026-10-11 11:56 KST 이후
 
