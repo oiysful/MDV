@@ -267,7 +267,7 @@ Claude App 경로는 OIDC 교환 시 **워크플로가 기본 브랜치(main)와
    `use_sticky_comment: true`로 바꿀지는 4번에서 결정.
    - **이 PR 자신과 이후 릴리스 전까지의 develop PR 리뷰는 401로 실패한다**(main에 아직 같은 파일이 없으므로) — 예상된 실패, 필수 체크 아님.
      그래서 이 변경은 **릴리스 PR 직전**, develop에 마지막으로 들어가는 PR로 한다.
-2. (Ian, 1번 전 아무 때나) Claude GitHub App 설치: https://github.com/apps/claude → `oiysful` → **Only select repositories: `oiysful/MDV`**.
+2. **완료(2026-10-08, Ian — 설치 범위 `oiysful/MDV`만; `gh` 토큰으론 설치 목록을 조회할 수 없어 검증은 3번에서)** Claude GitHub App 설치: https://github.com/apps/claude → `oiysful` → **Only select repositories: `oiysful/MDV`**.
    설치만으로는 아무것도 바뀌지 않는다(워크플로가 `github_token`을 넘기는 동안은 App 토큰을 쓰지 않음).
 3. v1.4.0 develop→main 머지로 main과 develop의 워크플로가 같아짐 → 그다음 develop 대상 PR부터 `claude[bot]`으로 달리는지 확인. 실패하면 로그에서
    `Workflow validation failed`(내용 불일치) / OIDC 오류(`id-token` 누락) / 설치 범위를 순서대로 본다.
