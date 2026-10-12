@@ -86,7 +86,7 @@ baseline 실패율 ~40%를 가정하면 disable-gpu가 우연히 8회 연속 0�
 
 **채택 시**: `MDV_ELECTRON_EXTRA_ARGS` 경로를 develop에 정식 PR로 넣고 `ci-electron.yml`에서만 `--disable-gpu`를 켠다.
 배포 앱은 바뀌지 않는다. AGENTS.md·RELEASING.md의 멈춤 항목을 "CI 전용 우회 + 원인(가상 GPU)"로 갱신하고, 로컬은 GPU 그대로라는 점을 명시.
-**기각 시** 다음 후보를 같은 틀로: (a) Electron 44.7.0(쿨다운 10-15 04:26 KST 이후 — 5단계와 합침), (b) 러너 이미지 고정(`macos-14`/`macos-15`),
+**기각 시** 다음 후보를 같은 틀로: (a) Electron 44.7.0(쿨다운 10-11 04:26 KST 이후 — 5단계와 합침), (b) 러너 이미지 고정(`macos-14`/`macos-15`),
 (c) 끝까지 안 되면 Ian과 Electron 43(EOL 2027-01-05) 회귀 논의.
 
 **비용**: 공개 저장소라 러너 비용 0. 16잡 × ~5분, macOS 동시 실행 상한 때문에 실측 25~40분.
@@ -230,7 +230,9 @@ baseline 실패율 ~40%를 가정하면 disable-gpu가 우연히 8회 연속 0�
 lockfile diff가 그 두 패키지(와 직접 부모)만 건드리는지 확인, `npm audit --audit-level=high` 0건 확인, unit/controller/Electron 통과 → PR → `memory-security.md` PENDING 항목 정리.
 쿨다운 경고("left at a vulnerable version because a fix is newer than the release-age cutoff")가 나오면 시각 계산을 다시 확인.
 
-## 5. Electron 44.7.0 패치 업그레이드 — 2026-10-15 04:26 KST 이후
+## 5. Electron 44.7.0 패치 업그레이드 — 2026-10-11 04:26 KST 이후
+
+2026-10-12 쿨다운을 7일 → 3일로 줄여(`memory-security.md` 같은 날 항목) 착수 시각이 10-15에서 10-11로 당겨졌다 — 이미 설치 가능.
 
 44.4.5 → 44.7.0(같은 메이저, Chromium·V8 보안 백포트 포함). 1단계가 지지로 끝나 CI는 `--disable-gpu`로 돌므로 멈춤 비교는 필수가 아니다(2026-10-08 갱신).
 선택: 44.7.0이 하드웨어 가속 경로의 멈춤을 고쳤는지 보고 싶으면 1단계와 같은 실험(baseline/disable-gpu 8+8)을 업그레이드 브랜치에서 한 번 — 고쳤다면 CI 우회를 걷어낼 근거가 된다. 패키징 확인은 worktree에서 실제 `npm ci` 후(메모리: symlink된 node_modules는
@@ -284,7 +286,7 @@ Claude App 경로는 OIDC 교환 시 **워크플로가 기본 브랜치(main)와
 | 2 목차 #61 | 즉시(1과 병행 가능, 다른 파일) | 1의 matrix 결과를 재발 빈도로 활용 |
 | 3 소스 모드 진입 위치 | 즉시(4를 기다리는 동안) | — |
 | 4 audit fix | 10-11 11:56 KST | — |
-| 5 Electron 44.7.0 | 10-15 04:26 KST | 멈춤 재실험은 선택(1단계 지지로 CI 우회 중) |
+| 5 Electron 44.7.0 | 10-11 04:26 KST(쿨다운 3일) | 멈춤 재실험은 선택(1단계 지지로 CI 우회 중) |
 | 6 보안 재감사 | 4·5 머지 후 | 의존성이 확정된 뒤에 봐야 의미 |
 | 7 릴리스 | 1~6 완료 후 | 1의 결론이 "열림"이어도 RELEASING 박스 규칙에 따라 진행 가능 — Ian 판단 |
 | 7a 리뷰 봇 `claude[bot]` 전환 | 릴리스 PR 직전(develop 마지막 PR) | Ian의 Claude App 설치(아무 때나) |
