@@ -7,7 +7,7 @@
 
 MDV keeps two long-lived branches. **`develop` is where work integrates**; **`main` holds released code only** and moves when a release is deliberately decided. Everything else is a short-lived branch that lands through a pull request.
 
-`main`, `develop`, and `release/*` are protected by a repository ruleset against force pushes and deletion. There are no required status checks, so CI is advisory rather than blocking — read it before merging.
+`main` and `develop` are protected by a repository ruleset against force pushes and deletion. There are no required status checks, so CI is advisory rather than blocking — read it before merging.
 
 ## Workflow
 
