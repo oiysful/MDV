@@ -162,4 +162,5 @@ Current build outputs:
 - The Homebrew cask and all release builds target Apple Silicon (arm64) only; there is no Intel (x64) build.
 - Requires macOS 13 (Ventura) or later.
 - The interface is Korean only; there is no localization yet. UI labels quoted in this README are shown in Korean with an English gloss.
+- Math renders only inside `math` / `latex` code fences; inline `$…$` and `$$…$$` math in ordinary text is shown as plain text.
 - Session restore persists only the last-focused window's state (file paths + active tab index + explorer root); multi-window session merging is out of scope for v1.
