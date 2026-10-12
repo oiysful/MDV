@@ -244,6 +244,8 @@ electron-builder가 무시). 44.7.0 이후 더 새 패치가 나와도 쿨다운
 
 ## 6. 보안 재감사 — `/security-audit`
 
+**완료(2026-10-12): 91/100**, critical·high 0, medium 1. `security-report.md` 참고. M1 — 서드파티 Actions가 바뀔 수 있는 태그로 고정돼 있다(`softprops/action-gh-release@v3`는 릴리스 잡에서 zip·SHA256SUMS·tap 단계와 같은 러너, `anthropics/claude-code-action@v1`). **v1.4.0 태그 전에 커밋 SHA로 고정**(Ian 승인 후). 7a와 같은 PR에 묶으면 자연스럽다.
+
 마지막 전체 감사 2026-09-17(재감사 96/100, M1·M2 수정 확인됨). 이후 바뀐 공격면: Electron 44, js-yaml 5 + Gitea식 프론트매터 렌더러(#33·#34·#35),
 대화상자 시작 폴더(#31), PR 리뷰 봇 워크플로와 새 secret(#36). 결과는 `security-report.md`·`memory-security.md` 점수 이력에.
 high 이상이 나오면 릴리스 전 수정, 그 이하는 Ian 판단.
@@ -291,6 +293,6 @@ Claude App 경로는 OIDC 교환 시 **워크플로가 기본 브랜치(main)와
 | 3 소스 모드 진입 위치 | 즉시(4를 기다리는 동안) | — |
 | 4 audit fix | 완료 2026-10-12 | — |
 | 5 Electron 44.7.0 | 완료 2026-10-12 | 멈춤 재실험은 선택(1단계 지지로 CI 우회 중) |
-| 6 보안 재감사 | 4·5 머지 후 | 의존성이 확정된 뒤에 봐야 의미 |
+| 6 보안 재감사 | 완료 2026-10-12 (91/100) | M1 Actions SHA 고정은 7 전에 |
 | 7 릴리스 | 1~6 완료 후 | 1의 결론이 "열림"이어도 RELEASING 박스 규칙에 따라 진행 가능 — Ian 판단 |
 | 7a 리뷰 봇 `claude[bot]` 전환 | 릴리스 PR 직전(develop 마지막 PR) | Ian의 Claude App 설치(아무 때나) |
