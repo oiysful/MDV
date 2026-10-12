@@ -55,7 +55,7 @@
       "items": [
         "워크플로는 릴리스 본문을 만들지 않는다 — gh release edit 로 사람이 붙인다",
         "README 의 dist/MDV-X.Y.Z 예시 경로는 손으로 갱신해야 한다",
-        "서명·공증이 없어 autoUpdater 를 못 쓴다 — 인앱 배너는 알림 전용이다"
+        "탭 스크립트는 version · sha256 두 줄만 바꾼다 — depends_on macos 와 postflight_steps 는 손으로 둔 줄이다"
       ]
     },
     {

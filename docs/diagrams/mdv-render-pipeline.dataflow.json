@@ -16,7 +16,7 @@
   "nodes": [
     { "id": "file", "type": "database", "label": "원본 .md 텍스트", "sublabel": "readFile 결과", "stage": 0, "row": 1 },
     { "id": "lazy", "type": "messagebus", "label": "지연 로드 판단", "sublabel": "mermaid · KaTeX", "stage": 1, "row": 0, "tag": "펜스 없으면 비용 0" },
-    { "id": "frontmatter", "type": "backend", "label": "프론트매터 분리", "sublabel": "js-yaml.load()", "stage": 1, "row": 1, "tag": "매 렌더 실행" },
+    { "id": "frontmatter", "type": "backend", "label": "프론트매터 분리", "sublabel": "js-yaml 5 → 표", "stage": 1, "row": 1, "tag": "렌더 예산" },
     { "id": "images", "type": "backend", "label": "로컬 이미지 치환", "sublabel": "data: URI", "stage": 1, "row": 2, "tag": "확장자 제한" },
     { "id": "fences", "type": "backend", "label": "펜스 특수 처리", "sublabel": "mermaid · latex · math", "stage": 2, "row": 0, "tag": "원본은 base64" },
     { "id": "marked", "type": "backend", "label": "marked 렌더", "sublabel": "GFM · highlight.js", "stage": 2, "row": 1, "tag": "알림 인용 확장" },
@@ -43,7 +43,7 @@
       "dot": "emerald",
       "title": "무조건 도는 것과 아닌 것",
       "items": [
-        "프론트매터 분리는 모든 render() 맨 위에서 무조건 돈다",
+        "프론트매터는 모든 render() 맨 위에서 분리되어 Gitea식 가로 표가 된다",
         "mermaid 와 KaTeX 는 해당 펜스가 본문에 있을 때만 주입된다",
         "두 펜스가 없는 문서는 두 라이브러리 비용을 한 번도 내지 않는다"
       ]
@@ -54,7 +54,7 @@
       "items": [
         "marked 결과는 DOMPurify 를 지나기 전에는 화면에 닿지 않는다",
         "DOMPurify 는 값에 > 가 든 속성을 지운다 — mermaid 원본은 base64 로 넣는다",
-        "CSP 는 원격 스크립트도 원격 이미지도 아예 허용하지 않는다"
+        "프론트매터 표도 따로 정화되며, 값 5000개 · 10만 자 · 깊이 100 예산이 별칭 폭증을 막는다"
       ]
     },
     {

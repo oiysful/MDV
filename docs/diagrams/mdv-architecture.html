@@ -5266,8 +5266,8 @@ OTHER DEALINGS IN THE FONT SOFTWARE.
         <text data-detail="fine" x="740" y="502" class="t-messagebus" font-size="7" text-anchor="middle">경로별 구독자 맵</text>
         </g>
 
-        <g id="node-session" data-node-id="session" data-node-label="userData 상태" tabindex="0" role="button" aria-label="Focus userData 상태, session.json, 메인 프로세스 (특권 영역)" aria-pressed="false" data-node-kind="database" data-node-sublabel="session.json" data-node-context="메인 프로세스 (특권 영역)">
-          <title>userData 상태 · session.json · 메인 프로세스 (특권 영역)</title>
+        <g id="node-session" data-node-id="session" data-node-label="userData 상태" tabindex="0" role="button" aria-label="Focus userData 상태, session · update-check, 메인 프로세스 (특권 영역)" aria-pressed="false" data-node-kind="database" data-node-sublabel="session · update-check" data-node-context="메인 프로세스 (특권 영역)">
+          <title>userData 상태 · session · update-check · 메인 프로세스 (특권 영역)</title>
           <rect x="840" y="450" width="140" height="60" rx="6" class="c-mask"/>
           <rect x="840" y="450" width="140" height="60" rx="6" class="c-database" stroke-width="1.5"/>
           <g aria-hidden="true" data-semantic-sigil="database" class="semantic-sigil s-database" transform="translate(846 456) scale(0.6875)">
@@ -5275,7 +5275,7 @@ OTHER DEALINGS IN THE FONT SOFTWARE.
             <path d="M3 4v8c0 1.1 2.2 2 5 2s5-.9 5-2V4M3 8c0 1.1 2.2 2 5 2s5-.9 5-2"/>
           </g>
           <text data-node-label="" data-detail-anchor="" x="910" y="478" class="t-primary" font-size="11" font-weight="600" text-anchor="middle">userData 상태</text>
-        <text data-detail="context" x="910" y="494" class="t-muted" font-size="9" text-anchor="middle">session.json</text>
+        <text data-detail="context" x="910" y="494" class="t-muted" font-size="9" text-anchor="middle">session · update-check</text>
         </g>
 
         <g id="node-fs" data-node-id="fs" data-node-label="로컬 파일시스템" tabindex="0" role="button" aria-label="Focus 로컬 파일시스템, 사용자 .md 문서, Architecture component" aria-pressed="false" data-node-kind="database" data-node-sublabel="사용자 .md 문서" data-node-context="Architecture component">
@@ -5600,8 +5600,8 @@ OTHER DEALINGS IN THE FONT SOFTWARE.
         </div>
         <ul>
           <li>&bull; 파일 감시는 경로별 { watcher, subscribers } 맵 — 마지막 구독자가 떠날 때만 닫힌다</li>
-          <li>&bull; 디렉터리 감시는 깊이 1단계, dist/node_modules 등을 제외하고 경로 수 상한에서 스스로 멈춘다</li>
-          <li>&bull; session.json은 메인 프로세스가 쓰며, 빈 세션(탭 0개 + 루트 없음)은 절대 덮어쓰지 않는다</li>
+          <li>&bull; 디렉터리 감시는 깊이 1단계·경로 수 상한, /Volumes 아래 경로는 kqueue 대신 poll 백엔드로 감시한다</li>
+          <li>&bull; session.json은 빈 세션으로 절대 덮어쓰지 않고, update-check.json은 릴리스 확인을 24시간에 한 번으로 묶는다</li>
         </ul>
       </div>
     </div>

@@ -5212,16 +5212,16 @@ OTHER DEALINGS IN THE FONT SOFTWARE.
         <text data-detail="fine" x="315" y="175" class="t-messagebus" font-size="7" text-anchor="middle">펜스 없으면 비용 0</text>
         </g>
 
-        <g id="node-frontmatter" data-node-id="frontmatter" data-node-label="프론트매터 분리" tabindex="0" role="button" aria-label="Focus 프론트매터 분리, js-yaml.load(), 02 / 전처리" aria-pressed="false" data-node-kind="backend" data-node-sublabel="js-yaml.load()" data-node-tag="매 렌더 실행" data-node-context="02 / 전처리">
-          <title>프론트매터 분리 · js-yaml.load() · 02 / 전처리 · 매 렌더 실행</title>
+        <g id="node-frontmatter" data-node-id="frontmatter" data-node-label="프론트매터 분리" tabindex="0" role="button" aria-label="Focus 프론트매터 분리, js-yaml 5 → 표, 02 / 전처리" aria-pressed="false" data-node-kind="backend" data-node-sublabel="js-yaml 5 → 표" data-node-tag="렌더 예산" data-node-context="02 / 전처리">
+          <title>프론트매터 분리 · js-yaml 5 → 표 · 02 / 전처리 · 렌더 예산</title>
           <rect x="259" y="242" width="112" height="58" rx="6" class="c-mask"/>
           <rect x="259" y="242" width="112" height="58" rx="6" class="c-backend" stroke-width="1.5"/>
           <g aria-hidden="true" data-semantic-sigil="backend" class="semantic-sigil s-backend" transform="translate(265 248) scale(0.6875)">
             <path d="M6 3 3 8l3 5M10 3l3 5-3 5"/>
           </g>
           <text data-node-label="" data-detail-anchor="" x="315" y="263" class="t-primary" font-size="10" font-weight="600" text-anchor="middle">프론트매터 분리</text>
-          <text data-detail="context" x="315" y="279" class="t-muted" font-size="7" text-anchor="middle">js-yaml.load()</text>
-        <text data-detail="fine" x="315" y="289" class="t-backend" font-size="7" text-anchor="middle">매 렌더 실행</text>
+          <text data-detail="context" x="315" y="279" class="t-muted" font-size="7" text-anchor="middle">js-yaml 5 → 표</text>
+        <text data-detail="fine" x="315" y="289" class="t-backend" font-size="7" text-anchor="middle">렌더 예산</text>
         </g>
 
         <g id="node-images" data-node-id="images" data-node-label="로컬 이미지 치환" tabindex="0" role="button" aria-label="Focus 로컬 이미지 치환, data: URI, 02 / 전처리" aria-pressed="false" data-node-kind="backend" data-node-sublabel="data: URI" data-node-tag="확장자 제한" data-node-context="02 / 전처리">
@@ -5571,7 +5571,7 @@ OTHER DEALINGS IN THE FONT SOFTWARE.
           <h3>무조건 도는 것과 아닌 것</h3>
         </div>
         <ul>
-          <li>&bull; 프론트매터 분리는 모든 render() 맨 위에서 무조건 돈다</li>
+          <li>&bull; 프론트매터는 모든 render() 맨 위에서 분리되어 Gitea식 가로 표가 된다</li>
           <li>&bull; mermaid 와 KaTeX 는 해당 펜스가 본문에 있을 때만 주입된다</li>
           <li>&bull; 두 펜스가 없는 문서는 두 라이브러리 비용을 한 번도 내지 않는다</li>
         </ul>
@@ -5585,7 +5585,7 @@ OTHER DEALINGS IN THE FONT SOFTWARE.
         <ul>
           <li>&bull; marked 결과는 DOMPurify 를 지나기 전에는 화면에 닿지 않는다</li>
           <li>&bull; DOMPurify 는 값에 &gt; 가 든 속성을 지운다 — mermaid 원본은 base64 로 넣는다</li>
-          <li>&bull; CSP 는 원격 스크립트도 원격 이미지도 아예 허용하지 않는다</li>
+          <li>&bull; 프론트매터 표도 따로 정화되며, 값 5000개 · 10만 자 · 깊이 100 예산이 별칭 폭증을 막는다</li>
         </ul>
       </div>
 
