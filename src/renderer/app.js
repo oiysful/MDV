@@ -409,7 +409,7 @@ async function restoreSession(payload) {
   }
 
   const skipped = savedPaths.length - created.length
-  if (skipped > 0) runtimeController.showToast(`${skipped}개 파일을 열 수 없어 건너뛰었습니다`)
+  if (skipped > 0) runtimeController.showToast(window.MDVI18n.t('toast.skippedFiles', skipped))
 
   if (payload.explorerRoot) {
     await explorerController.restoreRoot(payload.explorerRoot)

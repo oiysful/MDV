@@ -284,7 +284,8 @@ test('native menu registers the ⌘B sidebar and ⌘⇧O folder-open accelerator
 // app.name by default, so fixing the name must not move the data folder every earlier release
 // wrote to (plan 31).
 test('the app menu names the app MDV while userData stays in the lowercase mdv folder', async () => {
-  const { electronApp, page } = await launchApp()
+  // English, so the role labels can be compared with what Electron would show on its own.
+  const { electronApp, page } = await launchApp({ locale: 'en' })
 
   try {
     await page.waitForSelector('#empty')

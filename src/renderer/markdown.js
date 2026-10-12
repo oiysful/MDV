@@ -1,4 +1,7 @@
 (function (globalScope) {
+  // Browser: index.html loads i18n.js first, which puts it on globalScope. Node (unit tests via
+  // require()): no script tag ran, so require it -- same fallback shape as markdown.js's js-yaml.
+  const { t } = globalScope.MDVI18n || require('./i18n.js')
   // Browser (nodeIntegration:false): index.html's <script> tag puts the UMD build on
   // globalScope.jsyaml. Node (unit tests via require()): no such script tag ran, so fall
   // back to a real require -- mirrors sanitizeHtml's DOMPurify-or-escape degrade pattern.
@@ -227,7 +230,7 @@
   const FRONTMATTER_NODE_BUDGET = 5000
   const FRONTMATTER_CHAR_BUDGET = 100000
   const FRONTMATTER_MAX_DEPTH = 100
-  const FRONTMATTER_TRUNCATED = '<span class="frontmatter-truncated" title="생략됨">…</span>'
+  const frontmatterTruncated = () => `<span class="frontmatter-truncated" title="${escapeHtml(t('frontmatter.truncated'))}">…</span>`
 
   function createFrontmatterRenderContext() {
     return { nodes: FRONTMATTER_NODE_BUDGET, chars: FRONTMATTER_CHAR_BUDGET, depth: 0, onPath: new WeakSet() }
@@ -247,11 +250,11 @@
     }
     const kept = end < raw.length ? raw.slice(0, end) : raw
     ctx.chars -= kept.length
-    return escapeHtml(kept) + (kept.length < raw.length ? FRONTMATTER_TRUNCATED : '')
+    return escapeHtml(kept) + (kept.length < raw.length ? frontmatterTruncated() : '')
   }
 
   function renderFrontmatterValue(value, ctx) {
-    if (frontmatterBudgetSpent(ctx)) return FRONTMATTER_TRUNCATED
+    if (frontmatterBudgetSpent(ctx)) return frontmatterTruncated()
     ctx.nodes -= 1
     if (value === null || value === undefined) return ''
     if (value instanceof Date) return renderFrontmatterText(formatFrontmatterDate(value), ctx)
@@ -261,7 +264,7 @@
     // than the budget can render (Object.entries on it would allocate one entry per byte).
     if (ArrayBuffer.isView(value)) return renderFrontmatterArray(Array.prototype.slice.call(value, 0, ctx.nodes + 1), ctx)
     if (typeof value === 'object') {
-      if (ctx.onPath.has(value) || ctx.depth >= FRONTMATTER_MAX_DEPTH) return FRONTMATTER_TRUNCATED
+      if (ctx.onPath.has(value) || ctx.depth >= FRONTMATTER_MAX_DEPTH) return frontmatterTruncated()
       ctx.onPath.add(value)
       ctx.depth += 1
       try {
@@ -280,7 +283,7 @@
     const composite = items.some(isFrontmatterComposite)
     const parts = []
     for (const item of items) {
-      if (frontmatterBudgetSpent(ctx)) { parts.push(FRONTMATTER_TRUNCATED); break }
+      if (frontmatterBudgetSpent(ctx)) { parts.push(frontmatterTruncated()); break }
       const html = renderFrontmatterValue(item, ctx)
       parts.push(composite ? `<div class="frontmatter-item">${html}</div>` : html)
     }
@@ -292,7 +295,7 @@
     if (!entries.length) return ''
     const lines = []
     for (const [key, value] of entries) {
-      if (frontmatterBudgetSpent(ctx)) { lines.push(`<div class="frontmatter-pair">${FRONTMATTER_TRUNCATED}</div>`); break }
+      if (frontmatterBudgetSpent(ctx)) { lines.push(`<div class="frontmatter-pair">${frontmatterTruncated()}</div>`); break }
       lines.push(`<div class="frontmatter-pair"><span class="frontmatter-key">${renderFrontmatterText(key, ctx)}:</span> ${renderFrontmatterValue(value, ctx)}</div>`)
     }
     return `<div class="frontmatter-object">${lines.join('')}</div>`
@@ -320,7 +323,7 @@
       return `<td${noWrap ? ' class="frontmatter-nowrap"' : ''}>${renderFrontmatterValue(value, ctx)}</td>`
     }).join('')
     return `<details class="frontmatter-content"><summary title="${keyList}">`
-      + `<span class="visually-hidden">메타데이터: </span>${FRONTMATTER_ICON}<span class="frontmatter-keys">${keyList}</span></summary>`
+      + `<span class="visually-hidden">${escapeHtml(t('frontmatter.metadata'))}</span>${FRONTMATTER_ICON}<span class="frontmatter-keys">${keyList}</span></summary>`
       + `<div class="frontmatter-scroll"><table style="--fm-keys: ${fields.length}"><thead><tr>${head}</tr></thead><tbody><tr>${cells}</tr></tbody></table></div></details>`
   }
 
@@ -468,7 +471,7 @@
       // when there is text to show, so an empty pill never occupies layout space.
       const langRow = langId ? `<div class="code-lang-row"><span class="code-lang">${escapeHtml(langId)}</span></div>` : ''
       const copyIcon = '<svg class="icon-copy" aria-hidden="true" width="12" height="12" viewBox="0 0 13 13" fill="none"><rect x="4.5" y="4.5" width="8" height="8" rx="1" stroke="currentColor" stroke-width="1.3"/><path d="M2.5 10.5V2.5h8" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"/></svg>'
-      return `<div class="code-wrapper">${langRow}<pre><code class="hljs">${hl}</code></pre><button class="copy-btn" type="button" data-command="copyCode" data-command-element="true" aria-label="코드 복사">${copyIcon}</button></div>`
+      return `<div class="code-wrapper">${langRow}<pre><code class="hljs">${hl}</code></pre><button class="copy-btn" type="button" data-command="copyCode" data-command-element="true" aria-label="${escapeHtml(t('code.copy'))}" data-tooltip="${escapeHtml(t('code.copyTooltip'))}">${copyIcon}</button></div>`
     }
 
     // GitHub-style alert blockquotes (`> [!NOTE]` etc, docs.github.com "Alerts"). Icons match
@@ -718,8 +721,8 @@
         return
       }
       refs.stats.classList.remove('empty')
-      refs.sWords.textContent = `${words.toLocaleString()} 단어`
-      refs.sTime.textContent = `약 ${minutes}분`
+      refs.sWords.textContent = t('doc.words', words)
+      refs.sTime.textContent = t('doc.minutes', minutes)
     }
 
     function buildToc() {

@@ -1,4 +1,7 @@
 (function (globalScope) {
+  // Browser: index.html loads i18n.js first, which puts it on globalScope. Node (unit tests via
+  // require()): no script tag ran, so require it -- same fallback shape as markdown.js's js-yaml.
+  const { t } = globalScope.MDVI18n || require('./i18n.js')
   function getLoadTargetsFromOpenResult(data) {
     if (!data || data.cancelled) return []
     if (Array.isArray(data.files)) return data.files
@@ -28,8 +31,8 @@
   }
 
   const SAVE_CONFLICT_PROMPTS = {
-    changed: '이 파일이 외부에서 변경되었습니다. 편집 중인 내용으로 덮어쓰시겠습니까?',
-    unreadable: '이 파일의 디스크 상태를 확인할 수 없습니다. 그래도 덮어쓰시겠습니까?',
+    get changed() { return t('confirm.overwriteChanged') },
+    get unreadable() { return t('confirm.overwriteUnreadable') },
   }
 
   function createDocumentFlowController({ api, getWorkspaceController, getEditorController, setMarkdown, showToast, alertError, confirmOverwrite, clearImageCache }) {
@@ -59,7 +62,7 @@
 
     async function load(data) {
       if (data.error) {
-        alertError('파일 오류: ' + data.error)
+        alertError(t('error.file', data.error))
         return null
       }
       if (data.cancelled) return null
@@ -98,7 +101,7 @@
       // external-change cache clear. Do it here instead, since this save may have
       // also changed an image the document references.
       clearImageCache?.()
-      showToast('저장됨')
+      showToast(t('toast.saved'))
     }
 
     async function saveFile() {
@@ -130,7 +133,7 @@
 
       const res = await api.saveFile(tab.path, tab.content)
       if (res.error) {
-        alertError('저장 실패: ' + res.error)
+        alertError(t('error.saveFailed', res.error))
         return
       }
       updateTabAfterSave(tab, tab.path, res.filename || tab.filename)
@@ -155,7 +158,7 @@
 
       const res = await api.saveFile(dlg.path, tab.content)
       if (res.error) {
-        alertError('저장 실패: ' + res.error)
+        alertError(t('error.saveFailed', res.error))
         return
       }
       updateTabAfterSave(tab, dlg.path, res.filename)

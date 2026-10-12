@@ -1,5 +1,8 @@
 (function (globalScope) {
-  const EXPLORER_EMPTY_HTML = '<div class="tree-hint">위의 <strong>열기</strong> 버튼으로<br>폴더를 열어 탐색하세요.</div>'
+  // Browser: index.html loads i18n.js first, which puts it on globalScope. Node (unit tests via
+  // require()): no script tag ran, so require it -- same fallback shape as markdown.js's js-yaml.
+  const { t } = globalScope.MDVI18n || require('./i18n.js')
+  const explorerEmptyHtml = () => `<div class="tree-hint">${t('explorer.emptyHint')}</div>`
   const FOLDER_CLOSED_SVG = '<svg width="14" height="14" viewBox="0 0 16 16" fill="none" aria-hidden="true"><path d="M1.75 4.75A1.75 1.75 0 0 1 3.5 3h2.35c.34 0 .67.12.93.34l1.12.91c.13.11.3.16.47.16h4.13a1.75 1.75 0 0 1 1.75 1.75v5.34a1.75 1.75 0 0 1-1.75 1.75H3.5a1.75 1.75 0 0 1-1.75-1.75V4.75Z" stroke="currentColor" stroke-width="1.25" stroke-linejoin="round"/></svg>'
   const FOLDER_OPEN_SVG = '<svg width="14" height="14" viewBox="0 0 16 16" fill="none" aria-hidden="true"><path d="M1.75 5.25V4.75A1.75 1.75 0 0 1 3.5 3h2.14c.34 0 .67.11.94.33l1.15.92c.13.1.29.15.46.15h4.31a1.75 1.75 0 0 1 1.75 1.75v.35" stroke="currentColor" stroke-width="1.25" stroke-linejoin="round"/><path d="M1 6.75L1.9 5.65A1.5 1.5 0 0 1 3.06 5.1H12.46A1.5 1.5 0 0 1 13.62 5.65L14.52 6.75 13.6 11.3A1.5 1.5 0 0 1 12.16 12.5H3.36A1.5 1.5 0 0 1 1.92 11.3Z" stroke="currentColor" stroke-width="1.25" stroke-linejoin="round"/></svg>'
   const FILE_SVG = '<svg width="14" height="14" viewBox="0 0 16 16" fill="none" aria-hidden="true"><path d="M4 2.75h4.88c.33 0 .65.13.88.36l2.88 2.88c.23.23.36.55.36.88V13A1.25 1.25 0 0 1 11.75 14.25h-7.5A1.25 1.25 0 0 1 3 13V4A1.25 1.25 0 0 1 4.25 2.75H4Z" stroke="currentColor" stroke-width="1.25" stroke-linejoin="round"/><path d="M8.75 2.75V6.5h3.75" stroke="currentColor" stroke-width="1.25" stroke-linejoin="round"/></svg>'
@@ -13,7 +16,7 @@
   }
 
   function getExplorerRootLabel(root, showFullPath) {
-    if (!root) return '폴더를 선택하세요'
+    if (!root) return t('explorer.selectFolder')
     return showFullPath ? root : root.split('/').pop() || root
   }
 
@@ -151,8 +154,8 @@
     api.onDirectoryWatchUnavailable?.(payload => {
       if (payload?.path !== currentExplorerRoot) return
       showToast?.(payload.reason === 'overflow'
-        ? '폴더가 너무 커서 실시간 변경 감지를 껐습니다'
-        : '폴더의 실시간 변경 감지가 중단되었습니다')
+        ? t('explorer.watchTooLarge')
+        : t('explorer.watchStopped'))
     })
 
     async function openFileRow(row, event) {
@@ -237,7 +240,7 @@
       if (currentExplorerRoot) api.unwatchDirectory?.(currentExplorerRoot)
       currentExplorerRoot = null
       explorerShowFullPath = false
-      refs.explorerTree.innerHTML = EXPLORER_EMPTY_HTML
+      refs.explorerTree.innerHTML = explorerEmptyHtml()
       syncExplorerHeader()
       onExplorerRootChanged?.()
     }
@@ -293,7 +296,7 @@
       const focusedPath = isRoot && document.activeElement?.classList?.contains('tree-row')
         ? document.activeElement.dataset.path
         : null
-      container.innerHTML = '<div class="tree-hint">로드 중…</div>'
+      container.innerHTML = `<div class="tree-hint">${t('explorer.loading')}</div>`
       const res = await api.listDirectory(path)
       container.innerHTML = ''
       if (res.error) {
@@ -306,7 +309,7 @@
         return
       }
       if (!res.entries.length) {
-        container.innerHTML = '<div class="tree-hint">.md 파일 없음</div>'
+        container.innerHTML = `<div class="tree-hint">${t('explorer.noMarkdown')}</div>`
         return
       }
       res.entries.forEach(entry => { renderTreeEntry(entry, container, depth) })
@@ -363,7 +366,7 @@
           event.preventDefault()
           showAppContextMenu(event.clientX, event.clientY, [
             {
-              label: '폴더 닫기',
+              label: t('action.closeFolder'),
               action: () => clearExplorerRoot(),
             },
           ])

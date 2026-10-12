@@ -1,4 +1,7 @@
 (function (globalScope) {
+  // Browser: index.html loads i18n.js first, which puts it on globalScope. Node (unit tests via
+  // require()): no script tag ran, so require it -- same fallback shape as markdown.js's js-yaml.
+  const { t } = globalScope.MDVI18n || require('./i18n.js')
   function findTabByPathInTabs(tabs, targetPath) {
     if (!targetPath) return null
     return tabs.find(tab => tab.path === targetPath) || null
@@ -276,13 +279,13 @@
         const marker = tab.conflictPending ? '⚠ ' : (!isDeleted && tab.dirty ? '● ' : '')
         name.textContent = `${marker}${tab.filename}`
         name.classList.toggle('file-tab-name--deleted', isDeleted)
-        if (tab.conflictPending) name.title = '이 파일이 외부에서 변경되었습니다. 탭을 열면 확인합니다.'
-        else if (isDeleted) name.title = '이 파일이 외부에서 삭제되었습니다. 저장하면 다시 생성됩니다.'
+        if (tab.conflictPending) name.title = t('tabs.conflict')
+        else if (isDeleted) name.title = t('tabs.deleted')
         const closeButton = document.createElement('button')
         closeButton.className = 'file-tab-close'
         closeButton.innerHTML = '&times;'
-        closeButton.title = '탭 닫기'
-        closeButton.setAttribute('aria-label', '탭 닫기')
+        closeButton.title = t('action.closeTab')
+        closeButton.setAttribute('aria-label', t('action.closeTab'))
         el.title = tab.filename
         el.append(name, closeButton)
         el.addEventListener('click', () => switchToTab(tab.id))
@@ -295,9 +298,9 @@
         el.addEventListener('contextmenu', event => {
           event.preventDefault()
           showAppContextMenu(event.clientX, event.clientY, [
-            { label: '새 창으로 열기', action: () => openTabInNewWindow(tab.id) },
-            { label: '다른 탭 닫기', action: () => closeOtherTabs(tab.id) },
-            { label: '모든 탭 닫기', action: () => closeAllTabs() },
+            { label: t('tabs.openInNewWindow'), action: () => openTabInNewWindow(tab.id) },
+            { label: t('tabs.closeOthers'), action: () => closeOtherTabs(tab.id) },
+            { label: t('tabs.closeAll'), action: () => closeAllTabs() },
           ])
         })
         closeButton.addEventListener('click', event => {
@@ -476,7 +479,7 @@
     function closeTab(tabId) {
       const idx = tabs.findIndex(tab => tab.id === tabId)
       if (idx === -1) return
-      if (tabs[idx].dirty && !confirmClose('저장하지 않은 변경 사항이 있습니다. 닫으시겠습니까?')) return
+      if (tabs[idx].dirty && !confirmClose(t('confirm.closeDirtyTab'))) return
       if (tabId === activeTabId) closeSearch?.()
       const nextActiveTabId = getNextActiveTabIdAfterClose(tabs, tabId, activeTabId)
       const [closedTab] = tabs.splice(idx, 1)
@@ -500,7 +503,7 @@
       const target = tabs.find(tab => tab.id === tabId)
       if (!target) return
       const dirtyOthers = tabs.some(tab => tab.id !== tabId && tab.dirty)
-      if (dirtyOthers && !confirmClose('저장하지 않은 변경 사항이 있는 다른 탭이 있습니다. 닫으시겠습니까?')) return
+      if (dirtyOthers && !confirmClose(t('confirm.closeOthersDirty'))) return
       closeSearch?.()
       for (const tab of tabs) {
         if (tab.id !== tabId) releaseTabWatches(tab)
@@ -514,7 +517,7 @@
 
     function closeAllTabs() {
       const hasDirty = tabs.some(tab => tab.dirty)
-      if (hasDirty && !confirmClose('저장하지 않은 변경 사항이 있는 탭이 있습니다. 모두 닫으시겠습니까?')) return
+      if (hasDirty && !confirmClose(t('confirm.closeAllDirty'))) return
       closeSearch?.()
       for (const tab of tabs) releaseTabWatches(tab)
       tabs = []
@@ -583,7 +586,7 @@
       const pending = tab.conflictPending
       if (!pending) return
       tab.conflictPending = null
-      const reload = confirmClose(`"${tab.filename}"이(가) 외부에서 변경되었습니다. 편집 중인 내용을 버리고 디스크 내용으로 다시 불러오시겠습니까?`)
+      const reload = confirmClose(t('confirm.reloadChanged', tab.filename))
       if (!reload) {
         renderTabBar()
         return
@@ -647,7 +650,7 @@
       }
 
       if (action === 'confirm') {
-        const reload = confirmClose(`"${tab.filename}"이(가) 외부에서 변경되었습니다. 편집 중인 내용을 버리고 디스크 내용으로 다시 불러오시겠습니까?`)
+        const reload = confirmClose(t('confirm.reloadChanged', tab.filename))
         if (!reload) {
           renderTabBar()
           return

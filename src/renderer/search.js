@@ -1,4 +1,7 @@
 (function (globalScope) {
+  // Browser: index.html loads i18n.js first, which puts it on globalScope. Node (unit tests via
+  // require()): no script tag ran, so require it -- same fallback shape as markdown.js's js-yaml.
+  const { t } = globalScope.MDVI18n || require('./i18n.js')
   function escapeRegExp(text) {
     return text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
   }
@@ -159,7 +162,7 @@
         countNode.textContent = `1/${searchMatches.length}`
         selectEditorMatch(false)
       } else {
-        countNode.textContent = '없음'
+        countNode.textContent = t('search.none')
       }
     }
 
@@ -207,7 +210,7 @@
         searchIndex = 0
         highlightCurrent()
       } else {
-        countNode.textContent = '없음'
+        countNode.textContent = t('search.none')
       }
     }
 

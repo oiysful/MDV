@@ -87,6 +87,7 @@ MDV_RELEASE_TAG=v1.0.0 npm run install:release
 - GFM tables, task lists, and syntax-highlighted code blocks
 - Mermaid diagrams and LaTeX/math rendering, right inside a code fence
 - Auto theme, light theme, dark theme
+- Korean and English interface, following the macOS language setting (pick a language for MDV alone in System Settings → General → Language & Region → Applications)
 - Save / Save As / Print / Copy controls
 
 **Navigation & organization**
@@ -114,8 +115,8 @@ MDV runs entirely on your machine: documents are read from and written to disk o
 
 ## First Launch UX
 
-- On an empty launch, MDV emphasizes the top-right **열기** (Open) entry point.
-- The empty state includes direct **파일 열기** (Open File) / **폴더 열기** (Open Folder) actions.
+- On an empty launch, MDV emphasizes the top-left **Open** entry point.
+- The empty state includes direct **Open File** / **Open Folder** actions.
 - A first-launch guidance card explains how to:
   - open a single markdown file
   - open a folder into the explorer
@@ -161,6 +162,5 @@ Current build outputs:
 - Notarization is still pending for friendlier macOS distribution.
 - The Homebrew cask and all release builds target Apple Silicon (arm64) only; there is no Intel (x64) build.
 - Requires macOS 13 (Ventura) or later.
-- The interface is Korean only; there is no localization yet. UI labels quoted in this README are shown in Korean with an English gloss.
 - Math renders only inside `math` / `latex` code fences; inline `$…$` and `$$…$$` math in ordinary text is shown as plain text.
 - Session restore persists only the last-focused window's state (file paths + active tab index + explorer root); multi-window session merging is out of scope for v1.

@@ -5,6 +5,7 @@ const os = require('os')
 const { pathToFileURL } = require('url')
 const chokidar = require('chokidar')
 const { isEmptySession } = require('./renderer/session-state')
+const { resolveLocale, createTranslator } = require('./renderer/i18n')
 const { normalizeTag, shouldNotify } = require('./update-checker')
 const { pollRootsFromEnv, watchOptionsFor } = require('./watch-options')
 
@@ -32,6 +33,14 @@ if (process.env.MDV_USER_DATA_DIR) globalThis.__mdvDirWatchers = dirWatchers
 // Same guard, same reason: the file-watcher error path is only observable as "this path is
 // no longer watched", and asserting that needs the live map.
 if (process.env.MDV_USER_DATA_DIR) globalThis.__mdvFileWatchers = watchers
+// UI language, decided once in app 'ready' (app.getLocale() is only valid from then on) and
+// never changed while running: the menu is built once, and every window gets the same value
+// through additionalArguments (plan 31). MDV_LOCALE pins it -- the test helper sets 'ko' by
+// default, because CI runners are not Korean and the suite asserts Korean strings. Until ready
+// this stays Korean, which is also what the renderer assumes when nothing is passed.
+let uiLocale = 'ko'
+let t = createTranslator(uiLocale)
+
 const dirtyState = new Map() // BrowserWindow.id → boolean (미저장 변경 존재 여부)
 const sessionState = new Map() // BrowserWindow.id → { tabs, activeIndex, explorerRoot } (렌더러가 통지한 최신 상태)
 let lastFocusedWindowId = null
@@ -219,6 +228,8 @@ function createWindow(filePath = null, restoredSession = null) {
       contextIsolation: true,
       nodeIntegration: false,
       sandbox: true,
+      // A sandboxed preload can't require the string table, but it can read its own argv.
+      additionalArguments: [`--mdv-locale=${uiLocale}`],
     },
   })
 
@@ -283,11 +294,11 @@ function createWindow(filePath = null, restoredSession = null) {
     if (dirtyState.get(win.id)) {
       const choice = dialog.showMessageBoxSync(win, {
         type: 'warning',
-        buttons: ['닫기', '취소'],
+        buttons: [t('dialog.close'), t('dialog.cancel')],
         defaultId: 1,
         cancelId: 1,
-        message: '저장하지 않은 변경이 있습니다.',
-        detail: '변경 내용을 저장하지 않고 창을 닫으시겠습니까?',
+        message: t('dialog.unsavedMessage'),
+        detail: t('dialog.unsavedDetail'),
       })
       if (choice === 1) {
         event.preventDefault()
@@ -379,6 +390,8 @@ app.whenReady().then(() => {
     applicationVersion: app.getVersion(),
     iconPath: path.join(__dirname, '..', 'assets', 'icon.icns'),
   })
+  uiLocale = resolveLocale(process.env.MDV_LOCALE || app.getLocale())
+  t = createTranslator(uiLocale)
   buildMenu()
   // An OS file-open (double-click) launch has a clear intent — restore is skipped so an
   // old session doesn't pile on top of the file the user asked to open. Restore is only
@@ -513,7 +526,7 @@ ipcMain.handle('save-file-dialog', async (event, suggestedName, docPath) => {
 
 ipcMain.handle('export-pdf', async (event, suggestedName, docPath) => {
   const win = BrowserWindow.fromWebContents(event.sender)
-  if (!win) return { ok: false, error: '활성 창을 찾을 수 없습니다.' }
+  if (!win) return { ok: false, error: t('error.noActiveWindow') }
 
   try {
     const result = await dialog.showSaveDialog(win, {
@@ -542,7 +555,7 @@ ipcMain.handle('new-window', async (_, filePath) => {
 ipcMain.handle('open-external-url', async (_, url) => {
   try {
     if (!/^https?:\/\//i.test(url)) {
-      return { ok: false, error: '허용되지 않은 링크입니다.' }
+      return { ok: false, error: t('error.linkNotAllowed') }
     }
     await shell.openExternal(url)
     return { ok: true }
@@ -589,13 +602,13 @@ function isOpenableTarget(targetPath, realPath) {
 ipcMain.handle('open-local-path', async (_, targetPath) => {
   try {
     if (!targetPath) {
-      return { ok: false, error: '경로가 없습니다.' }
+      return { ok: false, error: t('error.noPath') }
     }
     let stat
     try {
       stat = await fs.promises.stat(targetPath)
     } catch {
-      return { ok: false, error: `파일을 찾을 수 없습니다: ${targetPath}` }
+      return { ok: false, error: t('error.fileNotFound', targetPath) }
     }
     // realpath failure (broken/looping symlink) is treated exactly like a non-allowlisted
     // target: reveal, never open or read. Resolved before the markdown check below so a
@@ -636,7 +649,7 @@ ipcMain.handle('open-local-path', async (_, targetPath) => {
 ipcMain.handle('reveal-in-finder', async (_, targetPath) => {
   try {
     if (!targetPath) {
-      return { ok: false, error: '경로가 없습니다.' }
+      return { ok: false, error: t('error.noPath') }
     }
     shell.showItemInFolder(targetPath)
     return { ok: true }
@@ -996,107 +1009,111 @@ function sendRendererCommand(command, targetWindow = BrowserWindow.getFocusedWin
 }
 
 function buildMenu() {
+  // role items keep their native behaviour; only the label comes from the string table, because
+  // Electron's own labels are English whatever the system language (plan 31). about/hide/quit
+  // carry the app name.
+  const role = (name, ...args) => ({ role: name, label: t(`role.${name}`, ...args) })
   const template = [
     {
       label: app.name,
       submenu: [
-        { role: 'about' },
+        role('about', app.name),
         { type: 'separator' },
-        { role: 'services' },
+        role('services'),
         { type: 'separator' },
-        { role: 'hide' },
-        { role: 'hideOthers' },
-        { role: 'unhide' },
+        role('hide', app.name),
+        role('hideOthers'),
+        role('unhide'),
         { type: 'separator' },
-        { role: 'quit' },
+        role('quit', app.name),
       ],
     },
     {
-      label: '파일',
+      label: t('menu.file'),
       submenu: [
         {
-          label: '파일 열기…',
+          label: `${t('action.openFile')}…`,
           accelerator: 'CmdOrCtrl+O',
           click: (_, win) => sendRendererCommand('openFile', win),
         },
         {
-          label: '폴더 열기…',
+          label: `${t('action.openFolder')}…`,
           accelerator: 'CmdOrCtrl+Shift+O',
           click: (_, win) => sendRendererCommand('openFolder', win),
         },
         { type: 'separator' },
         {
-          label: '저장',
+          label: t('action.save'),
           accelerator: 'CmdOrCtrl+S',
           click: (_, win) => sendRendererCommand('saveFile', win),
         },
         {
-          label: '다른 이름으로 저장…',
+          label: `${t('action.saveAs')}…`,
           accelerator: 'CmdOrCtrl+Shift+S',
           click: (_, win) => sendRendererCommand('saveFileAs', win),
         },
         { type: 'separator' },
         {
-          label: '새 파일',
+          label: t('action.newFile'),
           accelerator: 'CmdOrCtrl+T',
           click: (_, win) => sendRendererCommand('newFile', win),
         },
         {
-          label: '탭 닫기',
+          label: t('action.closeTab'),
           accelerator: 'CmdOrCtrl+W',
           click: (_, win) => sendRendererCommand('closeCurrentTab', win),
         },
         { type: 'separator' },
         {
-          label: 'PDF로 내보내기…',
+          label: t('menu.exportPdf'),
           click: (_, win) => sendRendererCommand('exportPdf', win),
         },
         {
-          label: '인쇄…',
+          label: `${t('action.print')}…`,
           accelerator: 'CmdOrCtrl+P',
           click: (_, win) => sendRendererCommand('printDoc', win),
         },
         { type: 'separator' },
         {
-          label: '새 창',
+          label: t('action.newWindow'),
           accelerator: 'CmdOrCtrl+N',
           click: () => createWindow(),
         },
       ],
     },
     {
-      label: '편집',
+      label: t('menu.edit'),
       submenu: [
-        { role: 'undo' },
-        { role: 'redo' },
+        role('undo'),
+        role('redo'),
         { type: 'separator' },
-        { role: 'cut' },
-        { role: 'copy' },
-        { role: 'paste' },
-        { role: 'selectAll' },
+        role('cut'),
+        role('copy'),
+        role('paste'),
+        role('selectAll'),
         { type: 'separator' },
         {
-          label: '찾기…',
+          label: `${t('action.find')}…`,
           accelerator: 'CmdOrCtrl+F',
           click: (_, win) => sendRendererCommand('toggleSearch', win),
         },
       ],
     },
     {
-      label: '보기',
+      label: t('menu.view'),
       submenu: [
         {
-          label: '소스 보기',
+          label: t('action.toggleSource'),
           accelerator: 'CmdOrCtrl+U',
           click: (_, win) => sendRendererCommand('toggleSource', win),
         },
         {
-          label: '분할뷰',
+          label: t('action.splitView'),
           accelerator: 'CmdOrCtrl+\\',
           click: (_, win) => sendRendererCommand('toggleSplitView', win),
         },
         {
-          label: '좌측 패널 표시/숨기기',
+          label: t('action.toggleSidebar'),
           accelerator: 'CmdOrCtrl+B',
           // A real ⌘B press also reaches the source editor's own keydown (bold) -- menu
           // accelerators fire even when the renderer preventDefault()s (fb2284d's ⌘T
@@ -1106,46 +1123,46 @@ function buildMenu() {
             event?.triggeredByAccelerator ? 'toggleSidebarFromShortcut' : 'toggleSidebar', win),
         },
         {
-          label: '테마 전환',
+          label: t('menu.toggleTheme'),
           click: (_, win) => sendRendererCommand('toggleTheme', win),
         },
         { type: 'separator' },
         {
-          label: '다음 탭',
+          label: t('action.nextTab'),
           accelerator: 'CmdOrCtrl+Shift+]',
           click: (_, win) => sendRendererCommand('switchToNextTab', win),
         },
         {
-          label: '이전 탭',
+          label: t('action.prevTab'),
           accelerator: 'CmdOrCtrl+Shift+[',
           click: (_, win) => sendRendererCommand('switchToPrevTab', win),
         },
         { type: 'separator' },
-        { role: 'reload' },
-        { role: 'forceReload' },
-        { role: 'toggleDevTools' },
+        role('reload'),
+        role('forceReload'),
+        role('toggleDevTools'),
         { type: 'separator' },
-        { role: 'resetZoom' },
-        { role: 'zoomIn' },
-        { role: 'zoomOut' },
+        role('resetZoom'),
+        role('zoomIn'),
+        role('zoomOut'),
         { type: 'separator' },
-        { role: 'togglefullscreen' },
+        role('togglefullscreen'),
       ],
     },
     {
-      label: '창',
+      label: t('menu.window'),
       submenu: [
-        { role: 'minimize' },
-        { role: 'zoom' },
+        role('minimize'),
+        role('zoom'),
         { type: 'separator' },
-        { role: 'front' },
+        role('front'),
       ],
     },
     {
-      label: '도움말',
+      label: t('menu.help'),
       submenu: [
         {
-          label: '단축키',
+          label: t('menu.shortcuts'),
           click: (_, win) => sendRendererCommand('showShortcuts', win),
         },
       ],

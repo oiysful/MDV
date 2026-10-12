@@ -19,6 +19,7 @@ Renderer now uses an HTML/CSS shell plus multiple plain browser scripts; `app.js
 | Update-available banner | `update-notice.js`, `#update-banner` in `index.html`, `app.js` wiring | Dismissible bottom-right notice pointing at `brew upgrade`; no auto-update |
 | Pure helpers | `path-utils.js`, `roving.js`, `session-state.js` | URL/path helpers, roving-tabindex index math, session-shape/empty-session guard — all usable from tests |
 | Keyboard accessibility | `roving.js` (shared math) + `workspace.js` (tab bar) + `explorer.js` (tree) | Roving tabindex, manual activation (arrows move focus only, Enter/Space acts) |
+| UI strings (Korean / English) | `i18n.js`, `data-i18n*` attributes in `index.html` | One table for both processes; see CONVENTIONS |
 | Session restore | `app.js#collectSessionState`/`restoreSession`, `session-state.js` | Debounced push to main on tab/explorer-root change; restore only on first-window startup |
 
 ## CONVENTIONS
@@ -26,6 +27,7 @@ Renderer now uses an HTML/CSS shell plus multiple plain browser scripts; `app.js
 - DOM refs are centralized into the `$` object near script initialization.
 - Static and generated controls use `data-command` attributes; `app-shell.js` binds static shell controls and delegates dynamic content commands.
 - Renderer talks to the main process exclusively through `window.api`.
+- Every UI string lives in `i18n.js` (`STRINGS.ko` / `STRINGS.en`, plan 31). JS calls `t('key', ...args)`; static `index.html` markup keeps its Korean as written and names the key with `data-i18n` (text), `data-i18n-html` (fixed markup), `data-i18n-label` (title + aria-label) or `data-i18n-title`/`-aria-label`/`-placeholder`, filled in once by `applyStaticTranslations` at the top of `app.js`. The language is decided once by the main process at `ready` (Korean for a `ko*` locale, English otherwise; `MDV_LOCALE` pins it) and reaches the renderer as `window.api.locale`; with no `api.locale` (jsdom tests) the renderer is Korean. Adding a string means adding both languages — `tests/unit/i18n.test.js` fails on a missing key, a Korean literal left in JS, an unclaimed Korean string in `index.html`, or `index.html` Korean that drifted from the table.
 - Markdown preview is rendered with `marked`; code blocks are highlighted with `highlight.js`.
 - Local images in markdown are rewritten to data URLs before render.
 - Global custom context menu UI is renderer-managed via `#app-context-menu` rather than native menus.
@@ -41,6 +43,7 @@ Renderer now uses an HTML/CSS shell plus multiple plain browser scripts; `app.js
 - Do not capture `tab.renderedHTML` via raw `refs.content.innerHTML`; use `markdownController.captureSnapshotHTML()`, which strips embedded images' base64 and keeps only `data-mdv-local-path` for synchronous rehydration from `imageDataUrlCache` on restore.
 - Do not add a second `splitMode` mutation site; `editor.js#setSplitMode` is the sole chokepoint (interactive toggle and tab-restore both funnel through it) that also force-closes/restores the sidebar.
 - Do not give the tab bar or explorer tree per-item keydown listeners; both use one delegated listener on the persistent container (survives `innerHTML` rebuilds) plus roving tabindex from `roving.js`.
+- Do not put a file name, error text or any other argument into a `data-i18n-html` / `innerHTML` string; HTML values in `i18n.js` are fixed markup, and values with arguments go through `textContent`, `title`, `alert`/`confirm` or toasts.
 - Do not call `navigator.clipboard.writeText` without a try/catch; `app-runtime.js#copyAll`/`copyCode` show a failure toast (`복사 실패`/`코드 복사 실패`) and skip the success-path DOM updates on rejection, rather than failing silently.
 
 ## UNIQUE STYLES
