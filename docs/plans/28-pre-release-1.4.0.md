@@ -252,7 +252,9 @@ high 이상이 나오면 릴리스 전 수정, 그 이하는 Ian 판단.
 
 ## 7. 릴리스 당일 — RELEASING.md 순서 그대로
 
-RELEASING.md 상단 박스 3개(cask `depends_on macos: ">= :ventura"`, README/README.ko 최소 macOS 한 줄, develop 최신 `test-electron` 확인)
+**완료(2026-10-12): v1.4.0 릴리스.** #47 버전 올림(+README 최소 macOS) → #48 develop→main(`3b62005`) → 태그 `v1.4.0` → `release.yml` 전 단계 성공(SHA 고정 action 첫 실행) → zip 165.7MB, `SHA256SUMS`와 cask `sha256` 일치 → 릴리스 노트 → tap `Casks/mdv.rb`에 `depends_on macos: :ventura`(`">= :ventura"` 문자열은 brew가 deprecated 경고 → 기호 형식으로 다시 커밋, `brew info`: `macOS >= 13`). 남은 것: 7a의 `claude[bot]` 확인(다음 develop PR), 업데이트 배너 실기 확인(선택).
+
+RELEASING.md 상단 박스 3개(cask 최소 macOS — 실제로는 `depends_on macos: :ventura`, README/README.ko 최소 macOS 한 줄, develop 최신 `test-electron` 확인)
 + 본문 1~7단계(`npm version 1.4.0 --no-git-tag-version` → develop→main PR → 태그 → 릴리스 노트 `gh release edit` → tap 확인).
 README 버전 문자열은 자동 갱신되지 않음(메모리 `mdv-homebrew-distribution`). 업데이트 배너 실기 확인은 메모리 `mdv-update-banner-live-test` 순서.
 머지·태그 푸시는 auto mode가 막을 수 있으므로 Ian이 실행할 명령을 정확히 건넨다.
@@ -295,5 +297,5 @@ Claude App 경로는 OIDC 교환 시 **워크플로가 기본 브랜치(main)와
 | 4 audit fix | 완료 2026-10-12 | — |
 | 5 Electron 44.7.0 | 완료 2026-10-12 | 멈춤 재실험은 선택(1단계 지지로 CI 우회 중) |
 | 6 보안 재감사 | 완료 2026-10-12 (91/100) | M1 Actions SHA 고정 PR |
-| 7 릴리스 | 1~6 완료 후 | 1의 결론이 "열림"이어도 RELEASING 박스 규칙에 따라 진행 가능 — Ian 판단 |
+| 7 릴리스 | 완료 2026-10-12 (v1.4.0) | 1의 결론이 "열림"이어도 RELEASING 박스 규칙에 따라 진행 가능 — Ian 판단 |
 | 7a 리뷰 봇 `claude[bot]` 전환 | 릴리스 PR 직전(develop 마지막 PR) | Ian의 Claude App 설치(아무 때나) |

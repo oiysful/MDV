@@ -8,11 +8,9 @@
 릴리스는 `main`을 움직이는 유일한 행위입니다. 작업은 `develop`에서 통합되고, 릴리스는 `develop`에서 `main`으로 여는 명시적 풀 리퀘스트와 그 뒤의 `v*` 태그 푸시로 이루어지며, 태그 푸시가 `.github/workflows/release.yml`을 트리거합니다.
 
 > [!IMPORTANT]
-> **다음 릴리스(Electron 44가 처음 들어가는 릴리스)에서 할 일** — 2026-10-02 PR #31로 develop에 들어감. 처리한 뒤 이 상자를 지우세요.
-> - **Homebrew cask 최소 macOS 버전.** Electron 44는 macOS 12 지원을 끊었고, 앱도 `LSMinimumSystemVersion 13.0`을 선언합니다. `scripts/update-homebrew-tap.sh`(6단계)는 `version`/`sha256`만 바꾸므로, 그 단계가 끝난 뒤 [`oiysful/homebrew-tap`](https://github.com/oiysful/homebrew-tap)의 `Casks/mdv.rb`에서 `depends_on :macos`를 `depends_on macos: ">= :ventura"`로 직접 고쳐 push합니다. 더 일찍 하면 안 됩니다 — Monterey에서 아직 잘 도는 현재 릴리스(Electron 42)까지 설치가 막힙니다. 빠뜨리면 Monterey 사용자는 새 버전을 설치는 하되 실행하지 못합니다.
-> - **README 최소 macOS.** 같은 릴리스에서 README.md의 Known Limitations에 `- Requires macOS 13 (Ventura) or later.`를, README.ko.md의 알려진 제한사항에 `- macOS 13(Ventura) 이상이 필요합니다.`를 추가합니다. 더 일찍 넣으면 안 됩니다 — 현재 릴리스는 아직 macOS 12에서 돕니다.
-> - **Electron 44 CI 전용 멈춤 — CI에서는 완화됨(2026-10-08).** 이제 `ci-electron.yml`이 `--disable-gpu`로 스위트를 돌립니다(계획 28: 기준 16잡 중 8잡 멈춤, 스위치 적용 시 16잡 중 0잡). 그래도 2단계 전에 `develop`의 최근 `test-electron`을 확인하세요. 테스트 하나가 약 51초 멈췄다면 먼저 로그의 `[mdv-gpu-status]` 줄이 `disabled_software`인지 확인하고(스위치가 적용되지 않았을 수 있음), 재실행해서 초록이 나온 것을 해결로 보지 마세요.
-> - **리뷰 봇을 `claude[bot]`으로(계획 28 7a단계).** `develop`에서 완료(PR #46): `claude-review.yml`에서 `github_token`을 지우고 `id-token: write`를 추가했습니다. Claude GitHub App은 `oiysful/MDV` 하나에만 설치돼 있습니다. 이번 릴리스로 같은 파일이 `main`에 들어가기 전까지 develop PR 리뷰는 **조용히 건너뜁니다** — 잡은 `Workflow validation failed`를 경고로만 남기고 코멘트 없이 초록으로 끝납니다. 릴리스 PR 자체의 리뷰도 그럴 수 있습니다. 릴리스 뒤 다음 PR의 리뷰 코멘트가 `claude[bot]`으로 달리는지 확인하세요. 잡이 초록인데 코멘트가 없으면 로그에서 그 경고, OIDC 오류, App 설치 범위 순서로 봅니다.
+> **v1.4.0(2026-10-12 릴리스)에서 남은 확인.** 확인하면 이 상자를 지우세요.
+> - **리뷰 봇 `claude[bot]`(계획 28 7a단계).** 이제 `main`과 `develop`의 `claude-review.yml`이 같아져 Claude GitHub App 경로의 조건을 만족합니다. 다음 `develop` 대상 PR에서 리뷰 코멘트가 `claude[bot]`으로 달리는지 확인하세요. `review` 잡이 초록인데 코멘트가 없으면 로그에서 `Workflow validation failed`, OIDC 오류, App 설치 범위(`oiysful/MDV`만) 순서로 봅니다.
+> - **Homebrew cask 형식.** cask는 `depends_on macos: :ventura`입니다 — 기호 하나가 "이 버전 이상"을 뜻하고, 문자열 형식 `">= :ventura"`는 deprecated라 경고가 납니다. `postflight`도 `postflight_steps`로 바꾸라는 경고가 나오지만 1.4.0 이전부터 있던 것이라 그대로 두었습니다.
 
 1. `package.json`의 `version`을 올립니다 — `npm version X.Y.Z --no-git-tag-version`을 쓰면 `package.json`과 `package-lock.json`을 한 번에 갱신할 수 있습니다(git 태그는 자동으로 만들지 않도록 스킵 — 태그는 아래 3단계에서 직접 만듭니다). README.md와 README.ko.md의 "배포용 앱 빌드" 섹션에 하드코딩된 `dist/MDV-X.Y.Z-arm64-mac.zip` 예시 경로도 함께 갱신하세요 — 자동으로 채워지는 값이 아니라서 안 챙기면 조용히 오래된 값으로 남습니다. 이 모든 변경을 `chore(release): bump version to X.Y.Z` 커밋으로 묶고, 다른 변경과 마찬가지로 `develop`에서 브랜치를 만들어 풀 리퀘스트로 `develop`에 머지합니다.
 2. `develop`에서 `main`으로 풀 리퀘스트를 열어 머지합니다. 이것이 릴리스라는 행위 자체이며, `main`은 여기서만 움직입니다.
