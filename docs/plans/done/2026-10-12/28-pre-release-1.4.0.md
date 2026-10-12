@@ -252,7 +252,7 @@ high 이상이 나오면 릴리스 전 수정, 그 이하는 Ian 판단.
 
 ## 7. 릴리스 당일 — RELEASING.md 순서 그대로
 
-**완료(2026-10-12): v1.4.0 릴리스.** #47 버전 올림(+README 최소 macOS) → #48 develop→main(`3b62005`) → 태그 `v1.4.0` → `release.yml` 전 단계 성공(SHA 고정 action 첫 실행) → zip 165.7MB, `SHA256SUMS`와 cask `sha256` 일치 → 릴리스 노트 → tap `Casks/mdv.rb`에 `depends_on macos: :ventura`(`">= :ventura"` 문자열은 brew가 deprecated 경고 → 기호 형식으로 다시 커밋, `brew info`: `macOS >= 13`). 남은 것: 업데이트 배너 실기 확인(선택).
+**완료(2026-10-12): v1.4.0 릴리스.** #47 버전 올림(+README 최소 macOS) → #48 develop→main(`3b62005`) → 태그 `v1.4.0` → `release.yml` 전 단계 성공(SHA 고정 action 첫 실행) → zip 165.7MB, `SHA256SUMS`와 cask `sha256` 일치 → 릴리스 노트 → tap `Casks/mdv.rb`에 `depends_on macos: :ventura`(`">= :ventura"` 문자열은 brew가 deprecated 경고 → 기호 형식으로 다시 커밋, `brew info`: `macOS >= 13`). 업데이트 배너 실기 확인도 Ian이 v1.4.0으로 마쳤다(2026-10-12).
 
 RELEASING.md 상단 박스 3개(cask 최소 macOS — 실제로는 `depends_on macos: :ventura`, README/README.ko 최소 macOS 한 줄, develop 최신 `test-electron` 확인)
 + 본문 1~7단계(`npm version 1.4.0 --no-git-tag-version` → develop→main PR → 태그 → 릴리스 노트 `gh release edit` → tap 확인).
