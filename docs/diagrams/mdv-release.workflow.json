@@ -3,41 +3,183 @@
   "diagram_type": "workflow",
   "meta": {
     "title": "MDV 릴리스 전달 워크플로",
+    "output": "mdv-release.html",
     "quality_profile": "showcase"
   },
   "lanes": [
-    { "id": "maintainer", "label": "메인테이너 (수동)" },
-    { "id": "ci", "label": "GitHub Actions · release.yml" },
-    { "id": "dist", "label": "배포 채널" },
-    { "id": "fallback", "label": "예외 경로", "variant": "exception" }
+    {
+      "id": "maintainer",
+      "label": "메인테이너 (수동)"
+    },
+    {
+      "id": "ci",
+      "label": "GitHub Actions · release.yml (태그당 1회 실행)"
+    },
+    {
+      "id": "dist",
+      "label": "배포 채널"
+    },
+    {
+      "id": "fallback",
+      "label": "예외 경로",
+      "variant": "exception"
+    }
   ],
   "phases": [
-    { "id": "prepare", "label": "준비 · develop", "fromCol": 0, "toCol": 1 },
-    { "id": "cut", "label": "릴리스 확정 · main", "fromCol": 2, "toCol": 3, "variant": "emphasis" },
-    { "id": "deliver", "label": "배포", "fromCol": 4, "toCol": 5 }
+    {
+      "id": "prepare",
+      "label": "준비 · develop",
+      "fromCol": 0,
+      "toCol": 1
+    },
+    {
+      "id": "cut",
+      "label": "릴리스 확정 · main",
+      "fromCol": 2,
+      "toCol": 3,
+      "variant": "emphasis"
+    },
+    {
+      "id": "deliver",
+      "label": "배포",
+      "fromCol": 4,
+      "toCol": 5
+    }
   ],
-  "groups": [
-    { "id": "one_run", "label": "태그 하나로 도는 단일 실행", "lane": "ci", "fromCol": 3, "toCol": 4, "variant": "emphasis" }
+  "mainPath": [
+    "bump",
+    "releasepr",
+    "tag",
+    "buildrelease",
+    "taprun",
+    "cask"
   ],
-  "mainPath": ["bump", "releasepr", "tag", "buildrelease", "taprun", "cask"],
   "nodes": [
-    { "id": "bump", "lane": "maintainer", "col": 0, "type": "backend", "label": "버전 bump", "sublabel": "develop에 PR로", "width": 148 },
-    { "id": "releasepr", "lane": "maintainer", "col": 1, "type": "security", "label": "develop → main PR", "sublabel": "릴리스 결정", "tag": "main이 움직이는 유일한 지점", "width": 148 },
-    { "id": "tag", "lane": "maintainer", "col": 2, "type": "backend", "label": "v* 태그 푸시", "sublabel": "main의 머지 커밋에", "width": 148 },
-    { "id": "notes", "lane": "maintainer", "col": 4, "type": "frontend", "label": "릴리스 노트 작성", "sublabel": "gh release edit", "tag": "워크플로가 안 만든다", "width": 148 },
-    { "id": "buildrelease", "lane": "ci", "col": 3, "type": "cloud", "label": "빌드 + Release 게시", "sublabel": ".zip + SHA256SUMS", "width": 148 },
-    { "id": "taprun", "lane": "ci", "col": 4, "type": "cloud", "label": "탭 bump 스크립트", "sublabel": "update-homebrew-tap.sh", "width": 148 },
-    { "id": "cask", "lane": "dist", "col": 5, "type": "external", "label": "Homebrew Cask", "sublabel": "oiysful/tap/mdv", "width": 148 },
-    { "id": "manual", "lane": "fallback", "col": 5, "type": "security", "label": "수동 cask bump", "sublabel": "토큰 없이 건너뜀", "width": 148 }
+    {
+      "id": "bump",
+      "lane": "maintainer",
+      "col": 0,
+      "type": "backend",
+      "label": "버전 bump",
+      "sublabel": "develop에 PR로",
+      "width": 148
+    },
+    {
+      "id": "releasepr",
+      "lane": "maintainer",
+      "col": 1,
+      "type": "security",
+      "label": "develop → main PR",
+      "sublabel": "릴리스 결정",
+      "tag": "main이 움직이는 유일한 지점",
+      "width": 148
+    },
+    {
+      "id": "tag",
+      "lane": "maintainer",
+      "col": 2,
+      "type": "backend",
+      "label": "v* 태그 푸시",
+      "sublabel": "main의 머지 커밋에",
+      "width": 148
+    },
+    {
+      "id": "notes",
+      "lane": "maintainer",
+      "col": 4,
+      "type": "frontend",
+      "label": "릴리스 노트 작성",
+      "sublabel": "gh release edit",
+      "tag": "워크플로가 안 만든다",
+      "width": 148
+    },
+    {
+      "id": "buildrelease",
+      "lane": "ci",
+      "col": 3,
+      "type": "cloud",
+      "label": "빌드 + Release 게시",
+      "sublabel": ".zip + SHA256SUMS",
+      "width": 148
+    },
+    {
+      "id": "taprun",
+      "lane": "ci",
+      "col": 4,
+      "type": "cloud",
+      "label": "탭 bump 스크립트",
+      "sublabel": "update-homebrew-tap.sh",
+      "width": 148
+    },
+    {
+      "id": "cask",
+      "lane": "dist",
+      "col": 5,
+      "type": "external",
+      "label": "Homebrew Cask",
+      "sublabel": "oiysful/tap/mdv",
+      "width": 148
+    },
+    {
+      "id": "manual",
+      "lane": "fallback",
+      "col": 5,
+      "type": "security",
+      "label": "수동 cask bump",
+      "sublabel": "토큰 없이 건너뜀",
+      "width": 148
+    }
   ],
   "edges": [
-    { "id": "bump-pr", "from": "bump", "to": "releasepr", "label": "develop 머지" },
-    { "id": "pr-tag", "from": "releasepr", "to": "tag", "label": "머지 후", "variant": "emphasis" },
-    { "id": "tag-build", "from": "tag", "to": "buildrelease", "label": "태그가 트리거", "variant": "emphasis" },
-    { "id": "build-taprun", "from": "buildrelease", "to": "taprun", "label": "sha256 전달" },
-    { "id": "taprun-cask", "from": "taprun", "to": "cask", "label": "version · sha256", "variant": "emphasis" },
-    { "id": "build-notes", "from": "buildrelease", "to": "notes", "label": "본문은 비어 있다", "variant": "dashed", "role": "branch" },
-    { "id": "taprun-manual", "from": "taprun", "to": "manual", "label": "토큰 없음", "variant": "security", "role": "error" }
+    {
+      "id": "bump-pr",
+      "from": "bump",
+      "to": "releasepr",
+      "label": "develop 머지"
+    },
+    {
+      "id": "pr-tag",
+      "from": "releasepr",
+      "to": "tag",
+      "label": "머지 후",
+      "variant": "emphasis"
+    },
+    {
+      "id": "tag-build",
+      "from": "tag",
+      "to": "buildrelease",
+      "label": "태그가 트리거",
+      "variant": "emphasis"
+    },
+    {
+      "id": "build-taprun",
+      "from": "buildrelease",
+      "to": "taprun",
+      "label": "sha256 전달"
+    },
+    {
+      "id": "taprun-cask",
+      "from": "taprun",
+      "to": "cask",
+      "label": "version · sha256",
+      "variant": "emphasis"
+    },
+    {
+      "id": "build-notes",
+      "from": "buildrelease",
+      "to": "notes",
+      "label": "본문은 비어 있다",
+      "variant": "dashed",
+      "role": "branch"
+    },
+    {
+      "id": "taprun-manual",
+      "from": "taprun",
+      "to": "manual",
+      "label": "토큰 없음",
+      "variant": "security",
+      "role": "error"
+    }
   ],
   "cards": [
     {
