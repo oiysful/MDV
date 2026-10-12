@@ -2,9 +2,14 @@ name: Claude PR review
 
 # Plan 27 (docs/plans/27-pr-auto-review-bot.md). Read-only AI review of each PR, posted as comments.
 #
-# Auth is `github_token: GITHUB_TOKEN`, not the Claude GitHub App. The App path exchanges an OIDC
-# token and the server rejects it unless this file is identical to the copy on the DEFAULT branch
-# (main). main is release-only here, so every develop PR would get a 401 until the next release.
+# Auth is the Claude GitHub App (installed on oiysful/MDV only), so comments post as `claude[bot]`.
+# The action exchanges an OIDC token (hence `id-token: write`) and the server rejects it unless this
+# file is identical to the copy on the DEFAULT branch (main). main is release-only, so ANY edit to
+# this file silently disables develop PR reviews until the next release carries it to main: the
+# action logs "Workflow validation failed" as a WARNING and exits green with no comment (measured
+# on PR #46) -- a green `review` check is not proof a review ran. Batch edits here right before a
+# release (plan 28 step 7a). Until 2026-10-12 this passed
+# `github_token: GITHUB_TOKEN` instead, which posts as `github-actions[bot]`.
 #
 # Re-review is the `claude-review` label, not an `@claude` comment: issue_comment events always run
 # the default branch's workflow file, which would not exist until a release. `labeled` is a
@@ -37,6 +42,7 @@ jobs:
       contents: read
       pull-requests: write
       issues: write
+      id-token: write
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -47,7 +53,6 @@ jobs:
       - uses: anthropics/claude-code-action@2dca132ff0e0c4094ce6048b422c6915a071210b # v1.0.247
         with:
           claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
-          github_token: ${{ secrets.GITHUB_TOKEN }}
           claude_args: |
             --model claude-sonnet-5-5
             --max-turns 25
