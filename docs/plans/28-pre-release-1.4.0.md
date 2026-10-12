@@ -240,6 +240,8 @@ lockfile diff가 그 두 패키지(와 직접 부모)만 건드리는지 확인,
 선택: 44.7.0이 하드웨어 가속 경로의 멈춤을 고쳤는지 보고 싶으면 1단계와 같은 실험(baseline/disable-gpu 8+8)을 업그레이드 브랜치에서 한 번 — 고쳤다면 CI 우회를 걷어낼 근거가 된다. 패키징 확인은 worktree에서 실제 `npm ci` 후(메모리: symlink된 node_modules는
 electron-builder가 무시). 44.7.0 이후 더 새 패치가 나와도 쿨다운을 지난 것 중 최신을 쓴다.
 
+**완료(2026-10-12)**: 44.7.0이 쿨다운을 지난 최신(lockfile은 `electron` 한 항목만). 44.5.0~44.7.0 릴리스 노트에 MDV가 쓰는 API의 깨지는 변경 없음 — 44.5.0의 "같은 세션 데이터 디렉터리를 쓰는 다른 인스턴스가 있을 때 시작 시 GPU 프로세스 크래시" 수정은 멈춤과 연관 가능성이 있어 적어 둔다(테스트는 인스턴스마다 userData를 따로 쓰므로 직접 해당은 아닐 것). unit 273 / controller 13 / Electron 118 통과. 메인 체크아웃(실제 `node_modules`)에서 `electron-builder --dir` 빌드 → Electron Framework 44.7.0, `LSMinimumSystemVersion` 13.0, 앱 424MB(asar 136MB), 런타임 의존성이 asar에 포함됨을 확인. 포장된 앱을 Playwright로 실제 실행해 파일 열기 → 헤딩·hljs·KaTeX(```math)·mermaid SVG·프론트매터 렌더 확인(계획 25가 남긴 "`--dir` 빌드 실제 실행" 해소). 선택 항목인 멈춤 재실험은 하지 않음.
+
 ## 6. 보안 재감사 — `/security-audit`
 
 마지막 전체 감사 2026-09-17(재감사 96/100, M1·M2 수정 확인됨). 이후 바뀐 공격면: Electron 44, js-yaml 5 + Gitea식 프론트매터 렌더러(#33·#34·#35),
@@ -288,7 +290,7 @@ Claude App 경로는 OIDC 교환 시 **워크플로가 기본 브랜치(main)와
 | 2 목차 #61 | 즉시(1과 병행 가능, 다른 파일) | 1의 matrix 결과를 재발 빈도로 활용 |
 | 3 소스 모드 진입 위치 | 즉시(4를 기다리는 동안) | — |
 | 4 audit fix | 완료 2026-10-12 | — |
-| 5 Electron 44.7.0 | 10-11 04:26 KST(쿨다운 3일) | 멈춤 재실험은 선택(1단계 지지로 CI 우회 중) |
+| 5 Electron 44.7.0 | 완료 2026-10-12 | 멈춤 재실험은 선택(1단계 지지로 CI 우회 중) |
 | 6 보안 재감사 | 4·5 머지 후 | 의존성이 확정된 뒤에 봐야 의미 |
 | 7 릴리스 | 1~6 완료 후 | 1의 결론이 "열림"이어도 RELEASING 박스 규칙에 따라 진행 가능 — Ian 판단 |
 | 7a 리뷰 봇 `claude[bot]` 전환 | 릴리스 PR 직전(develop 마지막 PR) | Ian의 Claude App 설치(아무 때나) |
