@@ -87,7 +87,7 @@ MDV_RELEASE_TAG=v1.0.0 npm run install:release
 - GFM tables, task lists, and syntax-highlighted code blocks
 - Mermaid diagrams and LaTeX/math rendering, right inside a code fence
 - Auto theme, light theme, dark theme
-- Korean and English interface, following the macOS language setting (pick a language for MDV alone in System Settings → General → Language & Region → Applications)
+- Korean and English interface, following the macOS language setting
 - Save / Save As / Print / Copy controls
 
 **Navigation & organization**
