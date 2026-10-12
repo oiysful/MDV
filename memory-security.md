@@ -107,6 +107,7 @@ secrets:
     rotation_policy: on expiry   # `claude setup-token` token; an expired one shows as an auth failure in the review job only
     status: ok
     scope: Pro subscription OAuth (Claude inference only); job runs with GITHUB_TOKEN limited to contents:read, pull-requests:write, issues:write and read-only tools
+    note_2026-10-12: job now also has `id-token: write` (plan 28 7a) -- the pinned claude-code-action trades an OIDC token for a Claude GitHub App token scoped to oiysful/MDV; the App, not GITHUB_TOKEN, posts the comments as claude[bot]
     rotate_how: Ian runs `claude setup-token` then `gh secret set CLAUDE_CODE_OAUTH_TOKEN -R oiysful/MDV` in a separate terminal (never via `!` in a Claude session -- the token would land in the transcript)
 
 ## Incident History

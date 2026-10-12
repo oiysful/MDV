@@ -270,7 +270,7 @@ Claude App 경로는 OIDC 교환 시 **워크플로가 기본 브랜치(main)와
 - 직접 만든 GitHub App(`<이름>[bot]`) — 기본 브랜치 제약은 없지만 App 개인키라는 장기 secret이 는다. 이름 하나에 비해 보안 비용이 크다.
 
 **절차**
-1. (릴리스 전, develop) `claude-review.yml`에서 `github_token` 줄 삭제, `permissions`에 `id-token: write` 추가(App 경로의 OIDC에 필요 — 액션 faq "OIDC
+1. **완료(2026-10-12, 브랜치 `ci/review-bot-claude-app`)** (릴리스 전, develop) `claude-review.yml`에서 `github_token` 줄 삭제, `permissions`에 `id-token: write` 추가(App 경로의 OIDC에 필요 — 액션 faq "OIDC
    authentication errors"). 주석의 "App 경로를 안 쓰는 이유"를 "릴리스로 main과 동일해진 뒤 App 경로" 로 갱신. `--edit-last` 지시는 그대로 둬도 되고,
    `use_sticky_comment: true`로 바꿀지는 4번에서 결정.
    - **이 PR 자신과 이후 릴리스 전까지의 develop PR 리뷰는 401로 실패한다**(main에 아직 같은 파일이 없으므로) — 예상된 실패, 필수 체크 아님.
