@@ -12,9 +12,9 @@ jobs:
   build-and-release:
     runs-on: macos-latest
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
-      - uses: actions/setup-node@v7
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version: 22
 
@@ -30,8 +30,11 @@ jobs:
         run: shasum -a 256 MDV-*.zip > SHA256SUMS
         working-directory: dist
 
+      # Pinned to a commit, not a tag: this third-party action runs on the same runner as the zip,
+      # SHA256SUMS and the tap step below, so a moved tag could swap the artifact and its hash together
+      # (security-report.md M1, 2026-10-12). Bump by resolving the new tag to its commit on purpose.
       - name: Upload release assets
-        uses: softprops/action-gh-release@v3
+        uses: softprops/action-gh-release@efb35369e0ad2afab669f228072c1b0d510eae64 # v3.0.3
         with:
           files: |
             dist/MDV-*.zip
