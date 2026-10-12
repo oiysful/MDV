@@ -26,42 +26,48 @@ MDV의 구조를 설명하는 정적 다이어그램 5종. 각 HTML은 자체 �
 **HTML은 직접 편집하지 않는다.** 명세(`*.json`)에서 자동 생성되므로 손으로 고친 내용은 다음
 재생성에서 사라진다. 명세를 고쳤으면 HTML을 다시 만들어 같은 커밋에 함께 넣는다.
 
-archify는 이 저장소의 의존성이 아니라 Claude Code 스킬(`/archify`)이다. 스킬 경로를 잡고
-`docs/diagrams/`에서 실행한다.
+archify는 이 저장소의 의존성이 아니라 Claude Code 스킬(`/archify`, 3.0.1 기준)이다. 스킬 경로를
+잡고 `docs/diagrams/`에서 실행한다. 3.0부터 각 명세의 `meta.output`(이 디렉터리 기준 HTML
+경로)이 필수다.
 
 ```bash
 cd docs/diagrams
 ARCHIFY=~/.claude/skills/archify
 
-node $ARCHIFY/bin/archify.mjs deliver architecture mdv-architecture.architecture.json  mdv-architecture.html    --quality showcase
-node $ARCHIFY/bin/archify.mjs deliver workflow     mdv-release.workflow.json           mdv-release.html         --quality showcase
-node $ARCHIFY/bin/archify.mjs deliver sequence     mdv-open-and-watch.sequence.json    mdv-open-and-watch.html  --quality showcase
-node $ARCHIFY/bin/archify.mjs deliver dataflow     mdv-render-pipeline.dataflow.json   mdv-render-pipeline.html --quality showcase
-node $ARCHIFY/bin/archify.mjs deliver lifecycle    mdv-tab-lifecycle.lifecycle.json    mdv-tab-lifecycle.html   --quality showcase
+node $ARCHIFY/bin/archify.mjs finalize architecture mdv-architecture.architecture.json  mdv-architecture.html    --quality showcase
+node $ARCHIFY/bin/archify.mjs finalize workflow     mdv-release.workflow.json           mdv-release.html         --quality showcase
+node $ARCHIFY/bin/archify.mjs finalize sequence     mdv-open-and-watch.sequence.json    mdv-open-and-watch.html  --quality showcase
+node $ARCHIFY/bin/archify.mjs finalize dataflow     mdv-render-pipeline.dataflow.json   mdv-render-pipeline.html --quality showcase
+node $ARCHIFY/bin/archify.mjs finalize lifecycle    mdv-tab-lifecycle.lifecycle.json    mdv-tab-lifecycle.html   --quality showcase
 ```
 
-`deliver`는 아티팩트 검사 9종과 showcase 합성 검사를 모두 통과해야만 HTML을 쓴다. 실패하면
-종료 코드가 0이 아니고 기존 HTML은 그대로 남는다. 같은 명세로 다시 돌리면 바이트 단위로 같은
-HTML이 나온다.
+`finalize`는 `validate` → `deliver` → `check` → `browser-check`를 차례로 돌리고, 하나라도
+실패하면 종료 코드가 0이 아니며 기존 HTML은 그대로 남는다. 실행할 때마다
+`*.finalize.json` · `*.delivery.json` · `*.browser-check.json` 같은 영수증이 HTML 옆에 생기는데,
+언제든 다시 만들 수 있는 산출물이라 `.gitignore`에 넣어 두었다. 이전 실행의 영수증이 남아
+있으면 `browser-check`가 덮어쓰기를 거부하므로(`viewer/evidence-path-conflict`) 다시 돌리기
+전에 지운다.
 
-브라우저 증거(뷰포트별 오버플로 · 글자 크기 측정과 캡처)가 필요하면:
+사람이 눈으로 볼 캡처(1440×900 · 2048×1320, 라이트/다크)가 필요하면:
 
 ```bash
-node $ARCHIFY/bin/archify.mjs visual-check mdv-architecture.html --json
+node $ARCHIFY/bin/archify.mjs visual-check mdv-architecture.html --summary --require-provenance
 ```
-
-이 명령은 `*.visual-check.json` 영수증과 PNG 캡처를 만든다. 언제든 다시 만들 수 있는
-산출물이라 `.gitignore`에 넣어 두었다.
 
 ## 알아둘 점
 
-- **뷰어 UI는 영어로 고정된다.** 제목 · 노드 · 엣지 · 카드 본문은 한국어지만, 범례
-  (`primary data`, `User UI` 등), 상단 `Light / Classic / Present / Export`, 하단
-  `PATH / MAP / LENS`, `<html lang="en">`은 렌더러가 소유한 문자열이다. archify의
-  `meta.locale`이 `en`과 `zh-CN`만 받아서 한국어로 바꿀 수 없다.
+- **뷰어 UI는 영어다.** 제목 · 노드 · 엣지 · 카드 본문은 한국어지만, 범례
+  (`primary data`, `User UI` 등), 상단 툴바, 하단 `PATH / LENS`, `<html lang="en">`은
+  렌더러가 소유한 문자열이다. 내장 `meta.locale`은 `en`과 `zh-CN`뿐이다. 3.0부터
+  `meta.translations`로 다른 언어 번역을 직접 넣을 수 있지만 아직 쓰지 않는다.
 - **문서에 넣을 그림은 Export로 뽑는다.** 브라우저 스크린샷을 찍으면 툴바와 하단 독까지
   같이 들어온다. 뷰어 우측 상단 **Export** 를 쓰면 다이어그램만 PNG/SVG로 나온다.
-- **라이프사이클의 라벨 생략은 의도한 것이다.** 본 레일 다섯 전이(`열림 → 저장된 상태`,
-  `편집 중 → 저장 시도` 등)는 도착 상태 이름이 이미 결과를 말하고, 이 렌더러의 열 간격
-  (36px)에서는 가로 라벨이 반드시 상태 박스를 침범한다. 정보가 있는 다섯 개
+- **라이프사이클의 라벨 생략은 의도한 것이다.** 라벨 없는 다섯 전이(`열림 → 저장된 상태`,
+  `편집 중 → 저장 시도`, `저장 완료 → 탭 닫힘` 등)는 도착 상태 이름이 이미 결과를 말한다. 정보가 있는 다섯 개
   (`다시 입력`, `다른 탭 전환`, `돌아오면 렌더`, `디스크가 다름`, `편집 유지`)는 남겼다.
+  스키마 v2라 이탈 상태는 떠나는 상태와 같은 열에 둔다(대기 → 편집 중 열, 충돌 → 저장 시도
+  열, 종료 → 저장 완료 열). `다시 입력`만 위쪽 채널로 보내는데, 아래로 돌면 `디스크가 다름`과
+  교차한다.
+- **릴리스 워크플로의 CI 레인에는 그룹 박스를 두지 않는다.** 3.0 라우터에서 그룹 테두리가
+  빌드 노드의 위쪽 출구를 막아 `빌드 → 릴리스 노트` 경로가 성립하지 않는다. "태그 하나로
+  도는 단일 실행"이라는 사실은 레인 라벨(`태그당 1회 실행`)로 옮겼다.
