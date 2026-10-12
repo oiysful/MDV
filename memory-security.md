@@ -71,6 +71,11 @@ accepted_risks: []
 #     Electron download, not shipped); installable after 2026-10-11 11:56 KST
 # Recheck on/after 2026-10-11 with a plain `npm audit fix`. Until then a red `test` job is EXPECTED, and any
 # third name in the audit output is new and must be looked at -- the red gate does not hide it if you read it.
+# 2026-10-12 RESOLVED (plan 28 step 4): both bumped, lockfile-only, exactly those two entries. Plain `npm audit fix`
+# was tried first and widened the diff to ~22 packages (electron-builder 26.15.3 -> 26.17.0 and friends) -- not a
+# security need, so it was discarded for `npm update http-cache-semantics source-map-js`. `npm audit` high: 0.
+# New moderate, NOT fixed (gate ignores it): sprintf-js (GHSA-hp3w-g68c-fv3c) via electron-builder > @electron/get
+# > global-agent > roarr -- build-only; npm's only offer is `--force` to electron-builder 26.5.0 (a downgrade).
 # Also seen, moderate (gate ignores it): katex <=0.18.1 nested under mermaid (GHSA-238p-pmpm-9mq7) -- a RUNTIME
 # dep; the only offered fix is `--force` downgrading mermaid to 10.8.0, so not taken. Revisit with mermaid 12.
 

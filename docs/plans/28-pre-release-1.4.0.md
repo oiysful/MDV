@@ -230,6 +230,8 @@ baseline 실패율 ~40%를 가정하면 disable-gpu가 우연히 8회 연속 0�
 lockfile diff가 그 두 패키지(와 직접 부모)만 건드리는지 확인, `npm audit --audit-level=high` 0건 확인, unit/controller/Electron 통과 → PR → `memory-security.md` PENDING 항목 정리.
 쿨다운 경고("left at a vulnerable version because a fix is newer than the release-age cutoff")가 나오면 시각 계산을 다시 확인.
 
+**완료(2026-10-12)**: plain `npm audit fix`는 electron-builder 26.17.0 등 22개로 diff를 넓혀 버리고, `npm update http-cache-semantics source-map-js`로 정확히 두 항목만 올림(4.3.0, 1.2.2). high 0. 새 moderate `sprintf-js`(빌드 전용, `--force` 다운그레이드만 가능)는 기록만.
+
 ## 5. Electron 44.7.0 패치 업그레이드 — 2026-10-11 04:26 KST 이후
 
 2026-10-12 쿨다운을 7일 → 3일로 줄여(`memory-security.md` 같은 날 항목) 착수 시각이 10-15에서 10-11로 당겨졌다 — 이미 설치 가능.
@@ -285,7 +287,7 @@ Claude App 경로는 OIDC 교환 시 **워크플로가 기본 브랜치(main)와
 | 1 멈춤 실험 | 즉시 | — |
 | 2 목차 #61 | 즉시(1과 병행 가능, 다른 파일) | 1의 matrix 결과를 재발 빈도로 활용 |
 | 3 소스 모드 진입 위치 | 즉시(4를 기다리는 동안) | — |
-| 4 audit fix | 10-11 11:56 KST | — |
+| 4 audit fix | 완료 2026-10-12 | — |
 | 5 Electron 44.7.0 | 10-11 04:26 KST(쿨다운 3일) | 멈춤 재실험은 선택(1단계 지지로 CI 우회 중) |
 | 6 보안 재감사 | 4·5 머지 후 | 의존성이 확정된 뒤에 봐야 의미 |
 | 7 릴리스 | 1~6 완료 후 | 1의 결론이 "열림"이어도 RELEASING 박스 규칙에 따라 진행 가능 — Ian 판단 |
