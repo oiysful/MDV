@@ -7,7 +7,7 @@
 
 릴리스는 `main`을 움직이는 유일한 행위입니다. 작업은 `develop`에서 통합되고, 릴리스는 `develop`에서 `main`으로 여는 명시적 풀 리퀘스트와 그 뒤의 `v*` 태그 푸시로 이루어지며, 태그 푸시가 `.github/workflows/release.yml`을 트리거합니다.
 
-1. `package.json`의 `version`을 올립니다 — `npm version X.Y.Z --no-git-tag-version`을 쓰면 `package.json`과 `package-lock.json`을 한 번에 갱신할 수 있습니다(git 태그는 자동으로 만들지 않도록 스킵 — 태그는 아래 3단계에서 직접 만듭니다). README.md와 README.ko.md의 "배포용 앱 빌드" 섹션에 하드코딩된 `dist/MDV-X.Y.Z-arm64-mac.zip` 예시 경로도 함께 갱신하세요 — 자동으로 채워지는 값이 아니라서 안 챙기면 조용히 오래된 값으로 남습니다. 이 모든 변경을 `chore(release): bump version to X.Y.Z` 커밋으로 묶고, 다른 변경과 마찬가지로 `develop`에서 브랜치를 만들어 풀 리퀘스트로 `develop`에 머지합니다.
+1. `package.json`의 `version`을 올립니다 — `npm version X.Y.Z --no-git-tag-version`을 쓰면 `package.json`과 `package-lock.json`을 한 번에 갱신할 수 있습니다(git 태그는 자동으로 만들지 않도록 스킵 — 태그는 아래 3단계에서 직접 만듭니다). 이 모든 변경을 `chore(release): bump version to X.Y.Z` 커밋으로 묶고, 다른 변경과 마찬가지로 `develop`에서 브랜치를 만들어 풀 리퀘스트로 `develop`에 머지합니다.
 2. `develop`에서 `main`으로 풀 리퀘스트를 열어 머지합니다. 이것이 릴리스라는 행위 자체이며, `main`은 여기서만 움직입니다.
 3. `main`의 머지 커밋에 태그를 붙여 푸시합니다:
    ```

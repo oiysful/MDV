@@ -14,6 +14,8 @@ MDV는 macOS용 데스크톱 Markdown 에디터 겸 뷰어로, Claude에서 영�
 체크리스트, 문법 강조가 적용된 코드 블록, Mermaid 다이어그램, LaTeX 수식
 렌더링을 지원합니다.
 
+<p align="center"><img src="./docs/images/screenshot.png" alt="표, 코드 블록, Mermaid 다이어그램, 수식이 들어간 Markdown 문서를 렌더링한 MDV 화면" width="800"></p>
+
 > [!IMPORTANT]
 > MDV는 **서명되지 않은(unsigned) macOS 앱**으로 배포됩니다. 이 프로젝트에는 Apple Developer ID 서명이나 공증(notarization)이 없습니다.
 > 아래의 설치/업데이트 스크립트는 MDV를 로컬에서 빌드하거나 설치하고, `MDV.app`을 `/Applications`에 복사한 뒤 `xattr -dr com.apple.quarantine`으로 macOS의 quarantine 속성을 제거하여 Gatekeeper 마찰을 줄입니다.
@@ -144,7 +146,7 @@ npm run build
 현재 빌드 출력물:
 
 - `dist/mac-arm64/MDV.app`
-- `dist/MDV-1.4.0-arm64-mac.zip`
+- `dist/MDV-<version>-arm64-mac.zip` (`<version>`은 `package.json`의 `version` 값)
 
 ## 배포 참고사항
 
@@ -159,4 +161,5 @@ npm run build
 - 더 친화적인 macOS 배포를 위한 공증(notarization)은 아직 진행되지 않았습니다.
 - Homebrew cask와 모든 릴리스 빌드는 Apple Silicon(arm64)만 대상으로 하며, Intel(x64) 빌드는 없습니다.
 - macOS 13(Ventura) 이상이 필요합니다.
+- 인터페이스는 한국어로만 제공되며, 아직 다국어(localization)를 지원하지 않습니다.
 - 세션 복원은 마지막으로 포커스된 창의 상태(파일 경로 + 활성 탭 인덱스 + 탐색기 루트)만 유지합니다. 다중 창 세션 병합은 v1 범위 밖입니다.

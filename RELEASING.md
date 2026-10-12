@@ -7,7 +7,7 @@
 
 Releasing is the only thing that moves `main`. Work integrates on `develop`; a release is a deliberate pull request from `develop` into `main`, followed by a `v*` tag push that triggers `.github/workflows/release.yml`.
 
-1. Bump `version` in `package.json` — `npm version X.Y.Z --no-git-tag-version` updates both `package.json` and `package-lock.json` in one step (skip the git tag it would otherwise create; that's step 3 below). Also update the hardcoded `dist/MDV-X.Y.Z-arm64-mac.zip` example path in both README.md's and README.ko.md's "Build a distributable app" section — it's not templated, so it silently goes stale otherwise. Commit everything as `chore(release): bump version to X.Y.Z` on a branch off `develop`, and merge it into `develop` through a pull request like any other change.
+1. Bump `version` in `package.json` — `npm version X.Y.Z --no-git-tag-version` updates both `package.json` and `package-lock.json` in one step (skip the git tag it would otherwise create; that's step 3 below). Commit everything as `chore(release): bump version to X.Y.Z` on a branch off `develop`, and merge it into `develop` through a pull request like any other change.
 2. Open a pull request from `develop` to `main` and merge it. This is the act of releasing — `main` moves here and nowhere else.
 3. Tag the merge commit on `main` and push:
    ```

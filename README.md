@@ -14,6 +14,8 @@ you left off — open tabs, sidebar state, and theme all restore automatically
 on the next launch. Rendering supports GFM tables and task lists,
 syntax-highlighted code blocks, Mermaid diagrams, and LaTeX math.
 
+<p align="center"><img src="./docs/images/screenshot.png" alt="MDV rendering a Markdown document with a table, code block, Mermaid diagram, and math" width="800"></p>
+
 > [!IMPORTANT]
 > MDV is distributed as an **unsigned macOS app**. There is no Apple Developer ID signing or notarization for this project.
 > The install/update scripts below build or install MDV locally, copy `MDV.app` into `/Applications`, and clear the macOS quarantine attribute with `xattr -dr com.apple.quarantine` to reduce Gatekeeper friction.
@@ -97,7 +99,7 @@ MDV_RELEASE_TAG=v1.0.0 npm run install:release
 
 **Workflow & reliability**
 - File change watching for opened files
-- Session restore: open tabs and the explorer root reopen automatically on next launch; recently opened/saved files appear in the macOS Dock's "최근 항목" menu
+- Session restore: open tabs and the explorer root reopen automatically on next launch; recently opened/saved files appear in the macOS Dock's Recent Items menu
 - Split view always keeps the sidebar closed while active, restoring it to its prior state on exit
 - First-launch empty-state guidance and stronger open-entry onboarding, with an explorer root header for path toggle and close
 - Holding ⌘ reveals shortcut badges on buttons that have a real system accelerator
@@ -112,8 +114,8 @@ MDV runs entirely on your machine: documents are read from and written to disk o
 
 ## First Launch UX
 
-- On an empty launch, MDV emphasizes the top-right **열기** entry point.
-- The empty state includes direct **파일 열기** / **폴더 열기** actions.
+- On an empty launch, MDV emphasizes the top-right **열기** (Open) entry point.
+- The empty state includes direct **파일 열기** (Open File) / **폴더 열기** (Open Folder) actions.
 - A first-launch guidance card explains how to:
   - open a single markdown file
   - open a folder into the explorer
@@ -144,7 +146,7 @@ npm run build
 Current build outputs:
 
 - `dist/mac-arm64/MDV.app`
-- `dist/MDV-1.4.0-arm64-mac.zip`
+- `dist/MDV-<version>-arm64-mac.zip` (`<version>` is the `version` field in `package.json`)
 
 ## Distribution Notes
 
@@ -159,4 +161,5 @@ Current build outputs:
 - Notarization is still pending for friendlier macOS distribution.
 - The Homebrew cask and all release builds target Apple Silicon (arm64) only; there is no Intel (x64) build.
 - Requires macOS 13 (Ventura) or later.
+- The interface is Korean only; there is no localization yet. UI labels quoted in this README are shown in Korean with an English gloss.
 - Session restore persists only the last-focused window's state (file paths + active tab index + explorer root); multi-window session merging is out of scope for v1.
