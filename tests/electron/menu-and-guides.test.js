@@ -279,6 +279,38 @@ test('native menu registers the ⌘B sidebar and ⌘⇧O folder-open accelerator
   }
 })
 
+// The app menu used to read "About mdv" / "Hide mdv" / "Quit mdv": app.name came from
+// package.json's lowercase "name" because there was no top-level productName. userData follows
+// app.name by default, so fixing the name must not move the data folder every earlier release
+// wrote to (plan 31).
+test('the app menu names the app MDV while userData stays in the lowercase mdv folder', async () => {
+  const { electronApp, page } = await launchApp()
+
+  try {
+    await page.waitForSelector('#empty')
+
+    const names = await electronApp.evaluate(({ app, Menu }) => {
+      const appMenu = Menu.getApplicationMenu().items[0]
+      return {
+        appName: app.name,
+        appMenu: appMenu.label,
+        roleLabels: appMenu.submenu.items
+          .filter(item => ['about', 'hide', 'quit'].includes(item.role))
+          .map(item => item.label),
+        defaultUserDataDir: globalThis.__mdvDefaultUserDataDir ?? null,
+        appDataDir: app.getPath('appData'),
+      }
+    })
+
+    assert.equal(names.appName, 'MDV')
+    assert.equal(names.appMenu, 'MDV')
+    assert.deepEqual(names.roleLabels, ['About MDV', 'Hide MDV', 'Quit MDV'])
+    assert.equal(names.defaultUserDataDir, `${names.appDataDir}/mdv`)
+  } finally {
+    await closeApp(electronApp)
+  }
+})
+
 test('보기 > 좌측 패널 표시/숨기기 toggles the sidebar when the menu item is clicked', async () => {
   const { electronApp, page } = await launchApp()
 

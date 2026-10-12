@@ -8,11 +8,18 @@ const { isEmptySession } = require('./renderer/session-state')
 const { normalizeTag, shouldNotify } = require('./update-checker')
 const { pollRootsFromEnv, watchOptionsFor } = require('./watch-options')
 
+// userData follows app.name by default. Through v1.4.0 app.name was "mdv" (package.json's
+// "name"; there was no top-level productName, so the menu read "About mdv"), and that is the
+// folder every earlier release wrote session.json and update-check.json to. Now that productName
+// makes app.name "MDV", pin the old folder: on the default case-insensitive APFS ".../MDV" is the
+// same directory anyway, but on a case-sensitive volume it would be a new, empty one.
+const defaultUserDataDir = path.join(app.getPath('appData'), 'mdv')
 // Tests point this at a throwaway directory so the suite never reads or clobbers the
 // real user's session.json. Must run before app 'ready', which module-load time satisfies.
-if (process.env.MDV_USER_DATA_DIR) {
-  app.setPath('userData', process.env.MDV_USER_DATA_DIR)
-}
+app.setPath('userData', process.env.MDV_USER_DATA_DIR || defaultUserDataDir)
+// Test-only introspection, same guard as the watcher maps below: the pin above is invisible
+// under a test's throwaway userData, so a test asserts the folder it would have used.
+if (process.env.MDV_USER_DATA_DIR) globalThis.__mdvDefaultUserDataDir = defaultUserDataDir
 
 const watchers = new Map() // path → { watcher: chokidar.FSWatcher, subscribers: Set<WebContents> }
 const dirWatchers = new Map() // dirPath → { watcher: chokidar.FSWatcher, subscribers: Set<WebContents>, debounceTimer }

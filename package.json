@@ -1,5 +1,6 @@
 {
   "name": "mdv",
+  "productName": "MDV",
   "version": "1.4.0",
   "description": "Claude-style Markdown Editor",
   "main": "src/main.js",
