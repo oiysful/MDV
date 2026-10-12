@@ -70,8 +70,9 @@ marked의 escape 토크나이저가 이미 `\{`·`\\`·`\,`를 먹은 뒤라 같
 | **R4 R2 + 앞뒤 ASCII 영숫자 금지 (채택안)** | **1** | **6** | **6건 모두 진짜 수식(math-olympiad 플러그인 문서)** |
 | 디스플레이 `$$…$$`(줄 단위) | 0 | 0 | 비용 등급 표의 `$$`는 셀 단위라 잡히지 않음 |
 
-참고로 1차 근사 스캔(정규식으로 코드 제거)에서는 2,611개 중 **164개 파일**이 코드 밖에 `$`를 갖고 있었다. 그래서
-지연 로딩 조건을 "`$`가 있는가"로 두면 안 된다(§4).
+참고로 1차 근사 스캔(정규식으로 코드 제거)에서는 2,611개 중 **164개 파일**이 코드 밖에 `$`를 갖고 있었다. KaTeX 지연
+로딩 조건을 느슨하게 잡으면 이 파일들도 KaTeX를 받는다. 그 비용이 작다는 것과, 그래도 느슨한 조건을 권장하는 이유는
+§4에 있다.
 
 **편향**: 이 코퍼스는 Ian의 개발 문서와 Claude 플러그인·스킬 문서가 대부분이다. 수식이 많은 문서(논문 노트, 강의
 자료)는 거의 없어서 **재현율(진짜 수식을 놓치는 비율)은 이 실측으로 검증되지 않았다.** `.venv` 안의 OpenTelemetry
@@ -139,7 +140,7 @@ v1이 이차인 이유는 기본 텍스트 정규식이 특수 문자(`*`·`_`·
 | 곳 | 내용 | 결정 필요 |
 |---|---|---|
 | `markdown.js` 렌더러 | 확장 renderer에서 `katex.renderToString(tex, { throwOnError: false, displayMode, strict: false })`. KaTeX가 없으면(로드 실패·jsdom) 원문을 이스케이프해 글자로 낸다. 지금 펜스의 폴백과 같은 원칙이다 | — |
-| 지연 로딩 조건 | 지금은 `LATEX_FENCE_RE`(펜스 존재)일 때만 KaTeX를 받는다. `$` 존재로 넓히면 코드 밖에 `$`만 있는 파일(1차 스캔 164/2,611)도 매번 KaTeX를 받는다. **같은 스캐너를 렌더 전에 한 번 돌려 실제 수식이 있을 때만** 로드한다 | — |
+| 지연 로딩 조건 | 지금은 `LATEX_FENCE_RE`(펜스 존재)일 때만 KaTeX를 받는다. **느슨한 조건(예: `/\$\$\|\$[^\s$]/`)을 더하는 것을 권장한다.** `markdown.js` 42–45행 주석이 정한 원칙("오탐은 불필요한 지연 로드 한 번이라 무해하고, 미탐은 수식이 조용히 안 나오는 실패라 피한다")을 그대로 따른다. 오탐 비용도 작다. `loadScriptOnce`가 창마다 한 번만 받아 캐시하고, KaTeX CSS는 이미 항상 로드되어 있다. **스캐너를 문서 전체에 돌려 게이트로 쓰는 안은 기각**: 목록·인용문 안의 `$$` 블록은 문서 전체에서 보면 앞에 `- `·`> `·들여쓰기가 붙어 "줄 시작" 조건에서 떨어진다. 반면 파싱은 인라인 소스 단위라 그 안에서는 수식 토큰이 만들어진다. 결과적으로 KaTeX 없이 원문이 나오는 미탐이 된다 | — |
 | 헤딩 속 수식 → 목차·앵커 | jsdom 실측: `## Energy $E=mc^2$`의 `textContent`가 `"Energy E=mc2E=mc^2E=mc2"`이다. MathML 글자, `annotation` 태그는 DOMPurify가 지우지만 남는 TeX 원문, HTML 글리프가 겹친다. 이 값이 목차 라벨(`buildToc`의 `heading.textContent`)과 `slugifyHeading`의 앵커에 들어간다. 소스 모드 목차(`extractHeadingsFromSource`의 `parseInline` 후 태그 제거)도 같은 문자열을 만든다 | **예** — `.katex`를 TeX 원문으로 바꿔 읽기(앵커 `energy-emc2`) vs `.katex-html`만 읽기 |
 | 검색(⌘F) | `search.js`의 TreeWalker가 `#content`의 모든 텍스트 노드를 훑는다. 숨은 `.katex-mathml`까지 포함된다. 펜스 수식에도 이미 있는 문제지만, 인라인은 문장 속에 섞이므로 `x` 같은 짧은 검색어가 보이지 않는 노드에 하이라이트를 만든다 | **예** — `closest('mark,script,style')`에 `.katex` 추가(수식 안은 검색 안 됨) vs 현행 유지 |
 | CSS | 인라인 `.katex`는 KaTeX 기본 스타일로 충분하다. 문단 안 디스플레이 수식은 `.katex-display`에 `.mdv-latex`와 같은 `overflow-x: auto`가 필요하다 | — |
@@ -175,9 +176,14 @@ scratchpad는 세션이 끝나면 사라지므로 핵심만 옮긴다.
 /(?<![\\$A-Za-z0-9])\$(?![\s$])((?:\\.|[^$\\\n])+?)(?<![\s\\])\$(?![A-Za-z0-9$])/g
 ```
 
-**v2 프로토타입의 핵심**(marked 9.1.6, `new Marked({ gfm: true, breaks: true })`):
+**v2 프로토타입의 핵심**(marked 9.1.6). 아래 코드를 저장소 루트에서 `node`로 그대로 돌릴 수 있다.
 
 ```js
+const { Marked, Lexer } = require('marked')                 // MDV의 node_modules(9.1.6)
+const katex = require('katex')
+const marked = new Marked({ gfm: true, breaks: true })
+const baseInlineText = marked.Tokenizer.prototype.inlineText
+
 // 인라인 소스 하나를 선형으로 훑어 [start, end, tex, display] 목록을 만든다.
 function scanMath(src) {
   const spans = [], n = src.length
