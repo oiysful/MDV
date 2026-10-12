@@ -56,7 +56,7 @@ Commits before 2026-09-18 are imperative English sentences with no type prefix. 
 
 ## Dependencies
 
-`.npmrc` sets `min-release-age=7`: npm will not install a package version published less than seven days ago.
+`.npmrc` sets `min-release-age=3`: npm will not install a package version published less than three days ago.
 
 The attack this guards against is a maintainer account takeover followed by a malicious patch release. Those are usually caught and unpublished within hours, so nearly all of the risk sits in the first days after a version appears. This project has no reason to take a release the day it ships, so waiting out that window costs nothing and closes it.
 
