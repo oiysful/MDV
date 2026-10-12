@@ -10,7 +10,7 @@
 > [!IMPORTANT]
 > **v1.4.0(2026-10-12 릴리스)에서 남은 확인.** 확인하면 이 상자를 지우세요.
 > - **리뷰 봇 `claude[bot]`(계획 28 7a단계).** 이제 `main`과 `develop`의 `claude-review.yml`이 같아져 Claude GitHub App 경로의 조건을 만족합니다. 다음 `develop` 대상 PR에서 리뷰 코멘트가 `claude[bot]`으로 달리는지 확인하세요. `review` 잡이 초록인데 코멘트가 없으면 로그에서 `Workflow validation failed`, OIDC 오류, App 설치 범위(`oiysful/MDV`만) 순서로 봅니다.
-> - **Homebrew cask 형식.** cask는 `depends_on macos: :ventura`입니다 — 기호 하나가 "이 버전 이상"을 뜻하고, 문자열 형식 `">= :ventura"`는 deprecated라 경고가 납니다. `postflight`도 `postflight_steps`로 바꾸라는 경고가 나오지만 1.4.0 이전부터 있던 것이라 그대로 두었습니다.
+> - **Homebrew cask 형식.** cask는 `depends_on macos: :ventura`입니다 — 기호 하나가 "이 버전 이상"을 뜻하고, 문자열 형식 `">= :ventura"`는 deprecated라 경고가 납니다. `postflight`도 `postflight_steps`로 바꾸라는 경고가 나오지만 1.4.0 이전부터 있던 것이며 `docs/plans/29-homebrew-cask-postflight-steps.md`에 전환 계획이 있습니다.
 
 1. `package.json`의 `version`을 올립니다 — `npm version X.Y.Z --no-git-tag-version`을 쓰면 `package.json`과 `package-lock.json`을 한 번에 갱신할 수 있습니다(git 태그는 자동으로 만들지 않도록 스킵 — 태그는 아래 3단계에서 직접 만듭니다). README.md와 README.ko.md의 "배포용 앱 빌드" 섹션에 하드코딩된 `dist/MDV-X.Y.Z-arm64-mac.zip` 예시 경로도 함께 갱신하세요 — 자동으로 채워지는 값이 아니라서 안 챙기면 조용히 오래된 값으로 남습니다. 이 모든 변경을 `chore(release): bump version to X.Y.Z` 커밋으로 묶고, 다른 변경과 마찬가지로 `develop`에서 브랜치를 만들어 풀 리퀘스트로 `develop`에 머지합니다.
 2. `develop`에서 `main`으로 풀 리퀘스트를 열어 머지합니다. 이것이 릴리스라는 행위 자체이며, `main`은 여기서만 움직입니다.
