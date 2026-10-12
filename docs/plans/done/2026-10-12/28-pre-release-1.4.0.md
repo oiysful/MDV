@@ -1,7 +1,7 @@
 # 28. v1.4.0 릴리스 전 정리 — Electron 44 CI 멈춤 실험부터 릴리스 당일까지
 
 ## 상태
-**진행 중.** 순서는 Ian 승인(2026-10-08): 1 → 2 → 3 → 4 → 5 → 6 → 7. 3단계(소스 모드 진입 위치)는 1·2단계 완료 후 Ian 요청으로 추가(2026-10-08), 기존 3~6은 4~7로 밀림.
+**완료(2026-10-12).** 1~7단계와 7a 모두 끝났다 — 7a는 PR #49의 자동 리뷰가 `claude[bot]`으로 달린 것으로 확인. 순서는 Ian 승인(2026-10-08): 1 → 2 → 3 → 4 → 5 → 6 → 7. 3단계(소스 모드 진입 위치)는 1·2단계 완료 후 Ian 요청으로 추가(2026-10-08), 기존 3~6은 4~7로 밀림.
 
 **1단계 결과 (2026-10-08) — H1 지지, CI에 `--disable-gpu` 채택.** Draft PR #38, 실행 37730245504, 두 번(attempt 1·2), 변형을 시간상 섞음.
 
@@ -252,7 +252,7 @@ high 이상이 나오면 릴리스 전 수정, 그 이하는 Ian 판단.
 
 ## 7. 릴리스 당일 — RELEASING.md 순서 그대로
 
-**완료(2026-10-12): v1.4.0 릴리스.** #47 버전 올림(+README 최소 macOS) → #48 develop→main(`3b62005`) → 태그 `v1.4.0` → `release.yml` 전 단계 성공(SHA 고정 action 첫 실행) → zip 165.7MB, `SHA256SUMS`와 cask `sha256` 일치 → 릴리스 노트 → tap `Casks/mdv.rb`에 `depends_on macos: :ventura`(`">= :ventura"` 문자열은 brew가 deprecated 경고 → 기호 형식으로 다시 커밋, `brew info`: `macOS >= 13`). 남은 것: 7a의 `claude[bot]` 확인(다음 develop PR), 업데이트 배너 실기 확인(선택).
+**완료(2026-10-12): v1.4.0 릴리스.** #47 버전 올림(+README 최소 macOS) → #48 develop→main(`3b62005`) → 태그 `v1.4.0` → `release.yml` 전 단계 성공(SHA 고정 action 첫 실행) → zip 165.7MB, `SHA256SUMS`와 cask `sha256` 일치 → 릴리스 노트 → tap `Casks/mdv.rb`에 `depends_on macos: :ventura`(`">= :ventura"` 문자열은 brew가 deprecated 경고 → 기호 형식으로 다시 커밋, `brew info`: `macOS >= 13`). 남은 것: 업데이트 배너 실기 확인(선택).
 
 RELEASING.md 상단 박스 3개(cask 최소 macOS — 실제로는 `depends_on macos: :ventura`, README/README.ko 최소 macOS 한 줄, develop 최신 `test-electron` 확인)
 + 본문 1~7단계(`npm version 1.4.0 --no-git-tag-version` → develop→main PR → 태그 → 릴리스 노트 `gh release edit` → tap 확인).
@@ -260,6 +260,8 @@ README 버전 문자열은 자동 갱신되지 않음(메모리 `mdv-homebrew-di
 머지·태그 푸시는 auto mode가 막을 수 있으므로 Ian이 실행할 명령을 정확히 건넨다.
 
 ### 7a. 리뷰 봇을 `claude[bot]`으로 전환 — v1.4.0 릴리스 PR에 함께 싣는다 (Ian 결정, 2026-10-08)
+**완료(2026-10-12).** PR #46으로 `github_token` 제거 + `id-token: write`, v1.4.0 릴리스로 main과 develop의 파일이 같아짐 → 릴리스 후 첫 develop PR #49에서 리뷰 코멘트 작성자가 `claude[bot]`(type `Bot`)임을 API로 확인. `review` 잡 42초, 초록.
+
 **왜 지금 `github-actions`인가**: `claude-review.yml`이 `github_token: GITHUB_TOKEN`을 넘기기 때문(액션 faq "Why aren't comments posted as
 claude[bot]?" — 넘긴 토큰의 신원으로 코멘트가 달린다; `bot_name`/`bot_id`는 git 커밋 작성자에만 쓰여 코멘트 이름을 못 바꾼다). 넘긴 이유는 계획 27:
 Claude App 경로는 OIDC 교환 시 **워크플로가 기본 브랜치(main)와 글자 하나까지 같아야** 하는데 main은 릴리스 전용이라 아직 그 파일이 없다.
