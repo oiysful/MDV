@@ -273,7 +273,8 @@ Claude App 경로는 OIDC 교환 시 **워크플로가 기본 브랜치(main)와
 1. **완료(2026-10-12, 브랜치 `ci/review-bot-claude-app`)** (릴리스 전, develop) `claude-review.yml`에서 `github_token` 줄 삭제, `permissions`에 `id-token: write` 추가(App 경로의 OIDC에 필요 — 액션 faq "OIDC
    authentication errors"). 주석의 "App 경로를 안 쓰는 이유"를 "릴리스로 main과 동일해진 뒤 App 경로" 로 갱신. `--edit-last` 지시는 그대로 둬도 되고,
    `use_sticky_comment: true`로 바꿀지는 4번에서 결정.
-   - **이 PR 자신과 이후 릴리스 전까지의 develop PR 리뷰는 401로 실패한다**(main에 아직 같은 파일이 없으므로) — 예상된 실패, 필수 체크 아님.
+   - **이 PR 자신과 이후 릴리스 전까지의 develop PR 리뷰는 돌지 않는다**(main에 아직 같은 파일이 없으므로) — 예상된 결과, 필수 체크 아님.
+     **실측(PR #46)**: 401로 빨갛게 실패하는 게 아니라, OIDC 토큰은 받은 뒤 `Workflow validation failed`를 **경고로 남기고 건너뛰어 잡은 초록, 코멘트는 없음**. 초록 `review`가 리뷰가 돌았다는 증거가 아니다.
      그래서 이 변경은 **릴리스 PR 직전**, develop에 마지막으로 들어가는 PR로 한다.
 2. **완료(2026-10-08, Ian — 설치 범위 `oiysful/MDV`만; `gh` 토큰으론 설치 목록을 조회할 수 없어 검증은 3번에서)** Claude GitHub App 설치: https://github.com/apps/claude → `oiysful` → **Only select repositories: `oiysful/MDV`**.
    설치만으로는 아무것도 바뀌지 않는다(워크플로가 `github_token`을 넘기는 동안은 App 토큰을 쓰지 않음).
