@@ -1,9 +1,23 @@
 # 29. Homebrew cask의 `postflight` → `postflight_steps` 전환
 
 ## 상태
-**계획(2026-10-12), 미착수.** v1.4.0 릴리스 뒤 `brew info --cask oiysful/tap/mdv`가
-`Calling postflight is deprecated! Use postflight_steps instead.` 경고를 낸다. 동작에는 지금 문제가 없다.
-옛 방식이 실제로 제거되기 전에 옮기는 것이 목표다.
+**완료(2026-10-12).** tap 커밋 `0047f85`(`oiysful/homebrew-tap`)로 반영했다. 아래 "결과"에 실측 기록이 있다.
+계획 당시: v1.4.0 릴리스 뒤 `brew info --cask oiysful/tap/mdv`가
+`Calling postflight is deprecated! Use postflight_steps instead.` 경고를 냈다. 동작에는 문제가 없었고,
+옛 방식이 실제로 제거되기 전에 옮기는 것이 목표였다.
+
+## 결과 (2026-10-12, Homebrew 7.0.9, 로컬 tap · `HOMEBREW_NO_AUTO_UPDATE=1`)
+| 단계 | 결과 |
+|---|---|
+| 1 기준선(`postflight` 블록 삭제 후 reinstall) | `xattr -p com.apple.quarantine /Applications/MDV.app` → `0381;6acc4700;;342C6A61-…` — **속성이 남는다**. 이 단계는 여전히 필요하다 |
+| 2 초안 그대로 `postflight_steps` + reinstall | `No such xattr: com.apple.quarantine`, `xattr -rl`로 앱 전체에서도 0건. `brew info`에 deprecated 경고 없음 |
+| 3 실행 | `open` 후 MDV 프로세스가 떴다. 종료 후 다음 단계로 |
+| 4 정적 점검 | `brew style` no offenses, `brew audit --cask --strict` 종료 코드 0 |
+| 5 제거·재설치 | `brew uninstall --cask`로 `/Applications/MDV.app` 제거됨. 다시 `install`해도 속성 없음 |
+| 3절 2 `sed` | `^  version "`·`^  sha256 "`가 새 파일에서 각각 정확히 1줄 |
+
+샌드박스·App Management 우려(6번 대안 `writable_paths`)는 나타나지 않아 쓰지 않았다. 반영 방식은
+tap의 GitHub 파일을 `gh api -X PUT`으로 커밋한 뒤 로컬 tap을 `checkout --` + `pull`로 맞췄다.
 
 ## 무엇을 바꾸나
 
