@@ -144,7 +144,7 @@ npm run build
 Current build outputs:
 
 - `dist/mac-arm64/MDV.app`
-- `dist/MDV-1.3.0-arm64-mac.zip`
+- `dist/MDV-1.4.0-arm64-mac.zip`
 
 ## Distribution Notes
 
@@ -158,4 +158,5 @@ Current build outputs:
 
 - Notarization is still pending for friendlier macOS distribution.
 - The Homebrew cask and all release builds target Apple Silicon (arm64) only; there is no Intel (x64) build.
+- Requires macOS 13 (Ventura) or later.
 - Session restore persists only the last-focused window's state (file paths + active tab index + explorer root); multi-window session merging is out of scope for v1.
