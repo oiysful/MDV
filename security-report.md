@@ -64,7 +64,12 @@ matching hash to the tap that `brew upgrade` installs from. It could also edit
 The review bot's exposure is narrower. The OAuth token grants inference only, the job runs only
 for same-repo PRs, and its GitHub token cannot push.
 
-**Fix (not applied; `ask_before_modify: true`).** Pin both to a full commit SHA and keep the tag
+**Status: fixed in PR `ci/pin-actions-to-sha` (Ian approved 2026-10-12).** Every `uses:` in all four workflows is now a
+commit SHA with its version as a comment: `softprops/action-gh-release` v3.0.3 (the commit `v3` pointed to that day),
+`anthropics/claude-code-action` v1.0.247 (newest past the 3-day cooldown; `v1` was already at v1.0.248), `actions/checkout`
+v7.0.1, `actions/setup-node` v7.1.0. `release.yml` only runs on a tag, so its pin is first exercised by the v1.4.0 release.
+
+**Fix as originally proposed.** Pin both to a full commit SHA and keep the tag
 as a comment, e.g. `softprops/action-gh-release@<40-hex-sha> # v3.x.y`. Resolve the SHA from the
 tag on the day it is pinned, and record which version that is. GitHub's own `actions/checkout`
 and `actions/setup-node` carry much less risk and can stay on tags, or be pinned in the same
