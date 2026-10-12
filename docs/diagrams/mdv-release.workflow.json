@@ -12,41 +12,41 @@
     { "id": "fallback", "label": "예외 경로", "variant": "exception" }
   ],
   "phases": [
-    { "id": "prepare", "label": "준비", "fromCol": 0, "toCol": 1 },
-    { "id": "automate", "label": "자동 빌드 · 게시", "fromCol": 2, "toCol": 3, "variant": "emphasis" },
+    { "id": "prepare", "label": "준비 · develop", "fromCol": 0, "toCol": 1 },
+    { "id": "cut", "label": "릴리스 확정 · main", "fromCol": 2, "toCol": 3, "variant": "emphasis" },
     { "id": "deliver", "label": "배포", "fromCol": 4, "toCol": 5 }
   ],
   "groups": [
-    { "id": "one_run", "label": "태그 하나로 도는 단일 실행", "lane": "ci", "fromCol": 2, "toCol": 4, "variant": "emphasis" }
+    { "id": "one_run", "label": "태그 하나로 도는 단일 실행", "lane": "ci", "fromCol": 3, "toCol": 4, "variant": "emphasis" }
   ],
-  "mainPath": ["bump", "tag", "build", "release", "taprun", "cask"],
+  "mainPath": ["bump", "releasepr", "tag", "buildrelease", "taprun", "cask"],
   "nodes": [
-    { "id": "bump", "lane": "maintainer", "col": 0, "type": "backend", "label": "버전 bump", "sublabel": "package.json · README", "width": 148 },
-    { "id": "tag", "lane": "maintainer", "col": 1, "type": "backend", "label": "v* 태그 푸시", "sublabel": "git push origin vX.Y.Z", "width": 148 },
+    { "id": "bump", "lane": "maintainer", "col": 0, "type": "backend", "label": "버전 bump", "sublabel": "develop에 PR로", "width": 148 },
+    { "id": "releasepr", "lane": "maintainer", "col": 1, "type": "security", "label": "develop → main PR", "sublabel": "릴리스 결정", "tag": "main이 움직이는 유일한 지점", "width": 148 },
+    { "id": "tag", "lane": "maintainer", "col": 2, "type": "backend", "label": "v* 태그 푸시", "sublabel": "main의 머지 커밋에", "width": 148 },
     { "id": "notes", "lane": "maintainer", "col": 4, "type": "frontend", "label": "릴리스 노트 작성", "sublabel": "gh release edit", "tag": "워크플로가 안 만든다", "width": 148 },
-    { "id": "build", "lane": "ci", "col": 2, "type": "cloud", "label": "무서명 빌드", "sublabel": "electron-builder · arm64", "width": 148 },
-    { "id": "release", "lane": "ci", "col": 3, "type": "cloud", "label": "GitHub Release", "sublabel": ".zip + SHA256SUMS", "width": 148 },
+    { "id": "buildrelease", "lane": "ci", "col": 3, "type": "cloud", "label": "빌드 + Release 게시", "sublabel": ".zip + SHA256SUMS", "width": 148 },
     { "id": "taprun", "lane": "ci", "col": 4, "type": "cloud", "label": "탭 bump 스크립트", "sublabel": "update-homebrew-tap.sh", "width": 148 },
     { "id": "cask", "lane": "dist", "col": 5, "type": "external", "label": "Homebrew Cask", "sublabel": "oiysful/tap/mdv", "width": 148 },
     { "id": "manual", "lane": "fallback", "col": 5, "type": "security", "label": "수동 cask bump", "sublabel": "토큰 없이 건너뜀", "width": 148 }
   ],
   "edges": [
-    { "id": "bump-tag", "from": "bump", "to": "tag", "label": "main 머지" },
-    { "id": "tag-build", "from": "tag", "to": "build", "label": "태그가 트리거", "variant": "emphasis" },
-    { "id": "build-release", "from": "build", "to": "release", "label": "산출물 첨부" },
-    { "id": "release-taprun", "from": "release", "to": "taprun", "label": "sha256 전달" },
+    { "id": "bump-pr", "from": "bump", "to": "releasepr", "label": "develop 머지" },
+    { "id": "pr-tag", "from": "releasepr", "to": "tag", "label": "머지 후", "variant": "emphasis" },
+    { "id": "tag-build", "from": "tag", "to": "buildrelease", "label": "태그가 트리거", "variant": "emphasis" },
+    { "id": "build-taprun", "from": "buildrelease", "to": "taprun", "label": "sha256 전달" },
     { "id": "taprun-cask", "from": "taprun", "to": "cask", "label": "version · sha256", "variant": "emphasis" },
-    { "id": "release-notes", "from": "release", "to": "notes", "label": "본문은 비어 있다", "variant": "dashed", "role": "branch" },
+    { "id": "build-notes", "from": "buildrelease", "to": "notes", "label": "본문은 비어 있다", "variant": "dashed", "role": "branch" },
     { "id": "taprun-manual", "from": "taprun", "to": "manual", "label": "토큰 없음", "variant": "security", "role": "error" }
   ],
   "cards": [
     {
       "dot": "cyan",
-      "title": "트리거와 산출물",
+      "title": "main이 움직이는 순간",
       "items": [
-        "릴리스는 v* 태그 푸시로만 시작한다 — 브랜치 푸시로는 아무 워크플로도 돌지 않는다",
-        "산출물은 무서명 .zip 과 SHA256SUMS 둘뿐이고 Apple Silicon 전용이다",
-        "GITHUB_TOKEN 은 만들 시크릿이 아니라 실행마다 주입된다 — Actions 권한만 쓰기여야 한다"
+        "작업은 develop에서 통합되고 main은 릴리스할 때만 움직인다",
+        "그 움직임이 develop → main PR 하나이며, 태그는 그 머지 커밋에 붙는다",
+        "산출물은 무서명 .zip 과 SHA256SUMS 둘뿐이고 Apple Silicon 전용이다"
       ]
     },
     {
@@ -54,7 +54,7 @@
       "title": "자동화가 손대지 않는 것",
       "items": [
         "워크플로는 릴리스 본문을 만들지 않는다 — gh release edit 로 사람이 붙인다",
-        "README 의 dist/MDV-X.Y.Z 예시 경로는 템플릿이 아니라 손으로 갱신해야 한다",
+        "README 의 dist/MDV-X.Y.Z 예시 경로는 손으로 갱신해야 한다",
         "서명·공증이 없어 autoUpdater 를 못 쓴다 — 인앱 배너는 알림 전용이다"
       ]
     },
@@ -64,7 +64,7 @@
       "items": [
         "HOMEBREW_TAP_TOKEN 이 없으면 탭 bump 는 알림만 남기고 0 으로 끝난다",
         "릴리스는 성공하고 cask 만 수동 bump 대상으로 남는다",
-        "brew install mdv 를 --cask 없이 쓰면 이름만 같은 다른 도구가 설치된다"
+        "v* 태그는 이동·삭제가 막혀 있어 재태그로 수습할 수 없다"
       ]
     }
   ]

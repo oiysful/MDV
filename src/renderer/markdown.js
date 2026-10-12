@@ -3,6 +3,28 @@
   // globalScope.jsyaml. Node (unit tests via require()): no such script tag ran, so fall
   // back to a real require -- mirrors sanitizeHtml's DOMPurify-or-escape degrade pattern.
   const yamlLib = globalScope.jsyaml || (typeof require === 'function' ? require('js-yaml') : null)
+  // js-yaml 5's default load() schema is plain YAML 1.2 CORE, which drops what v4's default
+  // gave frontmatter: unquoted dates as Date (formatFrontmatterDate depends on it),
+  // `<<: *anchor` merge keys, and the `!!binary`/`!!omap`/`!!set`/`!!pairs` tags (an unknown
+  // tag throws, and the whole block falls back to raw text). Add exactly those back. Not
+  // YAML11_SCHEMA: it also turns keys like `n:` into `false` and `1:23` into 83 -- more
+  // aggressive than v4 ever was. One difference remains: v5's `!!set` is a real Set, where v4
+  // gave `{ x: null }`; renderFrontmatterValue shows it as a list.
+  // The loader's default safety limits (maxDepth, maxTotalMergeKeys) stay as they are --
+  // frontmatter comes from untrusted .md files.
+  const yamlSchema = yamlLib
+    ? yamlLib.CORE_SCHEMA.withTags(
+      yamlLib.timestampTag, yamlLib.mergeTag, yamlLib.binaryTag,
+      yamlLib.omapTag, yamlLib.setTag, yamlLib.pairsTag,
+    )
+    : null
+  // A frontmatter block whose every line is blank, a YAML comment, or the `...` document-end
+  // marker (optionally commented). js-yaml 5 throws on such a source ("the input is empty")
+  // where v4 returned undefined, so it is detected up front. The marker must start the line
+  // and a comment after it needs whitespace first -- `   ...` and `...#c` are plain scalars.
+  // `[^\r\n]` rather than `.`, and the trailing `[ \t\r]*`: in a CRLF file every line still
+  // ends in \r after the split on \n, and `.` does not match \r.
+  const EMPTY_YAML_LINE_RE = /^(?:\s*(?:#[^\r\n]*)?|\.\.\.(?:[ \t]+#[^\r\n]*)?)[ \t\r]*$/
 
   function computeStats(text) {
     if (!text || !text.trim()) return { words: 0, minutes: 0 }
@@ -69,9 +91,17 @@
   // nested tokens doesn't cleanly fix it either -- a nested token's `raw` lacks the `> `
   // prefix and won't match the outer source.
   function extractHeadingsFromSource(text, markedLib) {
-    const normalized = String(text == null ? '' : text)
+    const full = String(text == null ? '' : text)
       .replace(/\r\n|\r/g, '\n')
       .replace(/\t/g, '    ')
+    // Scan only what the preview renders: a frontmatter block lexes as an hr, a paragraph and a
+    // setext `---` underline, which put a bogus h2 ("title: X …") at the top of the source-mode
+    // TOC and broke the Cmd+U heading pairing (plan 28 step 3). Same extractFrontmatter() the
+    // preview uses, so the two agree on what counts as frontmatter; `line` stays relative to
+    // the whole text, which is what the textarea shows.
+    const { body } = extractFrontmatter(full)
+    const lineOffset = body === full ? 0 : full.split('\n').length - body.split('\n').length
+    const normalized = body
     const tokens = markedLib.lexer(normalized)
     const headings = []
     let searchFrom = 0
@@ -86,7 +116,7 @@
         idx = match ? searchFrom + match.index : -1
       }
       if (idx === -1) continue
-      const line = normalized.slice(0, idx).split('\n').length - 1
+      const line = normalized.slice(0, idx).split('\n').length - 1 + lineOffset
       // parseInline keeps emphasis/code-span markup out of the label; textContent-strip via
       // regex is visual-only (never assigned as innerHTML), so raw HTML in a heading source
       // (`## <script>x</script>Title`) can cosmetically diverge from what #content's real
@@ -136,9 +166,12 @@
     if (closingIndex === -1) return { frontmatter: null, body: text }
     const body = lines.slice(closingIndex + 1).join('\n')
     if (!yamlLib) return { frontmatter: null, body: text }
+    const yamlLines = lines.slice(1, closingIndex)
+    // Empty / whitespace-only / comment-only: still frontmatter, just with no fields.
+    if (yamlLines.every(line => EMPTY_YAML_LINE_RE.test(line))) return { frontmatter: [], body }
     let parsed
     try {
-      parsed = yamlLib.load(lines.slice(1, closingIndex).join('\n'))
+      parsed = yamlLib.load(yamlLines.join('\n'), { schema: yamlSchema })
     } catch {
       // Malformed YAML inside otherwise-valid delimiters -- same "when ambiguous, leave it
       // alone" fallback as the no-closing-delimiter case above, rather than eating content.
@@ -157,35 +190,142 @@
     return midnightUtc ? date.toISOString().slice(0, 10) : date.toISOString()
   }
 
-  function renderFrontmatterValue(value) {
-    if (value === null || value === undefined) return ''
-    if (value instanceof Date) return escapeHtml(formatFrontmatterDate(value))
-    if (Array.isArray(value)) {
-      if (!value.length) return ''
-      const items = value.map(item => `<li>${renderFrontmatterValue(item)}</li>`).join('')
-      return `<ul class="frontmatter-list">${items}</ul>`
+  function isFrontmatterComposite(value) {
+    return value !== null && typeof value === 'object' && !(value instanceof Date)
+  }
+
+  // Values keep MDV's own type handling (a deliberate difference from Gitea, which prints the
+  // raw YAML text): dates are formatted, multiline strings keep their line breaks. Inside one
+  // cell of the horizontal table, a scalar array is a single comma-joined run (a vertical list
+  // would grow the whole row) and an object is compact `key: value` lines (a nested table
+  // inside a cell stacks header backgrounds and reads as clutter). Every key and value goes
+  // through escapeHtml -- they all come from untrusted YAML.
+  //
+  // Rendering is bounded (security). YAML aliases are references, so js-yaml loads them in
+  // linear time -- but rendering walks the resulting graph as a tree, and a 7-line
+  // "billion laughs" block (each level an array of nine aliases to the level above) expands
+  // to tens of MB of HTML, while a self-referencing anchor (`a: &a [x, *a]`) recursed until
+  // RangeError and took the whole render() down. Capping aliases in the loader was rejected:
+  // `maxAliases: 0` also breaks `<<: *anchor` merge keys, and any nonzero cap still allows
+  // exponential fan-out (k aliases nest to 9^k). So the bound lives here, in `ctx`:
+  // - `nodes`: values visited, null included -- a null leaf that cost nothing still emitted its
+  //   `, ` separator, so an all-null bomb slipped past both budgets. 5000 is ~25x the largest
+  //   real frontmatter we have seen (plan 26's survey of 575 files topped out at 13 top-level
+  //   keys, a few hundred values with nesting) and still renders in milliseconds. Since every
+  //   separator and wrapper belongs to a charged visit, markup is bounded by it too.
+  // - `chars`: scalar/key text emitted. Node counting alone does not bound a long string
+  //   aliased thousands of times; 100k chars is far beyond any honest frontmatter. It counts
+  //   text *before* escaping, so the emitted HTML can be up to ~6x that (`"` -> `&quot;`),
+  //   i.e. ~600 KB in the worst case.
+  // - `depth`: composites on the current descent, capped at 100 like the loader's own maxDepth
+  //   -- which does not count aliases, so an alias chain could otherwise recurse until the stack
+  //   overflowed.
+  // - `onPath`: those same composites, to cut cycles. A repeated alias that is not a cycle
+  //   still renders (a merge key legitimately shares nested values) -- the budgets are what
+  //   bound its repetition.
+  // Anything past a limit renders as a single `…` marker instead.
+  const FRONTMATTER_NODE_BUDGET = 5000
+  const FRONTMATTER_CHAR_BUDGET = 100000
+  const FRONTMATTER_MAX_DEPTH = 100
+  const FRONTMATTER_TRUNCATED = '<span class="frontmatter-truncated" title="생략됨">…</span>'
+
+  function createFrontmatterRenderContext() {
+    return { nodes: FRONTMATTER_NODE_BUDGET, chars: FRONTMATTER_CHAR_BUDGET, depth: 0, onPath: new WeakSet() }
+  }
+
+  function frontmatterBudgetSpent(ctx) {
+    return ctx.nodes <= 0 || ctx.chars <= 0
+  }
+
+  // Cuts raw text to the remaining char budget *before* escaping, so an entity is never split
+  // -- and steps back off a lone high surrogate, so an astral character is never split either.
+  function renderFrontmatterText(raw, ctx) {
+    let end = Math.min(raw.length, Math.max(0, ctx.chars))
+    if (end < raw.length && end > 0) {
+      const code = raw.charCodeAt(end - 1)
+      if (code >= 0xD800 && code <= 0xDBFF) end -= 1
     }
-    if (typeof value === 'object') return renderFrontmatterObject(value)
-    const text = escapeHtml(String(value))
+    const kept = end < raw.length ? raw.slice(0, end) : raw
+    ctx.chars -= kept.length
+    return escapeHtml(kept) + (kept.length < raw.length ? FRONTMATTER_TRUNCATED : '')
+  }
+
+  function renderFrontmatterValue(value, ctx) {
+    if (frontmatterBudgetSpent(ctx)) return FRONTMATTER_TRUNCATED
+    ctx.nodes -= 1
+    if (value === null || value === undefined) return ''
+    if (value instanceof Date) return renderFrontmatterText(formatFrontmatterDate(value), ctx)
+    // `!!set` loads as a Set, which Object.entries would render as nothing.
+    if (value instanceof Set) return renderFrontmatterArray(Array.from(value), ctx)
+    // `!!binary` loads as a Uint8Array. Show it like any number array, and copy no more bytes
+    // than the budget can render (Object.entries on it would allocate one entry per byte).
+    if (ArrayBuffer.isView(value)) return renderFrontmatterArray(Array.prototype.slice.call(value, 0, ctx.nodes + 1), ctx)
+    if (typeof value === 'object') {
+      if (ctx.onPath.has(value) || ctx.depth >= FRONTMATTER_MAX_DEPTH) return FRONTMATTER_TRUNCATED
+      ctx.onPath.add(value)
+      ctx.depth += 1
+      try {
+        return Array.isArray(value) ? renderFrontmatterArray(value, ctx) : renderFrontmatterObject(value, ctx)
+      } finally {
+        ctx.depth -= 1
+        ctx.onPath.delete(value)
+      }
+    }
+    const text = renderFrontmatterText(String(value), ctx)
     return text.includes('\n') ? `<div class="frontmatter-multiline">${text}</div>` : text
   }
 
-  function renderFrontmatterObject(obj) {
-    const entries = Object.entries(obj)
-    if (!entries.length) return ''
-    const rows = entries.map(([key, value]) => (
-      `<tr><th>${escapeHtml(key)}</th><td>${renderFrontmatterValue(value)}</td></tr>`
-    )).join('')
-    return `<table class="frontmatter-table frontmatter-nested"><tbody>${rows}</tbody></table>`
+  function renderFrontmatterArray(items, ctx) {
+    if (!items.length) return ''
+    const composite = items.some(isFrontmatterComposite)
+    const parts = []
+    for (const item of items) {
+      if (frontmatterBudgetSpent(ctx)) { parts.push(FRONTMATTER_TRUNCATED); break }
+      const html = renderFrontmatterValue(item, ctx)
+      parts.push(composite ? `<div class="frontmatter-item">${html}</div>` : html)
+    }
+    return parts.join(composite ? '' : ', ')
   }
 
+  function renderFrontmatterObject(obj, ctx) {
+    const entries = Object.entries(obj)
+    if (!entries.length) return ''
+    const lines = []
+    for (const [key, value] of entries) {
+      if (frontmatterBudgetSpent(ctx)) { lines.push(`<div class="frontmatter-pair">${FRONTMATTER_TRUNCATED}</div>`); break }
+      lines.push(`<div class="frontmatter-pair"><span class="frontmatter-key">${renderFrontmatterText(key, ctx)}:</span> ${renderFrontmatterValue(value, ctx)}</div>`)
+    }
+    return `<div class="frontmatter-object">${lines.join('')}</div>`
+  }
+
+  // Inline (not an icon font or <img>) so it can't fail to load -- Gitea shipped exactly that
+  // bug (go-gitea/gitea#34101). aria-hidden: the visually-hidden prefix carries the meaning.
+  const FRONTMATTER_ICON = '<svg class="frontmatter-icon" aria-hidden="true" width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="1.25" y="1.75" width="13.5" height="12.5" rx="1.5"/><path d="M1.25 6h13.5M6 6v8.25"/></svg>'
+
+  // Gitea-style: collapsed <details> whose summary lists the top-level keys in YAML order,
+  // over a horizontal table (keys in <thead>, one row of values). The table takes the regular
+  // `#content table` styling; .frontmatter-scroll lets the rare very wide case scroll instead
+  // of overflowing the page. Print turns the table into a vertical key | value grid instead
+  // (paper width is fixed); --fm-keys is the row count that grid needs, an app-computed integer.
+  // "YAML order" has one exception: `fields` comes from Object.entries on a plain object, which
+  // lists integer-like keys (`2024:`, `1:`) first in ascending order, ahead of string keys. The
+  // same was true under js-yaml 4; accepted rather than switching the loader to Map output.
   function renderFrontmatterCard(fields) {
     if (!fields.length) return ''
-    const rows = fields.map(({ key, value }) => (
-      `<tr><th>${escapeHtml(key)}</th><td>${renderFrontmatterValue(value)}</td></tr>`
-    )).join('')
-    return `<details class="frontmatter-card"><summary>메타데이터</summary><table class="frontmatter-table"><tbody>${rows}</tbody></table></details>`
+    const keyList = escapeHtml(fields.map(({ key }) => key).join(', '))
+    const head = fields.map(({ key }) => `<th>${escapeHtml(key)}</th>`).join('')
+    const ctx = createFrontmatterRenderContext()
+    const cells = fields.map(({ value }) => {
+      const noWrap = value instanceof Date || typeof value === 'number' || typeof value === 'boolean'
+      return `<td${noWrap ? ' class="frontmatter-nowrap"' : ''}>${renderFrontmatterValue(value, ctx)}</td>`
+    }).join('')
+    return `<details class="frontmatter-content"><summary title="${keyList}">`
+      + `<span class="visually-hidden">메타데이터: </span>${FRONTMATTER_ICON}<span class="frontmatter-keys">${keyList}</span></summary>`
+      + `<div class="frontmatter-scroll"><table style="--fm-keys: ${fields.length}"><thead><tr>${head}</tr></thead><tbody><tr>${cells}</tr></tbody></table></div></details>`
   }
+
+  // marked instances that already carry the intraword-tilde override (see createMarkdownController).
+  const intrawordTildeConfigured = new WeakSet()
 
   function createMarkdownController({ getRefs, markedLib, hljsLib, pathUtils, api, onShowModeButton, domPurify, mermaidLib, katexLib, onMermaidLoaded }) {
     let cachedHeadings = []
@@ -378,6 +518,44 @@
       return `<blockquote>\n${quote}</blockquote>\n`
     }
     markedLib.setOptions({ renderer, breaks: true, gfm: true })
+    // marked's GFM del rule (`~~?`) also accepts a single `~`, so prose like `P0~P4 … 25~40`
+    // turned everything in between into strikethrough. MDV rejects only *intraword* single
+    // tildes: `~one~`, `(~x~)` and every `~~x~~` still strike. This deliberately differs from
+    // github.com (strikes) and remark's singleTilde:false (never strikes). use() mutates the
+    // shared marked instance, so it is applied once per instance -- the tests build many
+    // controllers over one `marked`, and stacking the override each time would only slow it.
+    if (!intrawordTildeConfigured.has(markedLib)) {
+      intrawordTildeConfigured.add(markedLib)
+      const baseInlineText = markedLib.Tokenizer.prototype.inlineText
+      markedLib.use({
+        tokenizer: {
+          // Opening side: del(src) can't see the previous character, but marked's text rule stops
+          // right before every `~`, so a text run that ends in a letter/digit absorbs the single
+          // `~` after it and del never sees that tilde as an opener. This hooks the existing text
+          // step instead of adding an inline extension: an extension's start() is re-run over the
+          // rest of the paragraph on every text token, which made parsing quadratic even in
+          // documents with no tildes at all.
+          inlineText(src, ...rest) {
+            const token = baseInlineText.call(this, src, ...rest)
+            const next = token && src.slice(token.raw.length, token.raw.length + 2)
+            if (next && next[0] === '~' && next[1] !== '~' && /[\p{L}\p{N}]$/u.test(token.raw)) {
+              token.raw += '~'
+              token.text += '~'
+            }
+            return token
+          },
+          // Closing side: a single-tilde pair whose closing `~` is glued to a following
+          // letter/digit (`a ~b~c`) is intraword too. marked's own del rule runs exactly once
+          // here -- falling back with `false` would run it a second time on the same input.
+          del(src) {
+            if (!/^~(?!~)/.test(src)) return false
+            const cap = this.rules.inline.del.exec(src)
+            if (!cap || /^[\p{L}\p{N}]/u.test(src.slice(cap[0].length))) return { type: 'text', raw: '~', text: '~' }
+            return { type: 'del', raw: cap[0], text: cap[2], tokens: this.lexer.inlineTokens(cap[2]) }
+          },
+        },
+      })
+    }
 
     // mermaid measures the DOM it just drew (getBBox()/getBoundingClientRect()) to size the
     // final SVG. Inside a display:none subtree (e.g. #content while source mode is showing
@@ -392,20 +570,27 @@
       const doc = container.ownerDocument
       const host = doc.createElement('div')
       host.setAttribute('aria-hidden', 'true')
-      // #content's rendered width is capped at 720px (index.html) minus #scroll-area's own
-      // horizontal padding, since #content sits inside that padding box, not flush against
-      // #scroll-area's clientWidth -- reading the padding instead of hardcoding it means this
-      // still matches if that CSS ever changes. (Split view never reaches this function: it's
-      // full-width but also visible, so getClientRects() above already short-circuits it.)
+      // #content's rendered width is #scroll-area's clientWidth minus the preview's horizontal
+      // padding (#content sits inside that padding box), capped by #content's max-width in
+      // index.html. Both are read live instead of hardcoded so this still matches if that CSS
+      // ever changes. The padding comes from --content-pad-x, not paddingLeft/Right: #content
+      // is only hidden in source mode, where `#scroll-area.source-mode { padding: 0 }` zeroes
+      // the real padding but leaves the variable intact. (Split view never reaches this
+      // function: it's full-width but also visible, so getClientRects() above already
+      // short-circuits it.)
       const scrollArea = container.parentElement
-      const scrollAreaStyle = scrollArea && doc.defaultView?.getComputedStyle(scrollArea)
-      const paddingX = scrollAreaStyle
-        ? (parseFloat(scrollAreaStyle.paddingLeft) || 0) + (parseFloat(scrollAreaStyle.paddingRight) || 0)
-        : 0
+      const view = doc.defaultView
+      const scrollAreaStyle = scrollArea && view?.getComputedStyle(scrollArea)
+      const padVar = scrollAreaStyle ? parseFloat(scrollAreaStyle.getPropertyValue('--content-pad-x')) : NaN
+      const paddingX = !scrollAreaStyle ? 0
+        : Number.isFinite(padVar) ? padVar * 2
+        : (parseFloat(scrollAreaStyle.paddingLeft) || 0) + (parseFloat(scrollAreaStyle.paddingRight) || 0)
       const contentBoxWidth = scrollArea ? scrollArea.clientWidth - paddingX : 0
-      const width = Math.min(720, contentBoxWidth || 720)
+      const maxWidth = parseFloat(view?.getComputedStyle(container).maxWidth) || Infinity
+      const width = Math.min(maxWidth, contentBoxWidth > 0 ? contentBoxWidth : Infinity)
       host.style.cssText =
-        `position:fixed;top:0;left:-10000px;width:${width}px;overflow:hidden;pointer-events:none`
+        `position:fixed;top:0;left:-10000px;overflow:hidden;pointer-events:none;` +
+        (Number.isFinite(width) ? `width:${width}px` : 'width:100%')
       doc.body.appendChild(host)
       // The placeholder left in the node's place is a full clone (attributes + text), not a
       // bare comment -- if something snapshots #content while a node is parked (e.g. a tab
@@ -632,7 +817,16 @@
       if (MERMAID_FENCE_RE.test(body)) pending.push(ensureMermaidLoaded())
       if (LATEX_FENCE_RE.test(body)) pending.push(ensureKatexLoaded())
       if (pending.length) await Promise.all(pending)
-      const frontmatterHtml = frontmatter ? sanitizeHtml(renderFrontmatterCard(frontmatter)) : ''
+      // The card comes from untrusted YAML; whatever goes wrong rendering it must never cost
+      // the reader the document body (renderFrontmatterCard is bounded, this is the backstop).
+      let frontmatterHtml = ''
+      if (frontmatter) {
+        try {
+          frontmatterHtml = sanitizeHtml(renderFrontmatterCard(frontmatter))
+        } catch {
+          frontmatterHtml = ''
+        }
+      }
       refs.content.innerHTML = frontmatterHtml + renderMarkdown(body)
       await runMermaidBlocks(refs.content)
       const imagePaths = await resolveRenderedImagePaths(docPath)
@@ -758,6 +952,20 @@
       })
     }
 
+    // Reading-position anchors for the Cmd+U toggle (editor.js, plan 28 step 3). Preview tops
+    // are only meaningful while #content is visible -- hidden, offsetTop collapses to 0 -- so
+    // callers read this in preview mode, or after applySourceMode() has flipped back to it.
+    // Depth rather than text is what pairs the two lists: textContent decodes entities while
+    // the source side's label is regex-stripped HTML, so `## A &amp; B` would never compare equal.
+    function getPreviewHeadings() {
+      refreshHeadingOffsets()
+      return cachedHeadings.filter(heading => heading.el).map(heading => ({ top: heading.top, depth: Number(heading.el.tagName.slice(1)) }))
+    }
+
+    function getSourceHeadings(text) {
+      return extractHeadingsFromSource(text, markedLib).map(heading => ({ line: heading.line, depth: heading.depth }))
+    }
+
     return {
       render,
       renderMarkdown,
@@ -767,6 +975,8 @@
       resetEmptyStats,
       refreshTocActive,
       refreshHeadingOffsets,
+      getPreviewHeadings,
+      getSourceHeadings,
       rebuildSourceModeToc,
       clearImageCache,
       clearImageCacheEntry,

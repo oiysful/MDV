@@ -58,9 +58,9 @@ jobs:
     runs-on: macos-latest
     timeout-minutes: 20
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
-      - uses: actions/setup-node@v7
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version: 22
 
@@ -75,21 +75,48 @@ jobs:
       - name: Ensure Electron binary is downloaded
         run: node -e "require('electron')"
 
-      # 4 was a first guess (see AGENTS.md/CONTRIBUTING.md) and proved too aggressive: the
-      # first real run finished in ~197s (vs ~30s locally) with 2 timing-sensitive failures
-      # (a scroll-restore assertion and a 15s waitForFunction) that don't reproduce locally.
-      # Those were read as CPU contention from 4 concurrent Electron instances on a
-      # GitHub-hosted macOS runner's limited cores, and dropping to 2 did make them rare.
+      # 4 was a first guess (see AGENTS.md) and proved too aggressive: the first real run
+      # finished in ~197s (vs ~30s locally) with 2 timing-sensitive failures (a scroll-restore
+      # assertion and a 15s waitForFunction) that didn't reproduce locally. Those were read as
+      # CPU contention from 4 concurrent Electron instances on a GitHub-hosted macOS runner's
+      # limited cores, and dropping to 2 did make them rare.
       #
-      # It did not fix them. The same two -- large-directory-watch.test.js's path-count
-      # guard (TimeoutError) and split-view-async.test.js's fresh-preview-after-tab-switch
-      # (AssertionError) -- failed again at concurrency 2 on PR #8 (run 35202862668,
-      # 2026-09-17, 102/104), and a plain re-run of that same commit went green. So
-      # concurrency is not the root cause, and lowering it further would only buy more
-      # rarity. Do not tune this number again for those two: the fix is the one applied on
-      # 2026-08-06 for the same class, replacing fixed/implicit waits with explicit
-      # condition waits in the tests themselves. AGENTS.md's NOTES carries the detail,
-      # including that a red run naming only those two is not automatically a regression.
-      # Raising the number is still fair game for speed once they are genuinely fixed.
+      # It did not fix them, because contention was never the cause. The same two --
+      # large-directory-watch.test.js's path-count guard (TimeoutError) and
+      # split-view-async.test.js's fresh-preview-after-tab-switch (AssertionError) -- failed
+      # again at concurrency 2 on PR #8 (run 35202862668, 2026-09-17, 102/104), and a plain
+      # re-run of that same commit went green. On 2026-09-18 both were traced to defects in
+      # the tests themselves: one polled for a toast that had already faded before the poll
+      # started, the other waited on the re-rendered body but asserted on a scrollTop the wait
+      # did not cover. Both are fixed by widening those waits into explicit condition waits --
+      # the same move applied on 2026-08-06 for this class of failure -- and the scroll one
+      # was reproduced deterministically on a local machine, so this is settled rather than
+      # inferred from logs. AGENTS.md's NOTES carries the detail, including that a red run
+      # naming either of those two is now a regression rather than something to re-run.
+      #
+      # So: do not tune this number in response to a flaky Electron test. That diagnosis has
+      # been wrong twice here, and concurrency only ever moved the frequency. Raising it purely
+      # for wall-clock speed is a separate question and fair game on its own merits.
+      #
+      # The value lives in package.json's test:electron script, read from
+      # MDV_ELECTRON_CONCURRENCY (local default 4). It used to be appended here as
+      # `npm run test:electron -- --test-concurrency=2`, but node --test keeps the FIRST
+      # --test-concurrency it is given, so once the script carried its own value CI silently
+      # ran at 4 -- and on 2026-10-02 (PR #31, run 36955734874) two tests stalled ~51s with the
+      # renderer not answering page.evaluate. Set it through the environment instead.
+      #
+      # --disable-gpu (CI only, 2026-10-08, plan 28): on Electron 44 a GitHub macOS runner
+      # intermittently froze one app's frames for ~51s (renderer not answering, CPU 0), failing
+      # whichever test happened to be waiting. A Draft-PR experiment (PR #38, run 37730245504,
+      # two attempts, arms interleaved in time) measured it: baseline stalled in 8 of 16 jobs
+      # (12 stalls), --disable-gpu in 0 of 16, with every --disable-gpu job's [mdv-gpu-status]
+      # line confirming hardware compositing was off. So the stall lives in the hardware-
+      # accelerated rendering path on the runner's virtual GPU. The switch is test plumbing
+      # (tests/electron/helpers/launch.js); the shipped app and local runs keep the GPU, so
+      # local `npm run test:electron` still covers hardware compositing. If a ~51s stall shows
+      # up here again, first check that [mdv-gpu-status] still reads disabled_software.
       - name: Electron smoke suite
-        run: npm run test:electron -- --test-concurrency=2
+        env:
+          MDV_ELECTRON_CONCURRENCY: 2
+          MDV_ELECTRON_EXTRA_ARGS: --disable-gpu
+        run: npm run test:electron

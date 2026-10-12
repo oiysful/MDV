@@ -362,10 +362,15 @@ test('TOC scrollspy tracks scroll position in pure source mode instead of sticki
     await emitRendererCommand(electronApp, 'toggleSource')
     await page.waitForFunction(() => document.getElementById('scroll-area').classList.contains('source-mode'))
     await page.waitForFunction(() => document.querySelectorAll('#toc-list a').length === 13)
+    // toggleSource focuses the editor one frame later (requestAnimationFrame(focusEditor)). Until
+    // plan 28 step 3 that focus scrolled #scroll-area to the caret at the end of the document, and
+    // on a slow CI frame it landed AFTER the scrollTop pin below (#61: active entry '#section-6',
+    // 2026-10-07/08). It now focuses with preventScroll, but it is still deferred -- keep waiting
+    // for it so nothing that frame does can follow the pin.
+    await page.waitForFunction(() => document.activeElement?.id === 'source-editor')
 
-    // Entering source mode focuses the textarea, and Chromium moves the cursor to the end of
-    // a freshly-assigned .value, which scrolls the view to show it -- unrelated to TOC
-    // tracking, so pin the scroll position explicitly rather than relying on that incidental
+    // Entering source mode now keeps the preview's reading position (plan 28 step 3) -- not the
+    // point of this test, so pin the scroll position explicitly rather than relying on that
     // starting point. This is the actual regression check: under the pre-fix code every
     // cachedHeadings.top collapsed to the same constant, so refreshTocActive's binary search
     // always resolved to the *last* heading no matter what scrollTop was -- scrolling to the
@@ -420,6 +425,8 @@ test('source-mode TOC rebuild keeps the active entry without waiting for a scrol
     await emitRendererCommand(electronApp, 'toggleSource')
     await page.waitForFunction(() => document.getElementById('scroll-area').classList.contains('source-mode'))
     await page.waitForFunction(() => document.querySelectorAll('#toc-list a').length === 13)
+    // Same deferred-focus wait as the test above.
+    await page.waitForFunction(() => document.activeElement?.id === 'source-editor')
 
     await page.evaluate(() => { document.getElementById('scroll-area').scrollTop = 0 })
     await page.waitForFunction(() => document.querySelector('#toc-list a.active')?.getAttribute('href') === '#toc-rebuild-doc')

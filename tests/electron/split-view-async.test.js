@@ -73,11 +73,21 @@ test('split view restores fresh preview and pane scroll after immediate tab swit
     await page.waitForFunction(() => document.title === 'b')
 
     await page.locator('#tab-list .file-tab').first().click()
-    await page.waitForFunction(() => {
-      const heading = document.querySelector('#content h1')
-      const editor = document.getElementById('source-editor')
-      return document.title === 'a' && heading && heading.textContent.includes('A edited') && editor.value.startsWith('# A edited')
-    })
+    // Scroll restore lands after the render, so waiting on content alone reads the pane
+    // before restoreTabState has written scrollTop back. Wait on the scroll too.
+    try {
+      await page.waitForFunction(() => {
+        const heading = document.querySelector('#content h1')
+        const editor = document.getElementById('source-editor')
+        const content = document.getElementById('content')
+        const source = document.getElementById('source-view')
+        return document.title === 'a' && heading && heading.textContent.includes('A edited')
+          && editor.value.startsWith('# A edited')
+          && content.scrollTop > 0 && source.scrollTop > 0
+      }, undefined, { timeout: 5000 })
+    } catch {
+      // Swallowed on purpose: let the asserts below fail with the real scrollTop values.
+    }
 
     const restoredScroll = await page.evaluate(() => ({
       preview: document.getElementById('content').scrollTop,
@@ -153,8 +163,13 @@ test('split view restores active tab when async preview finishes after tab switc
 
     await page.locator('#tab-list .file-tab').filter({ hasText: 'async-a.md' }).click()
     await page.waitForFunction(() => document.title === 'async-a')
+    // Entering split view force-closes #sidebar, sliding the tab strip ~266px left over .25s. A
+    // tab click whose point is taken near the end of that slide lands on the NEXT tab's close
+    // button once the strip settles -- on CI that closed the target tab outright (2026-10-07).
+    await armSidebarTransitionWatch(page)
     await emitRendererCommand(electronApp, 'toggleSplitView')
     await page.waitForFunction(() => document.getElementById('scroll-area').classList.contains('split-mode'))
+    await waitForSidebarTransition(page)
 
     await page.evaluate(() => {
       const originalReadImageDataUrl = window.api.readImageDataUrl
@@ -205,8 +220,11 @@ test('split view keeps active tab when dirty restore render finishes after tab s
 
     await page.locator('#tab-list .file-tab').filter({ hasText: 'restore-a.md' }).click()
     await page.waitForFunction(() => document.title === 'restore-a')
+    // Same sidebar-slide wait as the async-a test above.
+    await armSidebarTransitionWatch(page)
     await emitRendererCommand(electronApp, 'toggleSplitView')
     await page.waitForFunction(() => document.getElementById('scroll-area').classList.contains('split-mode'))
+    await waitForSidebarTransition(page)
 
     await page.evaluate(() => {
       const originalReadImageDataUrl = window.api.readImageDataUrl

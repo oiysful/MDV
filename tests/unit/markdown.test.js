@@ -71,6 +71,73 @@ test('renderMarkdown preserves GFM table alignment attributes', () => {
   assert.ok(/<td align="right">/.test(html), html)
 })
 
+// Plan 23 §3: marked's GFM del accepts a single `~`, so ranges like `25~40` struck through the
+// prose between them. MDV keeps single tildes glued to a letter/digit as text; standalone
+// single-tilde pairs and every `~~x~~` still strike.
+test('renderMarkdown leaves intraword single tildes as plain text', () => {
+  const controller = makeController()
+  const cases = {
+    'P0~P4를 기록했다. P1은 25~40개': '<p>P0~P4를 기록했다. P1은 25~40개</p>',
+    '2~3배와 ~~취소~~ 25~40': '<p>2~3배와 <del>취소</del> 25~40</p>',
+    '한~글~자': '<p>한~글~자</p>',
+    'a ~b~c': '<p>a ~b~c</p>',
+    '끝에 물결~': '<p>끝에 물결~</p>',
+    'x~': '<p>x~</p>',
+    // Opening side alone: the closing `~` is followed by a space or the end, so only the
+    // letter/digit glued in front of the opener keeps these from striking.
+    'a~b c~ d': '<p>a~b c~ d</p>',
+    '1~2명 또는 3명~': '<p>1~2명 또는 3명~</p>',
+  }
+  for (const [src, expected] of Object.entries(cases)) {
+    assert.equal(controller.renderMarkdown(src).trim(), expected, src)
+  }
+})
+
+test('renderMarkdown still strikes standalone single-tilde pairs and double tildes', () => {
+  const controller = makeController()
+  const cases = {
+    '~one~': '<p><del>one</del></p>',
+    '~one~ two': '<p><del>one</del> two</p>',
+    '(~괄호~)': '<p>(<del>괄호</del>)</p>',
+    '~~진짜 취소~~': '<p><del>진짜 취소</del></p>',
+    '앞~~뒤~~끝': '<p>앞<del>뒤</del>끝</p>',
+  }
+  for (const [src, expected] of Object.entries(cases)) {
+    assert.equal(controller.renderMarkdown(src).trim(), expected, src)
+  }
+})
+
+test('renderMarkdown applies the intraword tilde rule inside table cells', () => {
+  const html = makeController().renderMarkdown('| a | b | c | d |\n|---|---|---|---|\n| 25~40 | 1~2와 3~4 | ~~x~~ | ~y~ |')
+  const cells = Array.from(html.matchAll(/<td>(.*?)<\/td>/g), m => m[1])
+  assert.deepEqual(cells, ['25~40', '1~2와 3~4', '<del>x</del>', '<del>y</del>'], html)
+})
+
+test('renderMarkdown keeps tildes intact in escapes, links, autolinks, code, and emphasis', () => {
+  const controller = makeController()
+  const cases = {
+    '\\~이스케이프\\~': '<p>~이스케이프~</p>',
+    '[25~40개](x.md)': '<p><a href="x.md">25~40개</a></p>',
+    'https://example.com/~user/a~b': '<p><a href="https://example.com/~user/a~b">https://example.com/~user/a~b</a></p>',
+    '<https://e.com/~u>': '<p><a href="https://e.com/~u">https://e.com/~u</a></p>',
+    '`a0~b~c`': '<p><code>a0~b~c</code></p>',
+    '**굵게 1~2**': '<p><strong>굵게 1~2</strong></p>',
+    '*기울임 3~4*': '<p><em>기울임 3~4</em></p>',
+    // start() cuts inlineText at a letter before `~`; a mid-sentence URL must still autolink whole.
+    '참고 https://example.com/a~b 문서': '<p>참고 <a href="https://example.com/a~b">https://example.com/a~b</a> 문서</p>',
+    '참고 www.example.com/~u/a~b 끝': '<p>참고 <a href="http://www.example.com/~u/a~b">www.example.com/~u/a~b</a> 끝</p>',
+    // `%~2` isn't letter/digit-glued on the opening side; the closing-side del check catches it.
+    '10%~20%, 30%~40%': '<p>10%~20%, 30%~40%</p>',
+    // develop rendered `<del>a\</del>b~` (a stray backslash); pinned so a change is deliberate.
+    '~a\\~b~': '<p>~a~b~</p>',
+  }
+  for (const [src, expected] of Object.entries(cases)) {
+    assert.equal(controller.renderMarkdown(src).trim(), expected, src)
+  }
+  const fence = controller.renderMarkdown('~~~\nfence a~b~c\n~~~')
+  assert.ok(/<pre><code/.test(fence) && !/<del>/.test(fence), fence)
+})
+
 test('extractFrontmatter parses key: value pairs delimited by --- on the very first line', () => {
   const result = extractFrontmatter('---\ntitle: Hello\ndate: 2026-08-05\n---\n\n# Body\n')
   assert.equal(result.frontmatter[0].key, 'title')
@@ -165,6 +232,74 @@ test('extractFrontmatter ignores a --- that is not on the document\'s first line
   assert.equal(result.body, text)
 })
 
+test('extractFrontmatter keeps js-yaml 4 parity for merge keys and !!binary', () => {
+  // js-yaml 5's default CORE schema has neither; without !!binary the whole block would throw
+  // and the raw YAML would leak into the body.
+  const text = '---\nbase: &b {x: 1}\nm:\n  <<: *b\n  y: 2\nbin: !!binary aGk=\n---\nBody\n'
+  const result = extractFrontmatter(text)
+  assert.deepEqual(result.frontmatter[1], { key: 'm', value: { x: 1, y: 2 } })
+  assert.deepEqual(Array.from(result.frontmatter[2].value), [104, 105])
+  assert.equal(result.body, 'Body\n')
+})
+
+test('extractFrontmatter keeps js-yaml 4 parity for !!omap, !!set and !!pairs', () => {
+  // v4's default schema carried all three; without them the tag throws and the raw block leaks.
+  const text = '---\no: !!omap [a: 1, b: 2]\ns: !!set {x, y}\np: !!pairs [k: 1, k: 2]\n---\nBody\n'
+  const result = extractFrontmatter(text)
+  assert.deepEqual(result.frontmatter.map(f => f.key), ['o', 's', 'p'])
+  assert.deepEqual(result.frontmatter[0].value, [{ a: 1 }, { b: 2 }])
+  assert.deepEqual(Array.from(result.frontmatter[1].value), ['x', 'y'])
+  assert.deepEqual(result.frontmatter[2].value, [['k', 1], ['k', 2]])
+  assert.equal(result.body, 'Body\n')
+})
+
+// js-yaml 5's load() throws on an empty source instead of returning undefined, which would
+// route all three of these into the malformed-YAML fallback and leave both `---` lines in the
+// rendered body. An empty block is still frontmatter: strip it and render no card.
+test('extractFrontmatter strips an empty block (--- immediately followed by ---)', () => {
+  const result = extractFrontmatter('---\n---\n# Body\n')
+  assert.deepEqual(result.frontmatter, [])
+  assert.equal(result.body, '# Body\n')
+})
+
+test('extractFrontmatter strips a block that holds only blank/whitespace lines', () => {
+  const result = extractFrontmatter('---\n\n   \n\t\n---\n# Body\n')
+  assert.deepEqual(result.frontmatter, [])
+  assert.equal(result.body, '# Body\n')
+})
+
+test('extractFrontmatter strips a block that holds only comments', () => {
+  const result = extractFrontmatter('---\n# draft notes\n  # indented comment\n\n---\n# Body\n')
+  assert.deepEqual(result.frontmatter, [])
+  assert.equal(result.body, '# Body\n')
+})
+
+test('extractFrontmatter strips a blank/comment-only block in a CRLF file', () => {
+  // Splitting on \n leaves a trailing \r on every line, and `.` does not match \r.
+  const result = extractFrontmatter('---\r\n\r\n# c\r\n---\r\nbody')
+  assert.deepEqual(result.frontmatter, [])
+  assert.equal(result.body, 'body')
+})
+
+test('extractFrontmatter strips a block holding only the YAML document-end marker', () => {
+  for (const block of ['...', '... # end', '# c\n...']) {
+    const result = extractFrontmatter(`---\n${block}\n---\nbody`)
+    assert.deepEqual(result.frontmatter, [], JSON.stringify(block))
+    assert.equal(result.body, 'body')
+  }
+})
+
+test('extractFrontmatter does not treat an indented ... or ...#c as the document-end marker', () => {
+  // Both are plain scalars to YAML: the marker must start the line, and a comment needs a
+  // preceding space. A scalar top level is not a mapping, so the text is left untouched.
+  for (const block of ['   ...', '...#c']) {
+    const text = `---\n${block}\n---\nbody`
+    const result = extractFrontmatter(text)
+    assert.equal(result.frontmatter, null, JSON.stringify(block))
+    assert.equal(result.body, text)
+  }
+})
+
 // --- extractHeadingsFromSource (pure-source-mode TOC tracking) ---
 
 test('extractHeadingsFromSource finds ATX headings and their correct line numbers', () => {
@@ -175,6 +310,21 @@ test('extractHeadingsFromSource finds ATX headings and their correct line number
     { depth: 2, text: 'Two', line: 6 },
     { depth: 3, text: 'Three', line: 11 },
   ])
+})
+
+test('extractHeadingsFromSource skips a frontmatter block and keeps line numbers relative to the whole text', () => {
+  // Without the skip, `---\ntitle: X\n---` lexes as hr + paragraph + setext underline -> a bogus
+  // h2 "title: X" at the top of the source-mode TOC, and the Cmd+U heading pairing breaks.
+  const text = '---\ntitle: X\ntags: [a]\n---\n\n# Doc\n\n## Section 1\n'
+  assert.deepEqual(
+    extractHeadingsFromSource(text, marked).map(h => [h.depth, h.text, h.line]),
+    [[1, 'Doc', 5], [2, 'Section 1', 7]],
+  )
+  // A thematic break that is not frontmatter is left alone.
+  assert.deepEqual(
+    extractHeadingsFromSource('# Doc\n\n---\n\n## After\n', marked).map(h => [h.text, h.line]),
+    [['Doc', 0], ['After', 4]],
+  )
 })
 
 test('extractHeadingsFromSource ignores a "#" inside a fenced code block', () => {
@@ -514,7 +664,7 @@ test('render collapses frontmatter into a meta card and keeps it out of the TOC 
   try {
     await h.controller.render('---\ntitle: Hello\ndate: 2026-08-05\n---\n\n# Heading\n\nBody text here.\n', 'doc.md', null)
 
-    const card = h.refs.content.querySelector('details.frontmatter-card')
+    const card = h.refs.content.querySelector('details.frontmatter-content')
     assert.ok(card, 'frontmatter renders as a collapsible card')
     assert.equal(card.hasAttribute('open'), false, 'card is collapsed by default')
     assert.match(card.innerHTML, /title/)
@@ -536,34 +686,96 @@ test('render does not add a frontmatter card for a document with none', async ()
   const h = makeSnapshotHarness()
   try {
     await h.controller.render('# Just a heading\n\nSome text.\n', 'doc.md', null)
-    assert.equal(h.refs.content.querySelector('details.frontmatter-card'), null)
+    assert.equal(h.refs.content.querySelector('details.frontmatter-content'), null)
   } finally {
     h.restore()
   }
 })
 
-test('render shows a simple array field as a list', async () => {
+test('frontmatter summary lists the top-level keys in YAML order, with a full-list title and a hidden label', async () => {
+  const h = makeSnapshotHarness()
+  try {
+    await h.controller.render('---\nname: a\ndescription: b\nmodel: c\nlevel: 2\ntools: [x]\n---\n\nBody\n', 'doc.md', null)
+    const summary = h.refs.content.querySelector('details.frontmatter-content > summary')
+    assert.equal(summary.querySelector('.frontmatter-keys').textContent, 'name, description, model, level, tools')
+    assert.equal(summary.getAttribute('title'), 'name, description, model, level, tools')
+    // Keys alone don't tell a screen reader what this is.
+    assert.equal(summary.querySelector('.visually-hidden').textContent, '메타데이터: ')
+    const icon = summary.querySelector('svg.frontmatter-icon')
+    assert.ok(icon, 'inline table icon survives DOMPurify')
+    assert.equal(icon.getAttribute('aria-hidden'), 'true')
+  } finally {
+    h.restore()
+  }
+})
+
+test('frontmatter keys are escaped in the summary text, its title, and the table header', async () => {
+  const h = makeSnapshotHarness()
+  try {
+    const key = '<img src=x onerror=alert(1)>'
+    await h.controller.render(`---\n"${key}": v\nsafe: w\n---\n\nBody\n`, 'doc.md', null)
+    const card = h.refs.content.querySelector('details.frontmatter-content')
+    assert.equal(card.querySelector('img'), null, 'no element injected anywhere in the card')
+    const summary = card.querySelector('summary')
+    assert.equal(summary.querySelector('.frontmatter-keys').textContent, `${key}, safe`)
+    assert.equal(summary.getAttribute('title'), `${key}, safe`)
+    assert.equal(card.querySelector('thead th').textContent, key)
+  } finally {
+    h.restore()
+  }
+})
+
+test('frontmatter body is a horizontal table: keys in thead, one row of values', async () => {
+  const h = makeSnapshotHarness()
+  try {
+    await h.controller.render('---\ntitle: Hello\ndate: 2026-08-05\ndraft: false\ncount: 3\n---\n\nBody\n', 'doc.md', null)
+    const wrapper = h.refs.content.querySelector('details.frontmatter-content > div.frontmatter-scroll')
+    assert.ok(wrapper, 'table sits in the horizontal-scroll wrapper')
+    const table = wrapper.querySelector('table')
+    assert.deepEqual(Array.from(table.querySelectorAll('thead th')).map(th => th.textContent), ['title', 'date', 'draft', 'count'])
+    const rows = table.querySelectorAll('tbody tr')
+    assert.equal(rows.length, 1)
+    const cells = Array.from(rows[0].querySelectorAll('td'))
+    assert.deepEqual(cells.map(td => td.textContent), ['Hello', '2026-08-05', 'false', '3'])
+    // Dates, numbers and booleans must not break; strings wrap normally.
+    assert.deepEqual(cells.map(td => td.classList.contains('frontmatter-nowrap')), [false, true, true, true])
+  } finally {
+    h.restore()
+  }
+})
+
+test('render shows a simple array field as one comma-joined line', async () => {
   const h = makeSnapshotHarness()
   try {
     await h.controller.render('---\ntags: [a, b, c]\n---\n\nBody\n', 'doc.md', null)
-    const list = h.refs.content.querySelector('details.frontmatter-card ul.frontmatter-list')
-    assert.ok(list, 'array value renders as a list')
-    assert.deepEqual(Array.from(list.querySelectorAll('li')).map(li => li.textContent), ['a', 'b', 'c'])
+    const cell = h.refs.content.querySelector('details.frontmatter-content tbody td')
+    assert.equal(cell.innerHTML, 'a, b, c')
+    assert.equal(cell.classList.contains('frontmatter-nowrap'), false, 'arrays wrap like strings')
   } finally {
     h.restore()
   }
 })
 
-test('render shows an array of objects and a nested object as nested tables', async () => {
+test('render shows a nested object and an array of objects as key: value lines', async () => {
   const h = makeSnapshotHarness()
   try {
-    const text = '---\nitems:\n  - name: x\n    value: y\nauthor:\n  name: Jane\n---\n\nBody\n'
+    const text = '---\nitems:\n  - name: x\n    value: y\n  - name: z\nauthor:\n  name: Jane\n  links:\n    site: e.com\n---\n\nBody\n'
     await h.controller.render(text, 'doc.md', null)
-    const card = h.refs.content.querySelector('details.frontmatter-card')
-    const nestedTables = card.querySelectorAll('table.frontmatter-nested')
-    assert.equal(nestedTables.length, 2, 'one nested table for the object-array item, one for author')
-    assert.match(card.innerHTML, /name/)
-    assert.match(card.innerHTML, /Jane/)
+    const card = h.refs.content.querySelector('details.frontmatter-content')
+    assert.equal(card.querySelectorAll('table').length, 1, 'no nested tables inside cells')
+    const [itemsCell, authorCell] = card.querySelectorAll('tbody td')
+
+    const items = itemsCell.querySelectorAll(':scope > .frontmatter-item')
+    assert.equal(items.length, 2, 'one block per object-array item')
+    assert.deepEqual(
+      Array.from(items[0].querySelectorAll('.frontmatter-pair')).map(p => p.textContent),
+      ['name: x', 'value: y']
+    )
+
+    const pairs = authorCell.querySelectorAll(':scope > .frontmatter-object > .frontmatter-pair')
+    assert.equal(pairs[0].textContent, 'name: Jane')
+    assert.equal(pairs[0].querySelector('.frontmatter-key').textContent, 'name:', 'key is its own (grey) span')
+    assert.equal(pairs[1].querySelector('.frontmatter-object .frontmatter-pair').textContent, 'site: e.com')
   } finally {
     h.restore()
   }
@@ -573,7 +785,7 @@ test('render preserves newlines from a literal block scalar in a multiline div',
   const h = makeSnapshotHarness()
   try {
     await h.controller.render('---\nnote: |\n  line1\n  line2\n---\n\nBody\n', 'doc.md', null)
-    const multiline = h.refs.content.querySelector('details.frontmatter-card div.frontmatter-multiline')
+    const multiline = h.refs.content.querySelector('details.frontmatter-content div.frontmatter-multiline')
     assert.ok(multiline, 'multiline value renders in a preserved-whitespace div')
     assert.equal(multiline.textContent, 'line1\nline2\n')
   } finally {
@@ -586,8 +798,123 @@ test('render escapes malicious strings nested inside frontmatter arrays/objects'
   try {
     const text = '---\nitems:\n  - name: "<script>window.__pwned = true</script>"\n---\n\nBody\n'
     await h.controller.render(text, 'doc.md', null)
-    assert.equal(h.refs.content.querySelector('details.frontmatter-card script'), null)
-    assert.match(h.refs.content.querySelector('details.frontmatter-card').innerHTML, /&lt;script&gt;/)
+    assert.equal(h.refs.content.querySelector('details.frontmatter-content script'), null)
+    assert.match(h.refs.content.querySelector('details.frontmatter-content').innerHTML, /&lt;script&gt;/)
+  } finally {
+    h.restore()
+  }
+})
+
+// --- Frontmatter render budget (security): aliases are references, so a tiny YAML block can
+// describe an exponentially large tree, or a cycle. Rendering must stay bounded and must never
+// take the document body down with it.
+
+const nineAliases = name => `[${Array(9).fill(`*${name}`).join(', ')}]`
+
+test('render bounds a billion-laughs alias bomb in frontmatter', async () => {
+  const h = makeSnapshotHarness()
+  try {
+    // 9^6 = 531441 leaves if expanded as a tree; this produced tens of MB of HTML unbounded.
+    const text = '---\na: &a [x, x, x, x, x, x, x, x, x]\n'
+      + `b: &b ${nineAliases('a')}\nc: &c ${nineAliases('b')}\nd: &d ${nineAliases('c')}\n`
+      + `e: &e ${nineAliases('d')}\nf: &f ${nineAliases('e')}\n---\n# Body\n`
+    const started = Date.now()
+    await h.controller.render(text, 'doc.md', null)
+    const elapsed = Date.now() - started
+    const card = h.refs.content.querySelector('details.frontmatter-content')
+    assert.ok(card.innerHTML.length < 200000, `card stays bounded (got ${card.innerHTML.length} chars)`)
+    assert.ok(card.querySelector('.frontmatter-truncated'), 'the cut-off is marked')
+    assert.ok(elapsed < 2000, `render finishes quickly (took ${elapsed}ms)`)
+    assert.equal(h.refs.content.querySelector('h1').textContent, 'Body')
+  } finally {
+    h.restore()
+  }
+})
+
+test('render bounds a long string aliased many times in frontmatter', async () => {
+  const h = makeSnapshotHarness()
+  try {
+    // Few nodes, but each one is a 2000-char string: 729 copies = ~1.5M chars without a char budget.
+    const text = `---\ns: &s ${'y'.repeat(2000)}\nb: &b ${nineAliases('s')}\nc: &c ${nineAliases('b')}\nd: ${nineAliases('c')}\n---\nBody\n`
+    await h.controller.render(text, 'doc.md', null)
+    const card = h.refs.content.querySelector('details.frontmatter-content')
+    assert.ok(card.innerHTML.length < 300000, `card stays bounded (got ${card.innerHTML.length} chars)`)
+    assert.ok(card.querySelector('.frontmatter-truncated'))
+  } finally {
+    h.restore()
+  }
+})
+
+test('render survives a self-referencing frontmatter anchor and still renders the body', async () => {
+  const h = makeSnapshotHarness()
+  try {
+    // Used to recurse until RangeError and reject render() entirely.
+    await h.controller.render('---\na: &a [x, *a]\nb: ok\n---\n# Body\n', 'doc.md', null)
+    const cells = h.refs.content.querySelectorAll('details.frontmatter-content tbody td')
+    assert.match(cells[0].textContent, /^x/)
+    assert.ok(cells[0].querySelector('.frontmatter-truncated'), 'the cycle is cut with a marker')
+    assert.equal(cells[1].textContent, 'ok')
+    assert.equal(h.refs.content.querySelector('h1').textContent, 'Body')
+  } finally {
+    h.restore()
+  }
+})
+
+test('render shows a repeated (non-cyclic) alias in full each time', async () => {
+  const h = makeSnapshotHarness()
+  try {
+    await h.controller.render('---\nbase: &a {x: 1}\nm: *a\nn: *a\n---\nBody\n', 'doc.md', null)
+    const cells = Array.from(h.refs.content.querySelectorAll('details.frontmatter-content tbody td'))
+    assert.deepEqual(cells.map(td => td.textContent), ['x: 1', 'x: 1', 'x: 1'])
+    assert.equal(h.refs.content.querySelector('.frontmatter-truncated'), null)
+  } finally {
+    h.restore()
+  }
+})
+
+test('render bounds an alias bomb whose leaves are all null', async () => {
+  const h = makeSnapshotHarness()
+  try {
+    // A null leaf used to return before the budget was charged, so it cost no node and no char
+    // while its `, ` separator was still emitted: 300 nulls x 9^4 = ~2M separators unbounded.
+    const nulls = `[${Array(300).fill('~').join(', ')}]`
+    const text = `---\na: &a ${nulls}\nb: &b ${nineAliases('a')}\nc: &c ${nineAliases('b')}\n`
+      + `d: &d ${nineAliases('c')}\ne: ${nineAliases('d')}\n---\n# Body\n`
+    await h.controller.render(text, 'doc.md', null)
+    const card = h.refs.content.querySelector('details.frontmatter-content')
+    assert.ok(card.innerHTML.length < 200000, `card stays bounded (got ${card.innerHTML.length} chars)`)
+    assert.equal(h.refs.content.querySelector('h1').textContent, 'Body')
+  } finally {
+    h.restore()
+  }
+})
+
+test('render caps frontmatter nesting depth reached through an alias', async () => {
+  const h = makeSnapshotHarness()
+  try {
+    // Each literal nest stays under the loader's maxDepth (100, which does not count aliases),
+    // but `b` nests `a` inside 60 more levels: 120 deep for only ~180 rendered values. A long
+    // enough chain of these overflowed the stack and the card vanished.
+    const nest = inner => `${'['.repeat(60)}${inner}${']'.repeat(60)}`
+    await h.controller.render(`---\na: &a ${nest('x')}\nb: ${nest('*a')}\n---\n# Body\n`, 'doc.md', null)
+    const [aCell, bCell] = h.refs.content.querySelectorAll('details.frontmatter-content tbody td')
+    assert.equal(aCell.querySelector('.frontmatter-truncated'), null, '60 levels render in full')
+    assert.ok(bCell.querySelector('.frontmatter-truncated'), 'past 100 levels is cut with a marker')
+    assert.equal(h.refs.content.querySelector('h1').textContent, 'Body')
+  } finally {
+    h.restore()
+  }
+})
+
+test('render bounds a large !!binary frontmatter value', async () => {
+  const h = makeSnapshotHarness()
+  try {
+    const blob = Buffer.alloc(50000, 7).toString('base64')
+    await h.controller.render(`---\nbin: !!binary ${blob}\n---\nBody\n`, 'doc.md', null)
+    const cell = h.refs.content.querySelector('details.frontmatter-content tbody td')
+    assert.match(cell.textContent, /^7, 7, 7/, 'bytes show like a number array')
+    assert.ok(cell.querySelector('.frontmatter-truncated'), 'the cut-off is marked')
+    assert.ok(cell.innerHTML.length < 50000, `cell stays bounded (got ${cell.innerHTML.length} chars)`)
   } finally {
     h.restore()
   }
@@ -755,7 +1082,7 @@ test('runMermaidBlocks does not park nodes when the container already reports a 
     },
   }
   const h = makeSnapshotHarness({ mermaidLib })
-  h.refs.content.getClientRects = () => [{ width: 720, height: 100 }]
+  h.refs.content.getClientRects = () => [{ width: 900, height: 100 }]
   try {
     await h.controller.render('```mermaid\ngraph TD; A-->B\n```\n', 'doc.md', null)
     assert.equal(sawParentDuringRun, h.refs.content, 'a visible container is left untouched -- no parking')
@@ -869,6 +1196,18 @@ test('buildToc gives every heading its slug id and a matching TOC href', async (
     assert.deepEqual(ids, ['hello-world', '한글-제목', 'notes', 'notes-1'])
     const hrefs = Array.from(h.refs.tocList.querySelectorAll('a')).map(a => a.getAttribute('href'))
     assert.deepEqual(hrefs, ids.map(id => `#${id}`))
+  } finally {
+    h.restore()
+  }
+})
+
+test('frontmatter table keeps its --fm-keys row count through sanitizing (print grid depends on it)', async () => {
+  const h = makeSnapshotHarness()
+  try {
+    await h.controller.render('---\na: 1\nb: 2\nc: 3\n---\n\n# Body\n', 'doc.md', null)
+    const table = h.refs.content.querySelector('details.frontmatter-content table')
+    assert.equal(table.getAttribute('style'), '--fm-keys: 3')
+    assert.equal(table.querySelectorAll('th').length, 3)
   } finally {
     h.restore()
   }

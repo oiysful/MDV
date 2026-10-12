@@ -5,21 +5,31 @@
 **English** | [한국어](RELEASING.ko.md)
 </div>
 
-MDV is released by pushing a `v*` tag, which triggers `.github/workflows/release.yml`.
+Releasing is the only thing that moves `main`. Work integrates on `develop`; a release is a deliberate pull request from `develop` into `main`, followed by a `v*` tag push that triggers `.github/workflows/release.yml`.
 
-1. Bump `version` in `package.json` — `npm version X.Y.Z --no-git-tag-version` updates both `package.json` and `package-lock.json` in one step (skip the git tag it would otherwise create; that's step 2 below). Also update the hardcoded `dist/MDV-X.Y.Z-arm64-mac.zip` example path in both README.md's and README.ko.md's "Build a distributable app" section — it's not templated, so it silently goes stale otherwise. Commit everything as `Bump version to X.Y.Z` and merge to `main`.
-2. Tag and push:
+> [!IMPORTANT]
+> **Pending for the next release — the first one that ships Electron 44** (develop since 2026-10-02, PR #31). Remove this box once done.
+> - **Homebrew cask minimum macOS.** Electron 44 dropped macOS 12, and the app now declares `LSMinimumSystemVersion 13.0`. `scripts/update-homebrew-tap.sh` (step 6) only bumps `version`/`sha256`, so after it runs, edit [`oiysful/homebrew-tap`](https://github.com/oiysful/homebrew-tap)'s `Casks/mdv.rb` by hand: `depends_on :macos` → `depends_on macos: ">= :ventura"`, and push. Not earlier — that would also block Monterey users from the current Electron 42 release, which still runs for them. Without it, Monterey users can install the new version but it will not launch.
+> - **README minimum macOS.** In the same release, add `- Requires macOS 13 (Ventura) or later.` to README.md's Known Limitations and `- macOS 13(Ventura) 이상이 필요합니다.` to README.ko.md's 알려진 제한사항. Not before — the current release still runs on macOS 12.
+> - **Electron 44 CI-only stall — mitigated on CI (2026-10-08).** `ci-electron.yml` now runs the suite with `--disable-gpu` (plan 28: stalls in 8 of 16 baseline jobs, 0 of 16 with the switch). Still check `develop`'s latest `test-electron` before step 2; if a test stalled ~51s anyway, first confirm the log's `[mdv-gpu-status]` lines read `disabled_software` (the switch may have stopped applying), and do not treat a green re-run as a fix.
+> - **Review bot to `claude[bot]` (plan 28 step 7a).** Done on `develop` (PR #46): `claude-review.yml` dropped `github_token` and gained `id-token: write`; the Claude GitHub App is installed on `oiysful/MDV` only. Until this release puts the identical file on `main`, develop PR reviews are **skipped silently** — the job logs `Workflow validation failed` as a warning and stays green with no comment; the release PR's own review may do the same. After the release, check the next PR's review comment comes from `claude[bot]`; if the job is green with no comment, read its log for that warning first, then OIDC errors, then the App's install scope.
+
+1. Bump `version` in `package.json` — `npm version X.Y.Z --no-git-tag-version` updates both `package.json` and `package-lock.json` in one step (skip the git tag it would otherwise create; that's step 3 below). Also update the hardcoded `dist/MDV-X.Y.Z-arm64-mac.zip` example path in both README.md's and README.ko.md's "Build a distributable app" section — it's not templated, so it silently goes stale otherwise. Commit everything as `chore(release): bump version to X.Y.Z` on a branch off `develop`, and merge it into `develop` through a pull request like any other change.
+2. Open a pull request from `develop` to `main` and merge it. This is the act of releasing — `main` moves here and nowhere else.
+3. Tag the merge commit on `main` and push:
    ```
+   git checkout main && git pull --ff-only
    git tag vX.Y.Z
    git push origin vX.Y.Z
    ```
-3. The tag push triggers the release workflow: `electron-builder` builds an unsigned macOS `.zip`, a `SHA256SUMS` file is generated, and both are attached to the GitHub Release for that tag via `softprops/action-gh-release`.
-4. The workflow does **not** generate release notes (no `body`/`generate_release_notes` configured on the `softprops/action-gh-release` step) — the GitHub Release is published with an empty body. Write notes and attach them once the workflow finishes:
+   `v*` tags are protected against being moved or deleted, so a mistagged release cannot be quietly retagged — the ruleset has to be turned off deliberately first.
+4. The tag push triggers the release workflow: `electron-builder` builds an unsigned macOS `.zip`, a `SHA256SUMS` file is generated, and both are attached to the GitHub Release for that tag via `softprops/action-gh-release`.
+5. The workflow does **not** generate release notes (no `body`/`generate_release_notes` configured on the `softprops/action-gh-release` step) — the GitHub Release is published with an empty body. Write notes and attach them once the workflow finishes:
    ```
    gh release edit vX.Y.Z --notes-file <path-to-notes.md>
    ```
-5. The workflow then runs `scripts/update-homebrew-tap.sh` to bump `version`/`sha256` in [`oiysful/homebrew-tap`](https://github.com/oiysful/homebrew-tap)'s `Casks/mdv.rb` and push the change to `main`, so `brew upgrade --cask oiysful/tap/mdv` picks up the new release. This step requires the `HOMEBREW_TAP_TOKEN` repo secret (see [Required secrets](#required-secrets) below); if it's unset, the step is skipped and the cask needs a manual bump.
-6. Confirm the release: check the GitHub Release page for `MDV-*.zip`, `SHA256SUMS`, and the release notes, and check that `oiysful/homebrew-tap`'s `Casks/mdv.rb` shows the new version.
+6. The workflow then runs `scripts/update-homebrew-tap.sh` to bump `version`/`sha256` in [`oiysful/homebrew-tap`](https://github.com/oiysful/homebrew-tap)'s `Casks/mdv.rb` and push the change to `main`, so `brew upgrade --cask oiysful/tap/mdv` picks up the new release. This step requires the `HOMEBREW_TAP_TOKEN` repo secret (see [Required secrets](#required-secrets) below); if it's unset, the step is skipped and the cask needs a manual bump.
+7. Confirm the release: check the GitHub Release page for `MDV-*.zip`, `SHA256SUMS`, and the release notes, and check that `oiysful/homebrew-tap`'s `Casks/mdv.rb` shows the new version.
 
 ## Required secrets
 

@@ -5,22 +5,58 @@
 [English](CONTRIBUTING.md) | **한국어**
 </div>
 
-MDV는 [GitHub Flow](https://docs.github.com/en/get-started/using-github/github-flow)를 사용합니다: `main`은 항상 배포 가능한 상태를 유지하며, 모든 변경은 짧게 사는 브랜치와 풀 리퀘스트를 거쳐 반영됩니다.
+MDV는 오래 사는 브랜치 두 개를 둡니다. **`develop`은 작업이 통합되는 곳**이고, **`main`은 릴리스된 코드만** 담으며 릴리스를 명시적으로 결정했을 때만 움직입니다. 그 외 모든 것은 풀 리퀘스트로 반영되는 짧게 사는 브랜치입니다.
+
+`main`, `develop`, `release/*`는 저장소 룰셋으로 force push와 삭제가 막혀 있습니다. 필수 상태 체크는 걸지 않았으므로 CI는 머지를 막지 않습니다 — 대신 머지 전에 직접 확인하세요.
 
 ## 워크플로
 
-1. `type/short-description` 형식의 이름으로 `main`에서 브랜치를 만듭니다 — `feat/`, `fix/`, `docs/`, `harden/` 등.
-2. 작고 집중된 단위로 커밋합니다. 작업이 눈에 보이도록 풀 리퀘스트를 일찍 엽니다.
+**문서만 바뀌는 변경은 `develop`에 바로 푸시합니다** — 브랜치도, 풀 리퀘스트도 만들지 않습니다. "문서만"의 정의는 목록 하나로 고정합니다: [`.github/workflows/ci-electron.yml`](.github/workflows/ci-electron.yml)의 `paths-ignore` 블록 — 루트 `*.md`, `src/**/*.md`, `docs/**`(생성된 다이어그램 `.json`·`.html` 포함), `.skills/**`, `LICENSE`. 이 목록을 그대로 쓰면 두 규칙이 서로 어긋날 수 없고, 문서가 아니라 실제 테스트 입력인 `tests/fixtures/*.md`는 이미 빠져 있습니다. 워크플로 YAML은 주석만 바뀌어도 문서가 아닙니다. `ci.yml`은 `develop` 푸시마다 그대로 돌기 때문에, 바로 푸시해도 단위·컨트롤러·의존성 감사 커버리지는 유지됩니다. `main`에는 절대 직접 푸시하지 않습니다 — 릴리스 풀 리퀘스트로만 움직입니다.
+
+그 외 모든 변경은 아래 순서를 따릅니다.
+
+1. `type/short-description` 형식의 이름으로 `develop`에서 브랜치를 만듭니다 — `feat/`, `fix/`, `docs/`, `ci/`, `harden/` 등.
+2. 작고 집중된 단위로 커밋합니다: 한 커밋에는 하나의 논리적 변경만 담고, 그 변경에 해당하는 경로만 stage 합니다. 작업이 눈에 보이도록 풀 리퀘스트를 일찍 엽니다.
+   - 작업 중 `develop`이 앞서 나갔다면 **merge 하지 말고 그 위로 rebase** 합니다. 이미 푸시한 브랜치는 `--force-with-lease`로 갱신하되, 그 브랜치의 소유자가 본인 혼자일 때만 그렇게 합니다.
 3. 머지 전에 CI가 통과해야 합니다. `.github/workflows/ci.yml`은 문서만 바뀐 경우를 포함해 모든 푸시·PR에서 `npm run test:unit`, `npm run test:controller`, 의존성 감사(audit) 게이트를 돌립니다(약 15초). `.github/workflows/ci-electron.yml`은 Electron 스모크 스위트(macOS 러너, 약 4분)를 돌리며 문서만 바뀐 변경에서는 건너뜁니다. 제외 경로 목록과, `tests/fixtures/*.md`는 왜 계속 트리거해야 하는지는 그 파일에 적혀 있습니다.
+   - `.github/workflows/claude-review.yml`은 PR이 열리거나, 다시 열리거나, 리뷰 준비 상태가 될 때 읽기 전용 AI 리뷰를 코멘트로 남깁니다(작성자 `claude[bot]`). 푸시할 때마다 돌지는 않습니다. 새 커밋 뒤 다시 리뷰받으려면 `claude-review` 라벨을 뗐다가 다시 붙이세요. 참고용이며 필수 체크가 아니고, 사람의 승인을 대신하지 않습니다.
 4. 푸시하기 전에 최소 한 번은 로컬에서 Electron 스모크 스위트를 실행하세요([AGENTS.md](AGENTS.md)의 테스트 티어 참고) — 이제 CI도 이를 실행하지만, 로컬 실행이 macOS 러너를 기다리는 것보다 실패를 더 빨리 알려줍니다:
    ```
    npm run test:electron
    ```
-5. PR을 머지합니다(기존 히스토리와 동일하게 merge commit 방식). 브랜치는 머지 시 자동으로 삭제됩니다.
+   새로 `npm ci` 한 직후에는 `node -e "require('electron')"`를 한 번 먼저 실행하세요. 그러지 않으면 병렬로 도는 테스트 파일들이 Electron 바이너리를 동시에 풀다가 충돌합니다. 동시 실행 수는 `MDV_ELECTRON_CONCURRENCY`가 정합니다(기본 4, CI는 2).
+5. PR을 `develop`에 머지합니다(기존 히스토리와 동일하게 merge commit 방식). 브랜치는 머지 시 자동으로 삭제됩니다. squash 머지와 rebase 머지도 쓸 수 있지만 기본값이 아니라 PR마다 명시적으로 선택하는 경우에만 씁니다.
+6. 릴리스는 별도의 명시적 행위입니다: `develop`에서 `main`으로 풀 리퀘스트를 열어 머지한 뒤 [RELEASING.ko.md](RELEASING.ko.md)를 따릅니다. 다른 어떤 경로로도 `main`에 반영하지 않습니다.
+
+## 커밋 메시지
+
+커밋 제목은 [Conventional Commits 1.0.0](https://www.conventionalcommits.org/en/v1.0.0/)을 따릅니다:
+
+```
+<type>[optional scope][!]: <description>
+```
+
+| type | 쓰는 경우 |
+|------|-----------|
+| `feat` | 사용자가 볼 수 있는 기능 |
+| `fix` | 이미 배포된 동작의 결함 |
+| `docs` | 문서, 주석, 계획 문서 |
+| `refactor` | 동작 변화 없는 구조 변경 |
+| `test` | 테스트와 테스트 헬퍼만 |
+| `perf` | 측정된 성능 변화 |
+| `build` | 패키징, `electron-builder`, 의존성 변경 |
+| `ci` | 워크플로와 CI 설정 |
+| `chore` | 그 외 전부, 릴리스 버전 bump 포함 |
+
+scope는 선택입니다. 도움이 될 때 변경이 닿는 영역을 적습니다 — `renderer`, `main`, `preload`, `ci`, `security`, `release`, `deps`, `tests`, `plans`, `diagrams`. 사람들이 의존하는 무언가가 깨지는 변경이면 콜론 앞에 `!`를 붙입니다.
+
+**본문은 계속 쓰세요.** 이 규약은 제목 줄만 규정합니다. 이 저장소의 커밋 본문에는 왜 그렇게 했는지, 그 근거가 무엇인지, 그리고 틀린 것으로 판명된 가설까지 담겨 있습니다 — 이 저장소에서 가장 좋은 문서 중 하나이고, 제목 형식을 도입한다고 해서 포기할 이유가 되지 않습니다.
+
+2026-09-18 이전 커밋은 type 접두어 없는 영어 명령형 문장입니다. 그대로 둡니다 — 맞추자고 히스토리를 다시 쓸 가치는 없습니다.
 
 ## 의존성
 
-`.npmrc`에 `min-release-age=7`이 설정되어 있습니다: 게시된 지 7일이 지나지 않은 패키지 버전은 npm이 설치하지 않습니다.
+`.npmrc`에 `min-release-age=3`이 설정되어 있습니다: 게시된 지 3일이 지나지 않은 패키지 버전은 npm이 설치하지 않습니다.
 
 이 설정이 막으려는 공격은 메인테이너 계정 탈취 후의 악성 패치 릴리스입니다. 이런 건 보통 몇 시간 안에 발각되어 unpublish되기 때문에, 위험은 거의 전부 버전이 올라온 직후 며칠에 몰려 있습니다. 이 프로젝트는 릴리스가 나온 당일에 그걸 받아야 할 이유가 없으니, 그 기간만 기다리면 비용 없이 창을 닫을 수 있습니다.
 

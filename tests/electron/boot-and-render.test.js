@@ -10,10 +10,78 @@ const {
   stubOpenDialog, stubSaveDialog, createTempMarkdown,
   emitFileOpened, emitRendererCommand, clickApplicationMenuItem,
   stubOpenExternal, getOpenExternalCalls,
+  armToastWatch, waitForToast,
 } = require('./helpers/smoke-helpers')
 
 const MERMAID_MD = path.join(ROOT, 'tests/fixtures/mermaid.md')
 const LATEX_MD = path.join(ROOT, 'tests/fixtures/latex.md')
+
+// app-runtime.js's copyCode restores the button after this long, so `.copied` -- and
+// everything CSS hangs off it -- is a window, not a state. Kept as a named constant
+// because armCopyResetGate matches on the delay; see the assert in the copy test, which
+// fails loudly if the two ever drift apart.
+const COPY_RESET_DELAY_MS = 1500
+
+// Holds copyCode's restore timer instead of racing it. Measured 2026-09-21: `.copied` goes
+// on at 22ms and off at 1524ms, so a wait that starts after the window closed never sees the
+// class and sits out its full 15s timeout -- while the toast recording still shows the copy
+// itself succeeded. That is the same defect plan 18 fixed for #toast's 1.6s `show` window,
+// and it made this test the fourth CI flake (docs/plans/done/2026-09-21/20-...). Widening the window would
+// only move the failure rate, so the test opens it instead and closes it on purpose, the
+// gate move plan 19 used for the default-app guide. Releasing it also lets the test assert
+// the restore, which it could not check at all while the timer ran on its own.
+async function armCopyResetGate(page) {
+  await page.evaluate((delay) => {
+    const realSetTimeout = window.setTimeout
+    window.__heldCopyResets = []
+    window.setTimeout = function (fn, ms, ...rest) {
+      if (ms === delay) {
+        window.__heldCopyResets.push(fn)
+        return -1
+      }
+      return realSetTimeout.call(window, fn, ms, ...rest)
+    }
+    // Restores the real timer before firing what was held, so anything scheduled from
+    // inside a released callback behaves normally and later copies are ungated.
+    window.__releaseCopyResetGate = () => {
+      window.setTimeout = realSetTimeout
+      window.__heldCopyResets.splice(0).forEach(fn => fn())
+    }
+  }, COPY_RESET_DELAY_MS)
+}
+
+async function heldCopyResetCount(page) {
+  return page.evaluate(() => window.__heldCopyResets?.length ?? null)
+}
+
+async function releaseCopyResetGate(page) {
+  await page.evaluate(() => window.__releaseCopyResetGate())
+}
+
+// The tooltip's opacity is CSS-transitioned (.1s), so it has to be polled rather than read
+// straight after a class flip. On a timeout, report the opacity actually observed instead of
+// a bare TimeoutError -- the same reason waitForToast asserts in Node rather than in the
+// wait. This matters most for the opacity==='1' hover wait, the one wait in the copy test
+// the gate does not cover: if it is ever the one that hangs, it now says so itself.
+async function waitForTooltipOpacity(page, expected) {
+  try {
+    await page.waitForFunction(
+      want => {
+        const btn = document.querySelector('#content .copy-btn')
+        return Boolean(btn) && getComputedStyle(btn, '::after').opacity === want
+      },
+      expected,
+      { timeout: 5000 },
+    )
+  } catch (error) {
+    if (error.name !== 'TimeoutError') throw error
+  }
+  const actual = await page.evaluate(() => {
+    const btn = document.querySelector('#content .copy-btn')
+    return btn ? getComputedStyle(btn, '::after').opacity : null
+  })
+  assert.equal(actual, expected, `copy button tooltip opacity never reached ${expected}`)
+}
 
 // 2026-09-17 audit M2: JetBrains Mono used to come from fonts.googleapis.com /
 // fonts.gstatic.com, so opening a local document contacted a third party. csp.test.js pins
@@ -291,28 +359,57 @@ test('openFile loads markdown, updates title, and renders code highlighting', as
     // Hovering the button alone (not just the wrapper) reveals the custom "복사" tooltip,
     // and no native title tooltip fights it since the title attribute was dropped.
     await copyButton.hover()
-    await page.waitForFunction(() => {
-      const btn = document.querySelector('#content .copy-btn')
-      return btn && getComputedStyle(btn, '::after').opacity === '1'
-    })
+    await waitForTooltipOpacity(page, '1')
     assert.equal(await copyButton.evaluate(el => getComputedStyle(el, '::after').content), '"복사"')
 
+    // Everything below about the copied look lives inside copyCode's restore window, so hold
+    // that window open first -- see armCopyResetGate.
+    await armCopyResetGate(page)
+    await armToastWatch(page)
     await copyButton.click()
     await page.waitForFunction(() => document.querySelector('#content .copy-btn')?.classList.contains('copied'))
-    await page.waitForFunction(() => document.getElementById('toast')?.textContent === '코드 복사됨' && document.getElementById('toast')?.classList.contains('show'))
+    await waitForToast(page, /^코드 복사됨$/)
+    // The gate has to have caught something. This does not prove it caught the *right*
+    // timer -- the window check further down does that -- but it separates "copyCode stopped
+    // scheduling a restore at all" from "it scheduled one the gate missed", which otherwise
+    // both surface as the same confusing failure later.
+    assert.equal(
+      await heldCopyResetCount(page),
+      1,
+      `copy reset gate never intercepted a ${COPY_RESET_DELAY_MS}ms timer -- has copyCode's restore delay changed?`,
+    )
     const copiedIconHtml = await copyButton.evaluate(el => el.innerHTML)
     assert.match(copiedIconHtml, /icon-check/)
     // Tooltip hides once the button flips to its "copied" state so it doesn't read stale.
-    // The opacity is CSS-transitioned (.1s), so poll for it to actually settle rather than
-    // asserting immediately after the class flip -- getComputedStyle can still report the
-    // pre-transition value until the next paint.
-    await page.waitForFunction(() => {
-      const btn = document.querySelector('#content .copy-btn')
-      return btn && getComputedStyle(btn, '::after').opacity === '0'
-    })
+    await waitForTooltipOpacity(page, '0')
 
+    // The count above only proves the gate caught *a* timer of that delay, which is not the
+    // same as catching this button's. Measured 2026-09-21: with COPY_RESET_DELAY_MS set to
+    // 1600 the count assertion still passed, because the gate then caught #toast's own 1.6s
+    // timer while the real restore ran on schedule -- the test would have gone straight back
+    // to racing the window, silently. So wait past the restore delay and require the window
+    // to still be open. This one costs real time on purpose (~1.8s): "the window did not
+    // close" is a claim only elapsed time can support. The cheaper checks were considered
+    // and rejected as more fragile than what they'd save -- matching on the delay value is
+    // the thing being guarded against, and inspecting the held callback's source would break
+    // on any refactor of copyCode that kept its behaviour.
+    await page.waitForTimeout(COPY_RESET_DELAY_MS + 300)
+    assert.equal(
+      await copyButton.evaluate(el => el.classList.contains('copied')),
+      true,
+      'copy reset gate held some other timer -- the copied window closed on its own',
+    )
+
+    // Let the held restore run: the button goes back to its idle icon and drops `.copied`,
+    // which nothing asserted while that timer was racing the test.
+    await releaseCopyResetGate(page)
+    await page.waitForFunction(() => document.querySelector('#content .copy-btn')?.classList.contains('copied') === false)
+    assert.match(await copyButton.evaluate(el => el.innerHTML), /icon-copy/)
+
+    // The gate is off again by now, so copyAll's own restore timer is untouched.
+    await armToastWatch(page)
     await page.click('#btn-copy-all')
-    await page.waitForFunction(() => document.getElementById('toast')?.textContent === '복사됨' && document.getElementById('toast')?.classList.contains('show'))
+    await waitForToast(page, /^복사됨$/)
   } finally {
     await closeApp(electronApp)
   }
@@ -393,6 +490,19 @@ test('mermaid diagram keeps its intrinsic size after a source-mode round trip (p
     // assuming a specific fixture size.
     assert.ok(before > 50, `sanity check on the first render's own width: ${before}`)
 
+    // A flowchart's style.maxWidth is intrinsic, so it can't show whether the offscreen host
+    // mermaid measured in was as wide as #content -- but width-driven diagrams (gantt) bake that
+    // width in. Record the host's width as it's attached and compare it to #content's own.
+    const visibleContentWidth = await page.evaluate(() => {
+      window.__parkHostWidths = []
+      new MutationObserver(records => records.forEach(record => record.addedNodes.forEach(node => {
+        if (node.nodeType === 1 && node.getAttribute('aria-hidden') === 'true') {
+          window.__parkHostWidths.push(node.getBoundingClientRect().width)
+        }
+      }))).observe(document.body, { childList: true })
+      return document.getElementById('content').getBoundingClientRect().width
+    })
+
     await emitRendererCommand(electronApp, 'toggleSource')
     await page.waitForFunction(() => document.getElementById('scroll-area').classList.contains('source-mode'))
     await emitRendererCommand(electronApp, 'toggleSource')
@@ -402,6 +512,10 @@ test('mermaid diagram keeps its intrinsic size after a source-mode round trip (p
     const after = await intrinsicWidth()
     assert.ok(after > 50, `diagram must not collapse to a near-zero width after the round trip, got ${after}`)
     assert.ok(Math.abs(after - before) < 2, `width must not drift between the visible and parked renders: before=${before} after=${after}`)
+    const parkHostWidths = await page.evaluate(() => window.__parkHostWidths)
+    assert.equal(parkHostWidths.length, 1, 'the source-mode exit render parked its mermaid node once')
+    assert.ok(Math.abs(parkHostWidths[0] - visibleContentWidth) <= 1,
+      `the parking host must be as wide as #content: host=${parkHostWidths[0]} content=${visibleContentWidth}`)
 
     assert.deepEqual(consoleErrors, [], 'mermaid must not raise CSP violations or runtime errors')
   } finally {
@@ -536,10 +650,9 @@ test('code fence with no language renders without a reserved header row', async 
       })
       return ctrl.renderMarkdown('```\nplain text\n```')
     })
-    assert.ok(!/code-lang/.test(html), html)
-    assert.ok(!/code-meta/.test(html), html)
-    assert.ok(/data-command="copyCode"/.test(html), html)
-    assert.ok(/class="copy-btn"/.test(html), html)
+    // What this markup contains -- no `code-lang`/`code-meta`, but still a copy button -- is
+    // asserted on the same input by tests/unit/markdown.test.js:258. Only the rendered
+    // *height* is checked here, because that is the part jsdom cannot see.
 
     await page.evaluate(htmlStr => {
       const probe = document.createElement('div')
@@ -687,14 +800,88 @@ test('PDF export button sits right of print and saves a PDF', async () => {
       ariaLabel: 'PDF 내보내기',
     })
 
+    await armToastWatch(page)
     await page.click('#btn-export-pdf')
+    // waitForFile polls for up to 5s and the toast fades after 1.6s, so the recording -- not
+    // the live element -- is the only thing still around to check by the time we get here.
     await waitForFile(pdfPath)
-    await page.waitForFunction(() => document.getElementById('toast')?.textContent === 'PDF 저장됨' && document.getElementById('toast')?.classList.contains('show'))
+    await waitForToast(page, /^PDF 저장됨$/)
 
     const pdf = await fs.readFile(pdfPath)
     assert.equal(pdf.subarray(0, 4).toString('utf8'), '%PDF')
   } finally {
     await closeApp(electronApp)
     await fs.rm(tempDir, { recursive: true, force: true })
+  }
+})
+
+test('frontmatter table scrolls sideways on screen but prints expanded as a vertical key/value table without its summary', async () => {
+  const { electronApp, page } = await launchApp()
+
+  try {
+    const keys = Array.from({ length: 14 }, (_, i) => `metadata_key_number_${String(i + 1).padStart(2, '0')}`)
+    const yaml = keys.map((key, i) => (i === 1 ? `${key}: 2026-08-05` : i === 2 ? `${key}: 12345` : `${key}: value ${i + 1} with some longer descriptive text`)).join('\n')
+    await emitFileOpened(electronApp, {
+      content: `---\n${yaml}\n---\n\n# Body\n`,
+      filename: 'frontmatter-print.md',
+      path: '/tmp/mdv-frontmatter-print.md',
+    })
+    await page.waitForFunction(() => document.title === 'frontmatter-print')
+    await page.locator('details.frontmatter-content > summary').click()
+    await page.waitForFunction(() => document.querySelector('details.frontmatter-content')?.open === true)
+
+    const wrapper = page.locator('details.frontmatter-content .frontmatter-scroll')
+    // Screen first, so the print assertions below prove the rules flip rather than passing by default.
+    assert.equal(await wrapper.evaluate(el => getComputedStyle(el).overflowX), 'auto')
+    assert.equal(
+      await page.locator('details.frontmatter-content td.frontmatter-nowrap').first().evaluate(el => getComputedStyle(el).whiteSpace),
+      'nowrap'
+    )
+    const screenShape = await page.evaluate(() => {
+      const table = document.querySelector('.frontmatter-scroll table')
+      return {
+        headRows: table.querySelectorAll('thead tr').length,
+        sameTop: new Set([...table.querySelectorAll('th')].map(th => th.getBoundingClientRect().top)).size === 1,
+      }
+    })
+    assert.deepEqual(screenShape, { headRows: 1, sameTop: true })
+
+    const summary = page.locator('details.frontmatter-content > summary')
+    assert.notEqual(await summary.evaluate(el => getComputedStyle(el).display), 'none')
+
+    // Collapse it again: print must show the table regardless of the on-screen state.
+    await page.evaluate(() => { document.querySelector('details.frontmatter-content').open = false })
+    assert.equal(await wrapper.evaluate(el => el.checkVisibility()), false)
+
+    await page.emulateMedia({ media: 'print' })
+    assert.equal(await page.evaluate(() => document.querySelector('details.frontmatter-content').open), false)
+    assert.equal(await wrapper.evaluate(el => el.checkVisibility()), true, 'collapsed frontmatter must print expanded')
+    assert.equal(await wrapper.evaluate(el => getComputedStyle(el).overflowX), 'visible')
+    assert.equal(await summary.evaluate(el => getComputedStyle(el).display), 'none')
+    const printed = await page.evaluate(() => {
+      const limit = document.getElementById('content').getBoundingClientRect().right
+      const ths = [...document.querySelectorAll('.frontmatter-scroll th')]
+      const tds = [...document.querySelectorAll('.frontmatter-scroll td')]
+      const rect = el => el.getBoundingClientRect()
+      return {
+        count: [ths.length, tds.length],
+        overflowing: [...ths, ...tds].filter(el => rect(el).right > limit + 0.5).length,
+        misaligned: ths.filter((th, i) => Math.abs(rect(th).top - rect(tds[i]).top) > 0.5).length,
+        rows: new Set(ths.map(th => Math.round(rect(th).top))).size,
+        wraps: tds.every(td => getComputedStyle(td).whiteSpace === 'normal'),
+      }
+    })
+    assert.deepEqual(printed, { count: [14, 14], overflowing: 0, misaligned: 0, rows: 14, wraps: true })
+
+    // A real PDF through the same Chromium print path the export button uses.
+    const pdfBase64 = await electronApp.evaluate(async ({ BrowserWindow }) => {
+      const buf = await BrowserWindow.getAllWindows()[0].webContents.printToPDF({ printBackground: true, preferCSSPageSize: true })
+      return buf.toString('base64')
+    })
+    const pdf = Buffer.from(pdfBase64, 'base64')
+    assert.equal(pdf.subarray(0, 4).toString('utf8'), '%PDF')
+    if (process.env.MDV_FM_PDF_OUT) await fs.writeFile(process.env.MDV_FM_PDF_OUT, pdf)
+  } finally {
+    await closeApp(electronApp)
   }
 })

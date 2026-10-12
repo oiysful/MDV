@@ -81,6 +81,7 @@ MDV_RELEASE_TAG=v1.0.0 npm run install:release
 
 **편집 & 렌더링**
 - Markdown 미리보기 + 소스 편집 모드, 실시간 분할 뷰
+- 편집 중 Enter가 목록·체크박스·`>` 인용 마커를 다음 줄로 이어 씀 (빈 항목에서는 마커를 지우고 빠져나감)
 - GFM 테이블, 체크리스트, 문법 강조가 적용된 코드 블록
 - 코드 펜스 안에서 바로 렌더링되는 Mermaid 다이어그램과 LaTeX(수식)
 - 자동 테마, 라이트 테마, 다크 테마
@@ -143,7 +144,7 @@ npm run build
 현재 빌드 출력물:
 
 - `dist/mac-arm64/MDV.app`
-- `dist/MDV-1.3.0-arm64-mac.zip`
+- `dist/MDV-1.4.0-arm64-mac.zip`
 
 ## 배포 참고사항
 
@@ -157,4 +158,5 @@ npm run build
 
 - 더 친화적인 macOS 배포를 위한 공증(notarization)은 아직 진행되지 않았습니다.
 - Homebrew cask와 모든 릴리스 빌드는 Apple Silicon(arm64)만 대상으로 하며, Intel(x64) 빌드는 없습니다.
+- macOS 13(Ventura) 이상이 필요합니다.
 - 세션 복원은 마지막으로 포커스된 창의 상태(파일 경로 + 활성 탭 인덱스 + 탐색기 루트)만 유지합니다. 다중 창 세션 병합은 v1 범위 밖입니다.

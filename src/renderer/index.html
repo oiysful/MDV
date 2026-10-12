@@ -15,7 +15,7 @@
 <script src="../../node_modules/marked/marked.min.js"></script>
 <script src="../../node_modules/@highlightjs/cdn-assets/highlight.min.js"></script>
 <script src="../../node_modules/dompurify/dist/purify.min.js"></script>
-<script src="../../node_modules/js-yaml/dist/js-yaml.min.js"></script>
+<script src="../../node_modules/js-yaml/dist/browser/js-yaml.umd.min.js"></script>
 
 <!-- highlight.js: light 모드 → GitHub Light, dark 모드 → One Dark -->
 <link id="hljs-light" rel="stylesheet"
@@ -629,7 +629,9 @@ mark.search-hl.current {
    explicitly and are unaffected. */
 #scroll-area {
   flex: 1; min-height: 0; overflow-y: auto;
-  padding: 22px 52px 80px;
+  /* Must stay px: markdown.js parseFloat()s it to size the hidden mermaid render host. */
+  --content-pad-x: 52px;
+  padding: 22px var(--content-pad-x) 80px;
 }
 #scroll-area.source-mode { padding: 0; }
 #scroll-area.split-mode {
@@ -649,7 +651,7 @@ mark.search-hl.current {
 [data-theme="dark"] #scroll-area::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.18); background-clip: padding-box; }
 [data-theme="dark"] #scroll-area::-webkit-scrollbar-thumb:hover { background: rgba(255,255,255,0.28); background-clip: padding-box; }
 
-#content { max-width: 720px; margin: 0 auto; user-select: text; -webkit-user-select: text; }
+#content { max-width: 60em; margin: 0 auto; user-select: text; -webkit-user-select: text; }
 #scroll-area.split-mode #content {
   order: 3;
   max-width: none;
@@ -1217,6 +1219,15 @@ kbd {
   white-space: pre;
 }
 
+/* Mermaid's flowchart tooltip: mermaid appends it to <body> once and never removes it, with an
+   inline `position:absolute` and no top/left — so it sits at its static position just below
+   the 100vh #layout and its 2px padding + 1px border make the document 6px taller than the
+   window. The root then scrolls 6px on a wheel over the toolbar or on any scrollIntoView
+   (TOC click, search jump). Fixed takes it out of the flow; mermaid places it with
+   window.scroll{X,Y} + getBoundingClientRect(), and the root never scrolls, so those are
+   viewport coordinates either way. !important is needed to beat the inline style. (plan 23) */
+.mermaidTooltip { position: fixed !important; top: 0; left: 0; }
+
 /* LaTeX/math block (```latex, ```math) */
 .mdv-latex {
   margin: 1.2em 0;
@@ -1247,26 +1258,33 @@ kbd {
 #content tr:last-child td { border-bottom: none; }
 #content tr:hover td { background: var(--hover); }
 
-/* Frontmatter meta card — collapsed by default (no `open` attribute), Obsidian-properties-ish. */
-.frontmatter-card {
-  margin: 0 0 1.2em; padding: 0.5em 0.9em;
-  border: 1px solid var(--border); border-radius: var(--radius-sm);
-  background: var(--subtle); font-size: 0.85em;
-}
-.frontmatter-card summary {
-  cursor: pointer; font-weight: 600; color: var(--text-muted);
+/* Frontmatter — Gitea-style: collapsed by default (no `open` attribute), the summary lists the
+   top-level keys on one line, and the body is a horizontal table that takes the regular
+   `#content table` rules above (no separate card box). */
+.frontmatter-content { margin: 0 0 1.2em; }
+.frontmatter-content summary {
+  cursor: pointer; font-size: 0.85em; font-weight: 600; color: var(--text-muted);
   user-select: none;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
 }
-.frontmatter-card[open] summary { margin-bottom: 0.6em; }
-.frontmatter-table { width: 100%; border-collapse: collapse; }
-.frontmatter-table th, .frontmatter-table td {
-  padding: 4px 8px; text-align: left; vertical-align: top;
-  border: none;
-}
-.frontmatter-table th { color: var(--text-muted); font-weight: 600; white-space: nowrap; width: 1%; }
-.frontmatter-list { list-style: none; margin: 0.2em 0; padding-left: 0.9em; border-left: 2px solid var(--border); }
-.frontmatter-table.frontmatter-nested { margin: 0.2em 0; font-size: 0.95em; }
+.frontmatter-icon { vertical-align: middle; margin: 0 0.25em; }
+.frontmatter-scroll { overflow-x: auto; }
+#content .frontmatter-scroll table { margin: 0.5em 0 0; }
+#content .frontmatter-scroll td { vertical-align: top; }
+/* Only types that must not break: a date split as `2026-` / `09-30` reads as two values.
+   Strings wrap naturally with no min-width -- a min-width rule is what overflowed 8+ keys. */
+#content td.frontmatter-nowrap { white-space: nowrap; }
+.frontmatter-key { color: var(--text-muted); }
+.frontmatter-object .frontmatter-object { padding-left: 0.9em; }
+.frontmatter-item + .frontmatter-item { margin-top: 0.3em; }
 .frontmatter-multiline { white-space: pre-wrap; }
+.frontmatter-truncated { color: var(--text-muted); }
+
+/* Visible to screen readers only. */
+.visually-hidden {
+  position: absolute !important; width: 1px; height: 1px; padding: 0; margin: -1px;
+  overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; border: 0;
+}
 
 #content img {
   max-width: 100%; border-radius: var(--radius-md); border: 1px solid var(--border);
@@ -1279,7 +1297,7 @@ kbd {
 #btn-copy-all.copied { color: var(--success) !important; }
 
 @media print {
-  #toolbar, #search-bar, #sidebar, #tab-strip, #go-top, #source-view, #split-divider, .copy-btn, #update-banner { display: none !important; }
+  #toolbar, #search-bar, #sidebar, #tab-strip, #go-top, #source-view, #split-divider, .copy-btn, #update-banner, .mermaidTooltip { display: none !important; }
   html, body, #layout, #main-pane, #scroll-area, #content {
     height: auto !important;
     min-height: 0 !important;
@@ -1317,11 +1335,39 @@ kbd {
   }
   .code-wrapper { box-shadow: none !important; border: 1px solid #d0d7de; }
   #content tr:hover td { background: transparent !important; }
+  /* Paper width is fixed, so a wide horizontal frontmatter table gets cut off. Re-flow the same
+     DOM as a vertical key | value table: thead/tbody/tr vanish into the grid, and column-wise
+     auto-flow puts every <th> in column 1 and every <td> in column 2, row i = key i + value i. */
+  .frontmatter-scroll { overflow: visible !important; }
+  #content .frontmatter-scroll table {
+    display: grid; width: 100%;
+    grid-auto-flow: column;
+    grid-template-rows: repeat(var(--fm-keys, 1), auto);
+    grid-template-columns: minmax(auto, 30%) minmax(0, 1fr);
+  }
+  #content .frontmatter-scroll thead,
+  #content .frontmatter-scroll tbody,
+  #content .frontmatter-scroll tr { display: contents; }
+  #content .frontmatter-scroll th,
+  #content .frontmatter-scroll td {
+    min-width: 0; white-space: normal; overflow-wrap: anywhere; text-align: left;
+    border-bottom: 1px solid var(--border);
+  }
+  #content .frontmatter-scroll td { border-left: 1px solid var(--border); }
+  /* last row: the table's own border closes it */
+  #content .frontmatter-scroll th:last-child,
+  #content .frontmatter-scroll td:last-child { border-bottom: none; }
+  #content td.frontmatter-nowrap { white-space: normal; }
+  /* On paper the frontmatter always prints expanded, whatever its on-screen state, and the
+     summary's key list goes: the table already names every key. ::details-content is where
+     Chromium hides a closed <details>' content (content-visibility: hidden). */
+  #content details.frontmatter-content > summary { display: none; }
+  #content details.frontmatter-content::details-content { content-visibility: visible; }
 }
 
 @media (max-width: 700px) {
   #layout { padding-top: 48px; }
-  #scroll-area { padding: var(--sp-lg) var(--sp-md) 60px; }
+  #scroll-area { --content-pad-x: var(--sp-md); padding: var(--sp-lg) var(--content-pad-x) 60px; }
   #scroll-area.split-mode { display: block; padding: 0; overflow-y: auto; }
   /* Stacked (non-grid) layout on narrow viewports -- column-width dragging doesn't apply. */
   #scroll-area.split-mode #split-divider { display: none; }

@@ -1,6 +1,19 @@
 (function (globalScope) {
+  // The order the theme button cycles through, and the only values this controller accepts.
+  // A stored value outside the set used to survive construction unvalidated, and then
+  // toggleTheme's lookup produced `undefined`, which storage wrote back as the string
+  // "undefined" -- not a key either, so the button stayed dead across restarts (issue #20).
+  // The plausible way to get such a value is a downgrade from a build that shipped a fourth
+  // theme. Normalizing at construction is enough on its own: `theme` is otherwise only ever
+  // assigned this map's result, which cannot miss for a key that is already in the set.
+  const THEME_CYCLE = { auto: 'light', light: 'dark', dark: 'auto' }
+
+  function normalizeStoredTheme(stored) {
+    return Object.hasOwn(THEME_CYCLE, stored) ? stored : 'auto'
+  }
+
   function createThemeController({ matchMedia, storage, documentRef, getRefs, onThemeApplied }) {
-    let theme = storage.getItem('theme') || 'auto'
+    let theme = normalizeStoredTheme(storage.getItem('theme'))
 
     // Split out so print/PDF export can force the light hljs stylesheet for the duration of
     // the job and restore it afterward without touching the stored theme setting or re-running
@@ -39,7 +52,7 @@
     }
 
     function toggleTheme() {
-      theme = { auto: 'light', light: 'dark', dark: 'auto' }[theme]
+      theme = THEME_CYCLE[theme]
       storage.setItem('theme', theme)
       return applyTheme()
     }

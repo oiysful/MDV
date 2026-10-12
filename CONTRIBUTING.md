@@ -5,22 +5,58 @@
 **English** | [한국어](CONTRIBUTING.ko.md)
 </div>
 
-MDV uses [GitHub Flow](https://docs.github.com/en/get-started/using-github/github-flow): `main` is always deployable, and all changes land through short-lived branches and pull requests.
+MDV keeps two long-lived branches. **`develop` is where work integrates**; **`main` holds released code only** and moves when a release is deliberately decided. Everything else is a short-lived branch that lands through a pull request.
+
+`main`, `develop`, and `release/*` are protected by a repository ruleset against force pushes and deletion. There are no required status checks, so CI is advisory rather than blocking — read it before merging.
 
 ## Workflow
 
-1. Branch off `main` using a `type/short-description` name — `feat/`, `fix/`, `docs/`, `harden/`, etc.
-2. Commit in small, focused steps. Open a pull request early so work is visible.
+**Documentation-only changes go straight to `develop`** — no branch, no pull request. "Documentation-only" is defined by exactly one list: the `paths-ignore` block in [`.github/workflows/ci-electron.yml`](.github/workflows/ci-electron.yml) — root `*.md`, `src/**/*.md`, `docs/**` (including the generated diagram `.json` and `.html`), `.skills/**`, and `LICENSE`. Reusing that list means the two rules cannot drift apart, and it already excludes `tests/fixtures/*.md`, which are live test inputs rather than documentation. Workflow YAML is never documentation, even when only its comments change. `ci.yml` still runs on every push to `develop`, so a direct docs push keeps its unit, controller, and dependency-audit coverage. `main` is never pushed to directly; it moves only through the release pull request.
+
+Everything else follows the numbered flow below.
+
+1. Branch off `develop` using a `type/short-description` name — `feat/`, `fix/`, `docs/`, `ci/`, `harden/`, etc.
+2. Commit in small, focused steps: one logical change per commit, staging only the paths that change belongs to. Open a pull request early so work is visible.
+   - If `develop` moves ahead while you work, **rebase onto it rather than merging it back in**. Force-push a branch you already pushed with `--force-with-lease`, and only when you are its sole owner.
 3. Before merging, CI must pass. `.github/workflows/ci.yml` runs `npm run test:unit`, `npm run test:controller`, and a dependency audit gate on every push and PR, including documentation-only ones — it takes about 15s. `.github/workflows/ci-electron.yml` runs the Electron smoke suite (macOS runner, ~4min) and is skipped when a change touches only documentation; that file lists the excluded paths and explains why `tests/fixtures/*.md` must keep triggering it.
+   - `.github/workflows/claude-review.yml` posts a read-only AI review (comments from `claude[bot]`) when a PR is opened, reopened, or marked ready for review — not on every push. To review again after new commits, remove and re-add the `claude-review` label. It is advisory, not a required check, and does not replace human approval.
 4. Run the Electron smoke suite locally at least once before pushing (see [AGENTS.md](AGENTS.md) test tiers) — CI now runs it too, but a local run surfaces failures faster than waiting on the macOS runner:
    ```
    npm run test:electron
    ```
-5. Merge the PR (merge commit, matching existing history). The branch is deleted automatically on merge.
+   On a fresh `npm ci`, run `node -e "require('electron')"` once first, or the parallel test files race to extract the Electron binary. Concurrency comes from `MDV_ELECTRON_CONCURRENCY` (default 4; CI uses 2).
+5. Merge the PR into `develop` (merge commit, matching existing history). The branch is deleted automatically on merge. Squash and rebase merges are available but are a deliberate per-PR choice, not the default.
+6. Releasing is a separate, explicit act: open a pull request from `develop` to `main`, merge it, then follow [RELEASING.md](RELEASING.md). Nothing reaches `main` any other way.
+
+## Commit messages
+
+Commit subjects follow [Conventional Commits 1.0.0](https://www.conventionalcommits.org/en/v1.0.0/):
+
+```
+<type>[optional scope][!]: <description>
+```
+
+| type | use for |
+|------|---------|
+| `feat` | a capability a user can see |
+| `fix` | a defect in behaviour that already shipped |
+| `docs` | documentation, comments, and plans |
+| `refactor` | restructuring with no behaviour change |
+| `test` | tests and test helpers only |
+| `perf` | a measured performance change |
+| `build` | packaging, `electron-builder`, dependency changes |
+| `ci` | workflows and CI configuration |
+| `chore` | anything else, including release version bumps |
+
+Scope is optional; when it helps, name the area the change touches — `renderer`, `main`, `preload`, `ci`, `security`, `release`, `deps`, `tests`, `plans`, `diagrams`. Put `!` before the colon when a change breaks something people rely on.
+
+**Keep writing the body.** The convention constrains the subject line and nothing else. This repository's commit bodies carry why a change was made, the evidence behind it, and the hypotheses that turned out wrong — that is some of its best documentation, and adopting a subject format is not a reason to give it up.
+
+Commits before 2026-09-18 are imperative English sentences with no type prefix. Leave them alone; rewriting history to match is not worth it.
 
 ## Dependencies
 
-`.npmrc` sets `min-release-age=7`: npm will not install a package version published less than seven days ago.
+`.npmrc` sets `min-release-age=3`: npm will not install a package version published less than three days ago.
 
 The attack this guards against is a maintainer account takeover followed by a malicious patch release. Those are usually caught and unpublished within hours, so nearly all of the risk sits in the first days after a version appears. This project has no reason to take a release the day it ships, so waiting out that window costs nothing and closes it.
 

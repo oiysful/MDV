@@ -144,8 +144,15 @@
     // watch safely (see DIR_WATCH_MAX_PATHS) -- the tree itself keeps working via on-demand
     // list-directory calls, only live auto-refresh on external changes is gone, so this is
     // informational rather than an error.
+    // Two things end a folder watch and they need different words. The path-count guard means
+    // the folder is too big to watch; a watcher error means the watch broke under resource
+    // exhaustion (EMFILE/ENOSPC). Saying "too big" for the second would send someone hunting a
+    // file count that isn't the problem.
     api.onDirectoryWatchUnavailable?.(payload => {
-      if (payload?.path === currentExplorerRoot) showToast?.('폴더가 너무 커서 실시간 변경 감지를 껐습니다')
+      if (payload?.path !== currentExplorerRoot) return
+      showToast?.(payload.reason === 'overflow'
+        ? '폴더가 너무 커서 실시간 변경 감지를 껐습니다'
+        : '폴더의 실시간 변경 감지가 중단되었습니다')
     })
 
     async function openFileRow(row, event) {

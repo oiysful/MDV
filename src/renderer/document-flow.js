@@ -150,7 +150,7 @@
         setMarkdown,
       })
 
-      const dlg = await api.saveFileDialog(tab.filename)
+      const dlg = await api.saveFileDialog(tab.filename, tab.path)
       if (dlg.cancelled || dlg.error) return
 
       const res = await api.saveFile(dlg.path, tab.content)
