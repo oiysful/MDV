@@ -146,6 +146,25 @@ async function waitForSidebarTransition(page) {
   await page.waitForFunction(() => window.__mdvSidebarTransitionDone === true)
 }
 
+// A long document with an H1 title and twelve "## Section N" headings, each followed by enough
+// text to scroll. Used by the TOC-highlight and split-view reading-position tests.
+async function writeTocDoc(tempDir, name, title) {
+  const docPath = path.join(tempDir, `${name}.md`)
+  const sections = Array.from({ length: 12 }, (_, i) => `## Section ${i + 1}\n\n${'Paragraph text for scroll height. '.repeat(40)}`).join('\n\n')
+  const text = `# ${title}\n\n${sections}\n`
+  await fs.writeFile(docPath, text, 'utf-8')
+  return { docPath, text }
+}
+
+// A tab restore sets scrollTop in a frame of its own, the scroll event lands a frame later, and
+// app-shell.js refreshes the TOC highlight a frame after that -- let all of it settle before reading.
+async function waitFrames(page, count = 4) {
+  await page.evaluate(n => new Promise(resolve => {
+    const step = left => (left === 0 ? resolve() : requestAnimationFrame(() => step(left - 1)))
+    step(n)
+  }), count)
+}
+
 // #toast (onboarding.js's showToast) removes its own 'show' class 1.6s after it's added, so
 // polling classList.contains('show') after some other wait races that timeout: if the other
 // wait is slow enough, the toast has already faded before the poll even starts, and the poll
@@ -221,4 +240,6 @@ module.exports = {
   waitForSidebarTransition,
   armToastWatch,
   waitForToast,
+  writeTocDoc,
+  waitFrames,
 }

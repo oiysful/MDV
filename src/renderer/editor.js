@@ -290,6 +290,11 @@
     // up front keeps each transition to exactly one recompute instead of a growing pile of
     // harmless-but-wasteful no-ops.
     let cancelPendingSidebarTransitionListener = null
+    // The reading position toggleSplitView just applied, kept until #sidebar's width transition
+    // settles: #content keeps reflowing for that whole span, so a position applied right after
+    // the mode switch drifts, and the settle handler below applies it once more. It records the
+    // tab, mode and scroller it was applied to, so the re-apply can tell nothing moved since.
+    let pendingSplitReadingPosition = null
 
     function getSourceMode() {
       return sourceMode
@@ -342,7 +347,16 @@
           cancelPendingSidebarTransitionListener = null
           // transitioncancel means this transition got superseded (toggled again mid-flight)
           // -- the newer call's own listener will do the recompute once it settles.
-          if (event.type === 'transitionend') markdownController?.refreshHeadingOffsets()
+          if (event.type !== 'transitionend') return
+          markdownController?.refreshHeadingOffsets()
+          const pending = pendingSplitReadingPosition
+          pendingSplitReadingPosition = null
+          // Only into the same tab and mode, and only if nothing (a tab switch, Cmd+U, the reader
+          // scrolling) has moved the scroller since: otherwise the old position would land on
+          // another document, or override the reader.
+          if (pending && pending.tab === getActiveTab() && pending.sourceMode === sourceMode && pending.splitMode === splitMode && pending.scroller.scrollTop === pending.scrollTop) {
+            applyToggleReadingPosition(pending.captured)
+          }
         }
         sidebarEl.addEventListener('transitionend', onSidebarTransitionSettled)
         sidebarEl.addEventListener('transitioncancel', onSidebarTransitionSettled)
@@ -521,6 +535,9 @@
       closeSearch()
 
       if (splitMode) {
+        // Split view's preview pane is the position to keep (captured before setSplitMode moves
+        // anything); applyToggleReadingPosition maps it onto the source lines.
+        const readingPosition = captureToggleReadingPosition()
         const edited = getEditorValue()
         setSplitMode(false)
         sourceMode = true
@@ -529,6 +546,7 @@
         tab.dirty = edited !== tab.savedContent
         rerenderTabBar()
         applySourceMode()
+        applySplitReadingPosition(readingPosition)
         return
       }
 
@@ -573,12 +591,19 @@
       return { geometry, lineTop, headings, tops: headings.map(heading => lineTop + heading.line * geometry.lineHeight) }
     }
 
+    // The scroll container the preview is read in: split view's preview pane scrolls on its own
+    // (#content), every other mode scrolls #scroll-area. Heading tops from getPreviewHeadings()
+    // are measured from #scroll-area's offsetTop, which is #content's scroll frame too.
+    function getPreviewScroller(refs) {
+      return splitMode ? refs.content : refs.scrollArea
+    }
+
     function captureToggleReadingPosition() {
       const refs = getRefs()
       const scrollArea = refs.scrollArea
-      const maxScroll = scrollArea.scrollHeight - scrollArea.clientHeight
       if (!markdownController) return null
       if (sourceMode) {
+        const maxScroll = scrollArea.scrollHeight - scrollArea.clientHeight
         const source = getSourceGeometryTops(refs, refs.sourceEditor.value)
         return {
           from: 'source',
@@ -587,12 +612,14 @@
           position: captureReadingPosition(scrollArea.scrollTop, buildAnchorTops(source.tops, maxScroll)),
         }
       }
+      const scroller = getPreviewScroller(refs)
+      const maxScroll = scroller.scrollHeight - scroller.clientHeight
       const headings = markdownController.getPreviewHeadings()
       return {
         from: 'preview',
         headings,
         trackLines: true,
-        position: captureReadingPosition(scrollArea.scrollTop, buildAnchorTops(headings.map(heading => heading.top), maxScroll)),
+        position: captureReadingPosition(scroller.scrollTop, buildAnchorTops(headings.map(heading => heading.top), maxScroll)),
       }
     }
 
@@ -600,8 +627,8 @@
       if (!captured) return
       const refs = getRefs()
       const scrollArea = refs.scrollArea
-      const maxScroll = scrollArea.scrollHeight - scrollArea.clientHeight
       if (sourceMode && captured.from === 'preview') {
+        const maxScroll = scrollArea.scrollHeight - scrollArea.clientHeight
         const text = refs.sourceEditor.value
         const source = getSourceGeometryTops(refs, text)
         const paired = source.geometry.trackActive && headingDepthsMatch(captured.headings, source.headings)
@@ -619,11 +646,26 @@
         refs.sourceEditor.setSelectionRange(caret, caret)
         return
       }
-      if (!sourceMode && captured.from === 'source') {
+      // Into the preview or split view's preview pane, from source mode (Cmd+U) or from the other
+      // preview scroller (toggleSplitView, either direction).
+      if (!sourceMode) {
+        const scroller = getPreviewScroller(refs)
+        const maxScroll = scroller.scrollHeight - scroller.clientHeight
         const headings = markdownController.getPreviewHeadings()
         const paired = captured.trackLines && headingDepthsMatch(captured.headings, headings)
-        scrollArea.scrollTop = resolveReadingPosition(captured.position, buildAnchorTops(headings.map(heading => heading.top), maxScroll), paired)
+        scroller.scrollTop = resolveReadingPosition(captured.position, buildAnchorTops(headings.map(heading => heading.top), maxScroll), paired)
       }
+    }
+
+    // Apply now, and once more when #sidebar's width transition settles if setSplitMode() just
+    // started one (see pendingSplitReadingPosition).
+    function applySplitReadingPosition(captured) {
+      applyToggleReadingPosition(captured)
+      pendingSplitReadingPosition = null
+      if (!captured || !cancelPendingSidebarTransitionListener) return
+      const refs = getRefs()
+      const scroller = sourceMode ? refs.scrollArea : getPreviewScroller(refs)
+      pendingSplitReadingPosition = { captured, tab: getActiveTab(), sourceMode, splitMode, scroller, scrollTop: scroller.scrollTop }
     }
 
     async function toggleSplitView() {
@@ -631,6 +673,10 @@
       if (!tab) return
 
       closeSearch()
+
+      // Same rule as toggleSource: capture in the mode being left, before anything (render()
+      // included) switches, and apply once the new mode's layout is live.
+      const readingPosition = captureToggleReadingPosition()
 
       if (splitMode) {
         const edited = getEditorValue()
@@ -643,6 +689,7 @@
         setSplitMode(false)
         sourceMode = false
         applySourceMode()
+        applySplitReadingPosition(readingPosition)
         return
       }
 
@@ -659,6 +706,7 @@
       setSplitMode(true)
       sourceMode = false
       applySourceMode()
+      applySplitReadingPosition(readingPosition)
     }
 
     // preventScroll: the caller owns the scroll position. A plain focus() scrolls to the caret,

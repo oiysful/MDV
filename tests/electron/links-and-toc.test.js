@@ -11,6 +11,7 @@ const {
   emitFileOpened, emitFileChanged, emitRendererCommand, clickApplicationMenuItem,
   stubOpenExternal, getOpenExternalCalls,
   armSidebarTransitionWatch, waitForSidebarTransition,
+  writeTocDoc, waitFrames,
 } = require('./helpers/smoke-helpers')
 
 test('clicking a local markdown link opens the target as a new tab', async () => {
@@ -515,14 +516,6 @@ test('TOC scrollspy keeps updating from the #content pane while split view is op
 // as happened once on the tab-restore test. The unit tests in tests/unit/markdown.test.js pin
 // the mechanism deterministically.
 
-async function writeTocDoc(tempDir, name, title) {
-  const docPath = path.join(tempDir, `${name}.md`)
-  const sections = Array.from({ length: 12 }, (_, i) => `## Section ${i + 1}\n\n${'Paragraph text for scroll height. '.repeat(40)}`).join('\n\n')
-  const text = `# ${title}\n\n${sections}\n`
-  await fs.writeFile(docPath, text, 'utf-8')
-  return { docPath, text }
-}
-
 // Counts scroll events on both scroll containers (#content scrolls on its own in split view)
 // from this call on. The listeners go in once per page; later calls only zero the counts.
 async function resetScrollCounts(page) {
@@ -534,15 +527,6 @@ async function resetScrollCounts(page) {
     }
     window.__mdvScrollCounts = { scrollArea: 0, content: 0 }
   })
-}
-
-// A tab restore sets scrollTop in a frame of its own, the scroll event lands a frame later, and
-// app-shell.js refreshes the highlight a frame after that -- let all of it settle before reading.
-async function waitFrames(page, count = 4) {
-  await page.evaluate(n => new Promise(resolve => {
-    const step = left => (left === 0 ? resolve() : requestAnimationFrame(() => step(left - 1)))
-    step(n)
-  }), count)
 }
 
 // What the TOC shows now, next to what refreshTocActive() would pick for the current position
@@ -635,20 +619,24 @@ test('TOC highlight stays in step after leaving split view once the preview re-r
     await emitRendererCommand(electronApp, 'openFile')
     await page.waitForFunction(() => document.title === 'toc-split-exit')
     await page.waitForFunction(() => document.querySelectorAll('#toc-list a').length === 13)
-    // Parked in Section 6 so the highlight from before split view differs from the one wanted
-    // after it: leaving split view lands #scroll-area at the top (measured 2026-10-13, scrollTop
-    // 0), where the first heading is the one to light.
-    await parkBetweenHeadings(page, 6) // Section 6
+    // Everything stays at the top on purpose. Leaving split view restores the preview pane's
+    // reading position (split-view-core.test.js), so this is the one case where it writes 0 onto
+    // a #scroll-area already at 0 and fires no scroll event -- the condition this test needs.
 
     await armSidebarTransitionWatch(page)
     await emitRendererCommand(electronApp, 'toggleSplitView')
     await page.waitForFunction(() => document.getElementById('scroll-area').classList.contains('split-mode'))
     await waitForSidebarTransition(page)
 
-    // Typing re-renders the split preview (app.js renderSplitPreview -> render -> buildToc) while
-    // the sidebar, and the TOC in it, is force-closed (plan 05).
+    // An edit re-renders the split preview (app.js renderSplitPreview -> render -> buildToc) while
+    // the sidebar, and the TOC in it, is force-closed (plan 05). Set programmatically rather than
+    // typed, so neither pane scrolls toward a caret and the preview pane stays at the top.
     await tagTocLinks(page)
-    await page.locator('#source-editor').fill(`${text}\nTyped in split view.\n`)
+    await page.evaluate(next => {
+      const editor = document.getElementById('source-editor')
+      editor.value = next
+      editor.dispatchEvent(new Event('input'))
+    }, `${text}\nEdited in split view.\n`)
     await waitForTocRebuild(page)
 
     await resetScrollCounts(page)
