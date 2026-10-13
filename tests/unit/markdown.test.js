@@ -79,8 +79,8 @@ test('only the copy button the renderer made is a trusted content command', () =
 // security-report.md L1, residual: with forged buttons dead, a document could still wrap a genuine
 // block in its own `<div style="max-height:…;overflow:hidden">`. A blank line ends the HTML block,
 // so the fence inside renders as a real block, and the genuine copy button copies innerText,
-// clipped lines included. Author-written elements therefore lose `style` and `class`, the way
-// GitHub's sanitizer drops them; the renderer's own markup keeps both.
+// clipped lines included. Author-written elements therefore lose `class` and inline `style`; the
+// renderer's own markup keeps both. The one exception is an image's size (next tests).
 function renderedDom(controller, md) {
   return new JSDOM(`<div id="root">${controller.renderMarkdown(md)}</div>`).window.document
 }
@@ -113,6 +113,27 @@ test('author HTML loses style and class, so it cannot clip a genuine code block'
   assert.ok(wrapper.querySelector('code.hljs span.hljs-keyword'))
   assert.ok(wrapper.querySelector('button.copy-btn'))
   assert.ok(wrapper.querySelector('.code-lang-row .code-lang'))
+})
+
+// An image holds no text, so its size cannot hide any, and README icons are sized this way. GitHub's
+// repository view keeps an image's `width` and drops the rest (measured 2026-10-13 on this repo's
+// README: `width: 30%; display: block; margin: 0 auto; padding: 1rem; border: none` became
+// `width: 30%`). MDV keeps `width` and `height` on author images, and only with a plain length.
+test('an author image keeps only its width and height from inline style', () => {
+  const controller = makeController()
+  const doc = renderedDom(controller, [
+    '<img id="icon" src="a.png" style="width: 30%; display: block; margin: 0 auto; padding: 1rem; border: none">',
+    '<img id="tall" src="a.png" style="max-height: 1px; HEIGHT: 40px; overflow: hidden">',
+    '<img id="layout" src="a.png" style="display: none; position: absolute">',
+    '<img id="tricky" src="a.png" style="width: calc(1px); height: url(x.png); width: 10px !important">',
+    '',
+    '<div id="box" style="width: 50%">box</div>',
+  ].join('\n'))
+  assert.equal(doc.getElementById('icon').getAttribute('style'), 'width: 30%')
+  assert.equal(doc.getElementById('tall').getAttribute('style'), 'height: 40px')
+  assert.equal(doc.getElementById('layout').hasAttribute('style'), false, 'nothing left, so no attribute')
+  assert.equal(doc.getElementById('tricky').hasAttribute('style'), false, 'only a bare number with a unit passes')
+  assert.equal(doc.getElementById('box').hasAttribute('style'), false, 'the exception is for images only')
 })
 
 test('a forged sealed block or trust attribute does not let author styling through', () => {
