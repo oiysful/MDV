@@ -214,7 +214,7 @@ develop(`f754d4e`, Electron 44.7.0)에서 `electron-builder --dir --mac`으로 �
 - **앱별 언어 설정(2026-10-13, Ian이 직접 빌드해 확인)**: 시스템 설정 → 일반 → 언어 및 지역 → 응용 프로그램 목록에 MDV가 나타나고, English로 바꾸면 MDV가 다시 시작되어 영어로 나온다. README에는 따로 안내하지 않기로 했다(Ian).
 
 **남은 것**
-- 브라우저 내장 `confirm()`/`alert()`의 버튼은 표 밖이고 **두 언어 모두 영어**다. Electron 44.7.0의 `lib/browser/api/web-contents.ts`가 `confirm()`에 `['OK', 'Cancel']`, `alert()`에 `['OK']`를 고정으로 넣어 `dialog.showMessageBox`를 부른다. 그래서 한국어 UI에서는 메시지만 한국어다. 계획 31 이전부터 그랬으므로 회귀가 아니다. MDV는 `safeDialogs`를 켜지 않으므로, 같은 파일의 영어 체크박스("Prevent this app from creating additional dialogs")는 나오지 않는다. 2026-10-13 Ian이 빌드에서 확인했다. 버튼까지 번역하려면 이 호출들을 메인의 `dialog.showMessageBox`로 옮기고 버튼에 `t()`를 써야 한다.
+- 브라우저 내장 `confirm()`/`alert()`의 버튼은 표 밖이고 **두 언어 모두 영어**다. Electron 44.7.0의 `lib/browser/api/web-contents.ts`가 `confirm()`에 `['OK', 'Cancel']`, `alert()`에 `['OK']`를 고정으로 넣어 `dialog.showMessageBox`를 부른다. 그래서 한국어 UI에서는 메시지만 한국어다. 계획 31 이전부터 그랬으므로 회귀가 아니다. MDV는 `safeDialogs`를 켜지 않으므로, 같은 파일의 영어 체크박스("Prevent this app from creating additional dialogs")는 나오지 않는다. 2026-10-13 Ian이 빌드에서 두 언어 모두 `OK`/`Cancel`로 나오는 것을 확인했다. **문제되지 않는다고 판단해 그대로 둔다(Ian).** 버튼까지 번역하려면 이 호출들을 메인의 `dialog.showMessageBox`로 옮기고 버튼에 `t()`를 써야 하지만, 계획하지 않는다.
 - 영어 README의 스크린샷은 아직 한국어 UI다. 다시 찍는 것은 보류했다(2026-10-13, Ian).
 - OS 오류 원문(`ENOENT …`)과 메인의 일부 영어 전용 오류 문구는 그대로 끼어 나온다(이전부터).
 - 검색 이전/다음 툴팁의 "Enter"(Mac 키 이름은 Return)는 두 언어 공통이라 손대지 않았다.
