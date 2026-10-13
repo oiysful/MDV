@@ -494,7 +494,16 @@ test('switching tabs while split view\'s sidebar transition runs does not carry 
       window.__mdvTabBScrollTops = []
       document.getElementById('scroll-area').addEventListener('scroll', event => { window.__mdvTabBScrollTops.push(event.target.scrollTop) })
     })
-    await page.locator('#tab-list .file-tab-name', { hasText: 'split-tab-b' }).click()
+    // A DOM click, not locator.click(): the tab strip slides with the sidebar, and Playwright
+    // waits for its target to hold still, which here means for the closing transition to end --
+    // by then its settle handler has already consumed the pending position, so tab B would never
+    // see it. No coordinates either, so it can't land on a neighbouring tab's x.
+    const widthAtSwitch = await page.evaluate(() => {
+      const name = Array.from(document.querySelectorAll('#tab-list .file-tab-name')).find(node => node.textContent.includes('split-tab-b'))
+      const width = document.getElementById('sidebar').getBoundingClientRect().width
+      name.click()
+      return width
+    })
     await page.waitForFunction(() => document.title === 'split-tab-b')
     await page.waitForFunction(open => {
       const sidebar = document.getElementById('sidebar')
@@ -504,7 +513,7 @@ test('switching tabs while split view\'s sidebar transition runs does not carry 
 
     const view = await sectionAtTop(page, 'scroll-area')
     const scrollTops = await page.evaluate(() => window.__mdvTabBScrollTops)
-    assert.equal(view.section, '#split-tab-b', JSON.stringify({ view, scrollTops }))
+    assert.equal(view.section, '#split-tab-b', JSON.stringify({ view, scrollTops, openWidth, widthAtSwitch }))
   } finally {
     await closeApp(electronApp)
     await fs.rm(tempDir, { recursive: true, force: true })
