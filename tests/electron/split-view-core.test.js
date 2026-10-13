@@ -486,16 +486,25 @@ test('switching tabs while split view\'s sidebar transition runs does not carry 
       return width < open - 20 && width > 20
     }, openWidth)
 
-    // Tab B is in preview mode, so switching back to it reopens the sidebar: wait out that
-    // transition, the one whose settle handler re-applies the pending position.
-    await armSidebarTransitionWatch(page)
+    // Tab B is in preview mode, so switching back to it reopens the sidebar. Wait until no
+    // animation is left on #sidebar itself: armSidebarTransitionWatch accepts any bubbling
+    // width transitionend, and editor.js's settle handler (the one that re-applies) only the
+    // sidebar's own, so that watch can finish first.
+    await page.evaluate(() => {
+      window.__mdvTabBScrollTops = []
+      document.getElementById('scroll-area').addEventListener('scroll', event => { window.__mdvTabBScrollTops.push(event.target.scrollTop) })
+    })
     await page.locator('#tab-list .file-tab-name', { hasText: 'split-tab-b' }).click()
     await page.waitForFunction(() => document.title === 'split-tab-b')
-    await waitForSidebarTransition(page)
+    await page.waitForFunction(open => {
+      const sidebar = document.getElementById('sidebar')
+      return sidebar.getAnimations().length === 0 && Math.abs(sidebar.getBoundingClientRect().width - open) < 1
+    }, openWidth)
     await waitFrames(page)
 
     const view = await sectionAtTop(page, 'scroll-area')
-    assert.equal(view.section, '#split-tab-b', JSON.stringify(view))
+    const scrollTops = await page.evaluate(() => window.__mdvTabBScrollTops)
+    assert.equal(view.section, '#split-tab-b', JSON.stringify({ view, scrollTops }))
   } finally {
     await closeApp(electronApp)
     await fs.rm(tempDir, { recursive: true, force: true })
