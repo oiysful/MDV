@@ -454,3 +454,42 @@ test('leaving split view with Cmd+U keeps the preview pane\'s reading position i
     await fs.rm(tempDir, { recursive: true, force: true })
   }
 })
+
+// The position re-applied when the sidebar transition settles belongs to the tab and mode that
+// started it. Switching tabs inside that window must not carry tab A's position onto tab B. The
+// transition is stretched to 2s so the switch lands inside it deterministically, not by racing
+// the real 0.25s.
+test('switching tabs while split view\'s sidebar transition runs does not carry the old tab\'s reading position', async () => {
+  const tempDir = await fs.mkdtemp(path.join(os.tmpdir(), 'mdv-smoke-split-tab-switch-'))
+  const { electronApp, page } = await launchApp()
+  try {
+    const first = await writeTocDoc(tempDir, 'split-tab-a', 'Split Tab A')
+    const second = await writeTocDoc(tempDir, 'split-tab-b', 'Split Tab B')
+    await page.waitForSelector('#empty')
+    await stubOpenDialog(electronApp, [second.docPath])
+    await emitRendererCommand(electronApp, 'openFile')
+    await page.waitForFunction(() => document.title === 'split-tab-b')
+    await stubOpenDialog(electronApp, [first.docPath])
+    await emitRendererCommand(electronApp, 'openFile')
+    await page.waitForFunction(() => document.title === 'split-tab-a')
+    await parkPane(page, 'scroll-area', 9) // Section 9 in tab A; tab B stays at its top
+
+    await page.addStyleTag({ content: '#sidebar { transition-duration: 2s !important; }' })
+    await emitRendererCommand(electronApp, 'toggleSplitView')
+    await page.waitForFunction(() => document.getElementById('scroll-area').classList.contains('split-mode'))
+
+    // Tab B is in preview mode, so switching back to it reopens the sidebar: wait out that
+    // transition, the one whose settle handler re-applies the pending position.
+    await armSidebarTransitionWatch(page)
+    await page.locator('#tab-list .file-tab-name', { hasText: 'split-tab-b' }).click()
+    await page.waitForFunction(() => document.title === 'split-tab-b')
+    await waitForSidebarTransition(page)
+    await waitFrames(page)
+
+    const view = await sectionAtTop(page, 'scroll-area')
+    assert.equal(view.section, '#split-tab-b', JSON.stringify(view))
+  } finally {
+    await closeApp(electronApp)
+    await fs.rm(tempDir, { recursive: true, force: true })
+  }
+})
