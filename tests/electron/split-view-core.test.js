@@ -458,10 +458,11 @@ test('leaving split view with Cmd+U keeps the preview pane\'s reading position i
 // The position re-applied when the sidebar transition settles belongs to the tab and mode that
 // started it. The path that can carry it elsewhere is a switch to a tab that is also in split
 // view: setSplitMode(true) is then a no-op, so the settle listener from tab A's entry stays
-// attached and fires on tab B. A switch to a preview tab can't: reopening the sidebar supersedes
-// the closing transition, and its transitioncancel reaches the newly attached listener first,
-// which detaches it (observed on CI 2026-10-13 -- three versions of that variant passed on
-// unguarded code). The transition is stretched to 2s so the switch lands inside it.
+// attached and fires on tab B. A switch to a preview tab did not reproduce it: three versions of
+// that variant passed on unguarded code on CI (2026-10-13). The likely reason, inferred and not
+// observed, is that reopening the sidebar supersedes the closing transition, and its
+// transitioncancel reaches the newly attached listener first, which detaches it. The transition
+// is stretched to 2s so the switch lands inside it.
 test('switching to another split-view tab while the sidebar transition runs does not carry the old tab\'s reading position', async () => {
   const tempDir = await fs.mkdtemp(path.join(os.tmpdir(), 'mdv-smoke-split-tab-switch-'))
   const { electronApp, page } = await launchApp()
