@@ -90,7 +90,82 @@ prompt). `commands[name]` is an object-literal lookup, so `data-command="constru
 `Object`. That was checked: it is harmless (`Object(x)` or a caught `TypeError`). The fix below
 closes it anyway.
 
-**Fix (proposed, not applied).** A CSS fix cannot work: MDV's own `.visually-hidden` class
+**Status: closed by the PR from `security/copy-button-forgery` (Ian approved 2026-10-13), in two
+parts: forged buttons are dead, and author HTML can no longer style itself (residual, below).**
+- Each window's markdown controller makes a random 128-bit token.
+- The renderer's own copy button carries it as `data-mdv-trust`. So do the empty state's open
+  buttons, marked by `markTrustedContentCommands`:
+  - by `showEmptyState`, when it writes them;
+  - by `bindContentCommandHandler`, for index.html's static copy at boot, before any document can
+    be rendered.
+- A click in `#content` runs a command only if `findContentCommandTrigger` finds that token on the
+  nearest command element. A forged button, and any other `data-command` a document writes, does
+  nothing. That also covers the prototype-key lookup.
+- The token is an attribute rather than a `WeakSet` of elements because tab snapshots re-create
+  `#content` from HTML.
+- The document cannot carry the token:
+  - it is never shown or exported;
+  - it changes with every window;
+  - no document script runs.
+
+Tests:
+- Unit tests: a forged button with a guessed token is untrusted and another window's controller
+  rejects a genuine one (`markdown.test.js`), and the click helper ignores unmarked, plain and
+  outside elements (`app-shell.test.js`).
+- Two Electron tests:
+  - with `copyCode`'s restore timer held, clicking the forged and then the genuine button leaves
+    exactly one copy and the clipboard holds only the visible text;
+  - the empty state's open button works at boot and after the last tab closes. Nothing tested
+    that before.
+- Each unit guard was broken on purpose once and its test failed.
+
+**Residual, measured after the fix.** A document can still hide part of a *genuine* block.
+- It wraps the fence in its own `<div style="max-height:…;overflow:hidden">`, then a blank line,
+  the fence, another blank line and `</div>`. The blank lines end the HTML block, so the fence
+  renders as a real, trusted block inside the clipped div (jsdom, real `markdown.js`).
+- In a hidden Electron 44.7.0 window, a 22 px box shows only the first line of a two-line block,
+  yet `innerText`, and so the genuine button's copy, holds both lines. An unclipped control
+  gives the same text at its full 40 px.
+- `<style>` elements do not survive DOMPurify, so stylesheets are not a route. Inline `style`
+  and MDV's own classes are.
+
+**Residual closed (Ian chose the strict option, 2026-10-13).** Author-written elements now lose
+`style` and `class` in `renderMarkdown`, through a DOMPurify `uponSanitizeAttribute` hook. This
+is what GitHub's sanitizer does. Markdown syntax never produces either attribute: table alignment
+is `align`, and marked was checked on tables, task lists, quotes, links and images. So only raw
+HTML renders differently, and README/README.ko say so under Known Limitations.
+
+The renderer's own markup keeps both attributes:
+- an element carrying this window's token (an alert's outer box);
+- everything inside a sealed block the renderer fills alone (`.code-wrapper`, `.mdv-latex`,
+  `pre.mermaid`, `.markdown-alert-title`), when the block carries the token.
+
+An alert body, raw HTML inside it included, is still author HTML. The frontmatter card has no
+author markup (values are escaped) and is sanitized separately, so it is untouched.
+
+Tests:
+- Unit tests: a clipping wrapper loses `style`/`class` while the genuine block inside keeps its
+  own; a forged `.mdv-latex` with a guessed token and a forged trust attribute both lose them;
+  KaTeX inline styles, alert classes and the mermaid placeholder survive; author HTML inside an
+  alert body is still stripped.
+- An Electron test: the clipping wrapper renders at least as tall as its code.
+- Breaking the hook failed all three unit tests. Removing the alert title's token failed two.
+- Accepting a sealed block by class alone failed **no** test. DOMPurify sanitizes ancestors
+  before descendants, so a forged block's class is already gone when its contents are checked.
+  The token check on sealed blocks is a second layer that today's ordering makes unobservable.
+
+What is left cannot clip part of a genuine block:
+- `hidden` and a closed `<details>` hide a whole subtree, and `innerText` leaves out text that is
+  not rendered;
+- `align`, `width` and `height` do not clip.
+
+Also left: bidi control characters in a fence's own text can display it in reordered form. The
+characters stay visible, and GitHub warns about this case. Info, not addressed here.
+
+Proposed step 3 (copy the fence source instead of `innerText`) was dropped. It would not stop the
+residual either, because the hidden line is in the fence itself.
+
+**Fix as originally proposed.** A CSS fix cannot work: MDV's own `.visually-hidden` class
 survives DOMPurify, so text can be hidden without any inline style. The fix belongs on the
 command side:
 1. Content clicks honor only `copyCode`; every other `data-command` inside `#content` is ignored.
@@ -268,9 +343,8 @@ Security (L3), as anti-tamper and runtime hardening.
 
 ## Next Steps
 
-1. **L1 (copy-button forgery):** allow-list `copyCode` for content clicks, mark genuine buttons
-   with a per-render random marker, and copy the fence source instead of `innerText`. Add a forged
-   button unit test and a genuine-copy Electron test. Needs approval: it changes copy behaviour.
+1. ~~**L1**~~ closed. Content commands need the per-window trust marker, and author HTML loses
+   `style` and `class`.
 2. **L2 (fuses):** add `build.electronFuses` turning off `runAsNode`,
    `enableNodeOptionsEnvironmentVariable` and `enableNodeCliInspectArguments`. Verify the re-signed
    binary launches from a clean `brew install`. Accept that packaged-build Playwright probes stop

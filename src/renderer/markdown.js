@@ -330,6 +330,24 @@
   // marked instances that already carry the intraword-tilde override (see createMarkdownController).
   const intrawordTildeConfigured = new WeakSet()
 
+  // A per-window secret for the command elements the app itself puts into #content: the copy
+  // button and the empty state's open buttons. A document's raw HTML can carry any data-command,
+  // because DOMPurify keeps data-* attributes, so the attribute alone proves nothing. This value
+  // never leaves the renderer and changes with every window, so a document cannot carry it
+  // (security-report.md L1, 2026-10-13). It is an attribute, not a WeakSet of elements, because
+  // tab snapshots re-create #content from HTML.
+  function createTrustToken() {
+    const bytes = new Uint8Array(16)
+    globalThis.crypto.getRandomValues(bytes)
+    return Array.from(bytes, byte => byte.toString(16).padStart(2, '0')).join('')
+  }
+
+  // DOMPurify instances that already carry the author-styling hook (see renderMarkdown). The hook
+  // is installed once per instance and does nothing unless a controller is sanitizing document
+  // HTML at that moment, so the frontmatter card and every other sanitize call are untouched.
+  const authorStylingHooked = new WeakSet()
+  let isRendererMarkupForActiveSanitize = null
+
   function createMarkdownController({ getRefs, markedLib, hljsLib, pathUtils, api, onShowModeButton, domPurify, mermaidLib, katexLib, onMermaidLoaded }) {
     let cachedHeadings = []
     let cachedTocLinks = []
@@ -337,6 +355,25 @@
     let prevTocHref = ''
     const imageDataUrlCache = new Map()
     const purify = domPurify || globalScope.DOMPurify
+    const contentTrustToken = createTrustToken()
+
+    // Blocks the renderer fills alone, with no author HTML inside: code, math, mermaid and an
+    // alert's title row. When such a block carries this window's token, everything inside it is
+    // renderer markup. An alert's outer box is not on the list, because its body is the
+    // author's; the box itself carries the token as a single element.
+    const SEALED_BLOCKS = '.code-wrapper, .mdv-latex, pre.mermaid, .markdown-alert-title'
+    function isRendererMarkup(node) {
+      if (node.getAttribute('data-mdv-trust') === contentTrustToken) return true
+      const sealed = node.parentElement?.closest(SEALED_BLOCKS)
+      return Boolean(sealed) && sealed.getAttribute('data-mdv-trust') === contentTrustToken
+    }
+    if (purify && typeof purify.addHook === 'function' && !authorStylingHooked.has(purify)) {
+      authorStylingHooked.add(purify)
+      purify.addHook('uponSanitizeAttribute', (node, data) => {
+        if (!isRendererMarkupForActiveSanitize) return
+        if ((data.attrName === 'style' || data.attrName === 'class') && !isRendererMarkupForActiveSanitize(node)) data.keepAttr = false
+      })
+    }
     const getMermaidLib = () => mermaidLib || globalScope.mermaid
     const getKatexLib = () => katexLib || globalScope.katex
 
@@ -424,8 +461,30 @@
       imageDataUrlCache.delete(localPath)
     }
 
+    // Author-written elements lose `style` and `class`, the way GitHub's sanitizer drops them
+    // (security-report.md L1, residual). Otherwise a document could wrap a genuine code block in
+    // its own clipping box: a blank line ends the HTML block, so the fence inside still renders
+    // as a real block, and its copy button copies innerText, clipped lines included. Markdown
+    // syntax itself never produces either attribute (table alignment is `align`), so only raw
+    // HTML changes.
     function renderMarkdown(text) {
-      return sanitizeHtml(markedLib.parse(text))
+      const html = markedLib.parse(text)
+      isRendererMarkupForActiveSanitize = isRendererMarkup
+      try {
+        return sanitizeHtml(html)
+      } finally {
+        isRendererMarkupForActiveSanitize = null
+      }
+    }
+
+    function isTrustedContentCommand(element) {
+      return Boolean(element) && element.getAttribute('data-mdv-trust') === contentTrustToken
+    }
+
+    // For app markup that reaches #content outside render(): the empty state. Call it only on
+    // markup the app just wrote, never on a subtree that holds a rendered document.
+    function markTrustedContentCommands(root) {
+      root.querySelectorAll('[data-command]').forEach(element => element.setAttribute('data-mdv-trust', contentTrustToken))
     }
 
     const renderer = new markedLib.Renderer()
@@ -446,7 +505,7 @@
         const lib = getKatexLib()
         if (lib) {
           const katexHtml = lib.renderToString(code, { throwOnError: false, displayMode: true, strict: false })
-          return `<div class="mdv-latex">${katexHtml}</div>`
+          return `<div class="mdv-latex" data-mdv-trust="${contentTrustToken}">${katexHtml}</div>`
         }
         // No katex lib available (e.g. jsdom unit tests, or a failed script load) --
         // fall through to the normal hljs branch below like any other language id.
@@ -462,7 +521,7 @@
       if (langId === 'mermaid') {
         const escaped = escapeHtml(code)
         const encoded = utf8ToBase64(code)
-        return `<pre class="mermaid" data-mermaid-src="${encoded}">${escaped}</pre>`
+        return `<pre class="mermaid" data-mdv-trust="${contentTrustToken}" data-mermaid-src="${encoded}">${escaped}</pre>`
       }
       const hl = (langId && hljsLib.getLanguage(langId))
         ? hljsLib.highlight(code, { language: langId }).value
@@ -471,7 +530,7 @@
       // when there is text to show, so an empty pill never occupies layout space.
       const langRow = langId ? `<div class="code-lang-row"><span class="code-lang">${escapeHtml(langId)}</span></div>` : ''
       const copyIcon = '<svg class="icon-copy" aria-hidden="true" width="12" height="12" viewBox="0 0 13 13" fill="none"><rect x="4.5" y="4.5" width="8" height="8" rx="1" stroke="currentColor" stroke-width="1.3"/><path d="M2.5 10.5V2.5h8" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"/></svg>'
-      return `<div class="code-wrapper">${langRow}<pre><code class="hljs">${hl}</code></pre><button class="copy-btn" type="button" data-command="copyCode" data-command-element="true" aria-label="${escapeHtml(t('code.copy'))}" data-tooltip="${escapeHtml(t('code.copyTooltip'))}">${copyIcon}</button></div>`
+      return `<div class="code-wrapper" data-mdv-trust="${contentTrustToken}">${langRow}<pre><code class="hljs">${hl}</code></pre><button class="copy-btn" type="button" data-command="copyCode" data-command-element="true" data-mdv-trust="${contentTrustToken}" aria-label="${escapeHtml(t('code.copy'))}" data-tooltip="${escapeHtml(t('code.copyTooltip'))}">${copyIcon}</button></div>`
     }
 
     // GitHub-style alert blockquotes (`> [!NOTE]` etc, docs.github.com "Alerts"). Icons match
@@ -516,7 +575,7 @@
         const consumedWholeParagraph = /<\/p>\s*$/.test(match[0])
         const rest = quote.slice(match[0].length)
         const body = consumedWholeParagraph ? rest : `<p>${rest}`
-        return `<div class="markdown-alert markdown-alert-${type.toLowerCase()}"><p class="markdown-alert-title">${config.icon}${config.label}</p>${body}</div>\n`
+        return `<div class="markdown-alert markdown-alert-${type.toLowerCase()}" data-mdv-trust="${contentTrustToken}"><p class="markdown-alert-title" data-mdv-trust="${contentTrustToken}">${config.icon}${config.label}</p>${body}</div>\n`
       }
       return `<blockquote>\n${quote}</blockquote>\n`
     }
@@ -972,6 +1031,8 @@
     return {
       render,
       renderMarkdown,
+      isTrustedContentCommand,
+      markTrustedContentCommands,
       hydrateFromDom,
       captureSnapshotHTML,
       rehydrateSnapshotImages,
