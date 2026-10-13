@@ -26,6 +26,16 @@
   // composition finishing, which is what produced a duplicated trailing syllable in the search
   // box. The next, real Enter keydown (isComposing: false) is the one to act on.
   // editor.js:452 applies the same guard for its own Enter handling.
+  // #content holds the rendered document, and its raw HTML can carry any data-command (DOMPurify
+  // keeps data-* attributes). So a click there counts only when the nearest command element is
+  // one the app marked as its own (markdown.js's trust marker, security-report.md L1). A forged
+  // copy button would otherwise copy text the reader cannot see.
+  function findContentCommandTrigger(target, content, isTrusted) {
+    const trigger = target?.closest?.('[data-command]') ?? null
+    if (!trigger || !content.contains(trigger) || !isTrusted(trigger)) return null
+    return trigger
+  }
+
   function resolveSearchKeydownAction(event) {
     if (event.isComposing) return null
     if (event.key !== 'Enter') return null
@@ -358,9 +368,12 @@
 
     function bindContentCommandHandler(commands) {
       const refs = getRefs()
+      // At boot #content holds index.html's static empty state, and no document can have been
+      // rendered yet: mark its buttons now, as showEmptyState marks the ones it writes later.
+      markdownController.markTrustedContentCommands(refs.content)
       refs.content.addEventListener('click', event => {
-        const trigger = event.target.closest('[data-command]')
-        if (!trigger || !refs.content.contains(trigger)) return
+        const trigger = findContentCommandTrigger(event.target, refs.content, markdownController.isTrustedContentCommand)
+        if (!trigger) return
         Promise.resolve(runShellCommand(commands, trigger, event)).catch(error => {
           console.error('콘텐츠 명령 실행 실패:', error)
         })
@@ -400,6 +413,7 @@
     createAppShellController,
     splitHrefFragment,
     resolveSearchKeydownAction,
+    findContentCommandTrigger,
   }
 
   globalScope.MDVAppShell = api

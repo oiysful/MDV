@@ -1,7 +1,9 @@
 const test = require('node:test')
 const assert = require('node:assert/strict')
 
-const { splitHrefFragment, resolveSearchKeydownAction } = require('../../src/renderer/app-shell.js')
+const { JSDOM } = require('jsdom')
+
+const { splitHrefFragment, resolveSearchKeydownAction, findContentCommandTrigger } = require('../../src/renderer/app-shell.js')
 
 test('splitHrefFragment splits a local link href on its first #', () => {
   assert.deepEqual(
@@ -45,4 +47,25 @@ test('resolveSearchKeydownAction ignores non-Enter keys', () => {
 test('resolveSearchKeydownAction maps a real Enter to next and Shift+Enter to prev', () => {
   assert.equal(resolveSearchKeydownAction({ key: 'Enter', isComposing: false, shiftKey: false }), 'next')
   assert.equal(resolveSearchKeydownAction({ key: 'Enter', isComposing: false, shiftKey: true }), 'prev')
+})
+
+// security-report.md L1 (2026-10-13): #content holds the document, and a document's raw HTML can
+// carry any data-command. A click there runs a command only when the app itself marked the
+// element; anything else -- a forged button, plain text, an element outside #content -- is no
+// trigger at all.
+test('a click in #content runs only a command element the app marked as its own', () => {
+  const doc = new JSDOM(`
+    <div id="content">
+      <button id="real" data-command="copyCode"><svg><path id="icon"/></svg></button>
+      <a id="forged" data-command="closeCurrentTab">x</a>
+      <p id="plain">p</p>
+    </div>
+    <button id="outside" data-command="saveFile"></button>`).window.document
+  const content = doc.getElementById('content')
+  const isTrusted = el => el.id === 'real'
+  assert.equal(findContentCommandTrigger(doc.getElementById('icon'), content, isTrusted)?.id, 'real')
+  assert.equal(findContentCommandTrigger(doc.getElementById('forged'), content, isTrusted), null)
+  assert.equal(findContentCommandTrigger(doc.getElementById('plain'), content, isTrusted), null)
+  assert.equal(findContentCommandTrigger(doc.getElementById('outside'), content, isTrusted), null)
+  assert.equal(findContentCommandTrigger(null, content, isTrusted), null)
 })

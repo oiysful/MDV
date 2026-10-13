@@ -90,7 +90,52 @@ prompt). `commands[name]` is an object-literal lookup, so `data-command="constru
 `Object`. That was checked: it is harmless (`Object(x)` or a caught `TypeError`). The fix below
 closes it anyway.
 
-**Fix (proposed, not applied).** A CSS fix cannot work: MDV's own `.visually-hidden` class
+**Status: the forged-button vector is closed by the PR from `security/copy-button-forgery`
+(Ian approved 2026-10-13). A residual remains (below), so L1 stays open at Low.**
+- Each window's markdown controller makes a random 128-bit token.
+- The renderer's own copy button carries it as `data-mdv-trust`. So do the empty state's open
+  buttons, marked by `markTrustedContentCommands`:
+  - by `showEmptyState`, when it writes them;
+  - by `bindContentCommandHandler`, for index.html's static copy at boot, before any document can
+    be rendered.
+- A click in `#content` runs a command only if `findContentCommandTrigger` finds that token on the
+  nearest command element. A forged button, and any other `data-command` a document writes, does
+  nothing. That also covers the prototype-key lookup.
+- The token is an attribute rather than a `WeakSet` of elements because tab snapshots re-create
+  `#content` from HTML.
+- The document cannot carry the token:
+  - it is never shown or exported;
+  - it changes with every window;
+  - no document script runs.
+
+Tests:
+- Unit tests: a forged button with a guessed token is untrusted and another window's controller
+  rejects a genuine one (`markdown.test.js`), and the click helper ignores unmarked, plain and
+  outside elements (`app-shell.test.js`).
+- Two Electron tests:
+  - with `copyCode`'s restore timer held, clicking the forged and then the genuine button leaves
+    exactly one copy and the clipboard holds only the visible text;
+  - the empty state's open button works at boot and after the last tab closes. Nothing tested
+    that before.
+- Each unit guard was broken on purpose once and its test failed.
+
+**Residual, measured after the fix.** A document can still hide part of a *genuine* block.
+- It wraps the fence in its own `<div style="max-height:…;overflow:hidden">`, then a blank line,
+  the fence, another blank line and `</div>`. The blank lines end the HTML block, so the fence
+  renders as a real, trusted block inside the clipped div (jsdom, real `markdown.js`).
+- In a hidden Electron 44.7.0 window, a 22 px box shows only the first line of a two-line block,
+  yet `innerText`, and so the genuine button's copy, holds both lines. An unclipped control
+  gives the same text at its full 40 px.
+- `<style>` elements do not survive DOMPurify, so stylesheets are not a route. Inline `style`
+  and MDV's own classes are.
+
+Closing this means sanitizing document HTML the way GitHub does: strip inline `style`, and
+restrict `class`. That changes how documents that use them render, so it is Ian's call.
+
+Proposed step 3 (copy the fence source instead of `innerText`) was dropped. It would not stop the
+residual either, because the hidden line is in the fence itself.
+
+**Fix as originally proposed.** A CSS fix cannot work: MDV's own `.visually-hidden` class
 survives DOMPurify, so text can be hidden without any inline style. The fix belongs on the
 command side:
 1. Content clicks honor only `copyCode`; every other `data-command` inside `#content` is ignored.
@@ -268,9 +313,9 @@ Security (L3), as anti-tamper and runtime hardening.
 
 ## Next Steps
 
-1. **L1 (copy-button forgery):** allow-list `copyCode` for content clicks, mark genuine buttons
-   with a per-render random marker, and copy the fence source instead of `innerText`. Add a forged
-   button unit test and a genuine-copy Electron test. Needs approval: it changes copy behaviour.
+1. **L1:** the forged-button vector is closed, because content commands need the per-window
+   trust marker. The residual, ancestor styling that hides part of a genuine block, waits for a
+   decision on stripping inline `style` and restricting `class` in document HTML.
 2. **L2 (fuses):** add `build.electronFuses` turning off `runAsNode`,
    `enableNodeOptionsEnvironmentVariable` and `enableNodeCliInspectArguments`. Verify the re-signed
    binary launches from a clean `brew install`. Accept that packaged-build Playwright probes stop

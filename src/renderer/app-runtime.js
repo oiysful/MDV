@@ -64,6 +64,7 @@
     function showEmptyState() {
       const refs = getRefs()
       refs.content.innerHTML = createEmptyStateHtml()
+      markdownController.markTrustedContentCommands(refs.content)
       refs.content.classList.add('is-empty')
       refs.content.style.display = ''
       refs.sourceView.style.display = 'none'

