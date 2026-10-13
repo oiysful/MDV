@@ -6,6 +6,12 @@ Project: Electron (main + preload + renderer), Node.js, GitHub Actions, Homebrew
 Previous: 91/100 (2026-10-12) · 96/100 (2026-09-17, re-audit) · 87/100 (2026-09-17) · 94/100 (2026-08-10) · 96/100 (2026-08-06)
 Baseline commit: `77c681c` (last full audit) → `8d0093b` (develop today)
 
+> **Status after the fixes (2026-10-13, develop `1e40b31`):**
+> - L1 is closed by PR #53, with PR #55 keeping author images' `width`/`height`.
+> - L2 is closed by PR #54. Users get it with the next release.
+> - By this report's method the score would be 96. No re-audit has been run. The score board
+>   below is the audit as found.
+
 > The 2026-10-12 report is in git history (`git show 5dbc9f7:security-report.md`). Nothing here
 > is carried over from it, or from `memory-security.md`, without being re-checked: every row in
 > *What's Secure* comes from a command run today.
@@ -90,7 +96,7 @@ prompt). `commands[name]` is an object-literal lookup, so `data-command="constru
 `Object`. That was checked: it is harmless (`Object(x)` or a caught `TypeError`). The fix below
 closes it anyway.
 
-**Status: closed by the PR from `security/copy-button-forgery` (Ian approved 2026-10-13), in two
+**Status: closed by PR #53 (merged `1cf04de`; Ian approved 2026-10-13), in two
 parts: forged buttons are dead, and author HTML can no longer style itself (residual, below).**
 - Each window's markdown controller makes a random 128-bit token.
 - The renderer's own copy button carries it as `data-mdv-trust`. So do the empty state's open
@@ -219,7 +225,7 @@ check which grants MDV holds. `NODE_OPTIONS=--require …` and `--inspect` are t
 is a known pattern for Electron apps, and Electron's own security checklist asks apps to switch
 off fuses they don't use. No earlier audit looked at fuses.
 
-**Status: fixed by the PR from `security/electron-fuses` (Ian approved 2026-10-13). It takes effect
+**Status: fixed by PR #54 (merged `678ebd7`; Ian approved 2026-10-13). It takes effect
 for users with the next release.**
 - `build.electronFuses` turns off `runAsNode`, `enableNodeOptionsEnvironmentVariable` and
   `enableNodeCliInspectArguments`.

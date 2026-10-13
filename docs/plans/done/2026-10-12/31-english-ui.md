@@ -187,6 +187,7 @@ develop(`f754d4e`, Electron 44.7.0)에서 `electron-builder --dir --mac`으로 �
 (축소 빌드는 `-c.electronLanguages=ko -c.electronLanguages=en`을 더한다). 실행 측정은 `_electron.launch({ executablePath:
 <MDV.app>/Contents/MacOS/MDV, args: ['-AppleLanguages', '(ja)'] })` 후 `app.getLocale()`. 라벨 교체 모의는 렌더러에서
 `body *`의 텍스트 노드와 `title`·`aria-label`·`placeholder` 중 한글이 든 것을 바꾸며 `performance.now()`로 잰다.
+→ **2026-10-13 이후 이 실행 측정은 그대로는 안 된다.** PR #54가 패키지 앱의 `EnableNodeCliInspectArguments` fuse를 꺼서 Playwright가 붙을 수 없다. 패키지 빌드는 `open -g -j -n --env … -a <MDV.app> --args …`로 숨겨 실행하고 프로세스와 파일로 관찰한다(`AGENTS.md`의 fuse 항목). 로캘만 볼 때는 `npm start`가 아니라 패키지 빌드여야 하는 이유(§9의 번들 로캘)는 그대로다.
 
 ## 9. 구현 결과 (2026-10-12)
 
