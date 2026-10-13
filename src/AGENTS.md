@@ -27,11 +27,12 @@ src/
 | First-launch experience | `renderer/index.html` onboarding helpers + toolbar open entry | Renderer-only visual guidance; no native default-app mutation |
 | Renderer refactor entry | `renderer/app.js` + sibling helper/controller files | Prefer extracting low-risk logic here before touching HTML shell |
 | Theme sync | `main.js` native theme events + renderer `applyTheme` | Auto mode reacts to system theme |
+| UI strings / language | `renderer/i18n.js` (also `require`d by `main.js`), `preload.js` locale parse | Language fixed at `ready`, sent as `--mdv-locale=` through `additionalArguments`; see root `AGENTS.md` and `renderer/AGENTS.md` |
 
 ## CONVENTIONS
 - Process boundary matters here more than folder count.
 - `main.js` owns filesystem, dialogs, watcher lifecycle, and session persistence (`userData/session.json`, guarded against ever writing an empty session by `renderer/session-state.js#isEmptySession`).
-- `preload.js` is a thin mirror; keep names aligned with `ipcMain.handle(...)` channels.
+- `preload.js` is a thin mirror; keep names aligned with `ipcMain.handle(...)` channels. Its one non-IPC member is `api.locale`, read from the `--mdv-locale=` argument and allow-listed (`en`, otherwise `ko`); the sandboxed preload cannot `require` `i18n.js`, so that check is inlined.
 - Renderer-facing events use `file-opened`, `file-changed`, `theme-changed`, `renderer-command`, and `restore-session`.
 - BrowserWindow uses `preload.js` via `webPreferences.preload`; keep that path valid.
 - Shell integrations like browser-open or Finder-reveal belong in main via `shell`, never direct renderer access.
