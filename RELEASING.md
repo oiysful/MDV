@@ -22,7 +22,7 @@ Releasing is the only thing that moves `main`. Work integrates on `develop`; a r
    gh release edit vX.Y.Z --notes-file <path-to-notes.md>
    ```
 6. The workflow then runs `scripts/update-homebrew-tap.sh` to bump `version`/`sha256` in [`oiysful/homebrew-tap`](https://github.com/oiysful/homebrew-tap)'s `Casks/mdv.rb` and push the change to `main`, so `brew upgrade --cask oiysful/tap/mdv` picks up the new release. This step requires the `HOMEBREW_TAP_TOKEN` repo secret (see [Required secrets](#required-secrets) below); if it's unset, the step is skipped and the cask needs a manual bump.
-7. Confirm the release: check the GitHub Release page for `MDV-*.zip`, `SHA256SUMS`, and the release notes, and check that `oiysful/homebrew-tap`'s `Casks/mdv.rb` shows the new version.
+7. Confirm the release: check the GitHub Release page for `MDV-*.zip`, `SHA256SUMS`, and the release notes, and check that `oiysful/homebrew-tap`'s `Casks/mdv.rb` shows the new version. After `brew upgrade`, run `npx --no-install @electron/fuses read --app /Applications/MDV.app` from the repo. `RunAsNode`, `EnableNodeOptionsEnvironmentVariable` and `EnableNodeCliInspectArguments` should read Disabled, and the app should launch. The release build is the first place the fuse flip and ad-hoc re-sign run on CI.
 
 ## Required secrets
 

@@ -46,6 +46,12 @@
       "ko",
       "en"
     ],
+    "electronFuses": {
+      "runAsNode": false,
+      "enableNodeOptionsEnvironmentVariable": false,
+      "enableNodeCliInspectArguments": false,
+      "resetAdHocDarwinSignature": true
+    },
     "fileAssociations": [
       {
         "ext": "md",
