@@ -1,6 +1,8 @@
 const test = require('node:test')
 const assert = require('node:assert/strict')
 const fs = require('node:fs/promises')
+const os = require('node:os')
+const path = require('node:path')
 
 const { launchApp, closeApp, stubCloseDialog, getCloseDialogCalls } = require('./helpers/launch')
 const {
@@ -9,6 +11,7 @@ const {
   emitFileOpened, emitRendererCommand, clickApplicationMenuItem,
   stubOpenExternal, getOpenExternalCalls,
   armSidebarTransitionWatch, waitForSidebarTransition,
+  writeTocDoc, waitFrames,
 } = require('./helpers/smoke-helpers')
 
 test('entering split view force-closes the sidebar, disables its toggle, and restores it on exit', async () => {
@@ -292,5 +295,146 @@ test('dragging the split-view divider resizes both panes and clamps at their min
   } finally {
     await closeApp(electronApp)
     await cleanup()
+  }
+})
+
+// Reading position across split view, the way Cmd+U already keeps it (plan 28 step 3). The
+// position is read off the layout, not the TOC highlight: which section sits at the top of a
+// scroll container, by the TOC's own rule (heading top - 24 <= scrollTop, tops measured from
+// #scroll-area's offsetTop, which is also #content's own scroll frame in split view).
+async function sectionAtTop(page, containerId) {
+  return page.evaluate(id => {
+    const scrollArea = document.getElementById('scroll-area')
+    const container = document.getElementById(id)
+    let section = null
+    for (const heading of document.querySelectorAll('#content h1,#content h2,#content h3')) {
+      if (heading.offsetTop - scrollArea.offsetTop - 24 <= container.scrollTop) section = `#${heading.id}`
+    }
+    return { section, scrollTop: container.scrollTop }
+  }, containerId)
+}
+
+// Parks a scroll container halfway between heading `index` and the next one, far from both
+// boundaries -- #scroll-area in preview, #content for split view's preview pane.
+async function parkPane(page, containerId, index) {
+  await page.evaluate(({ id, i }) => {
+    const scrollArea = document.getElementById('scroll-area')
+    const headings = document.querySelectorAll('#content h1,#content h2,#content h3')
+    const top = heading => heading.offsetTop - scrollArea.offsetTop
+    document.getElementById(id).scrollTop = (top(headings[i]) + top(headings[i + 1])) / 2
+  }, { id: containerId, i: index })
+  await waitFrames(page)
+}
+
+async function openSectionDoc(electronApp, page, tempDir, name) {
+  const { docPath } = await writeTocDoc(tempDir, name, 'Split Position Doc')
+  await page.waitForSelector('#empty')
+  await stubOpenDialog(electronApp, [docPath])
+  await emitRendererCommand(electronApp, 'openFile')
+  await page.waitForFunction(expected => document.title === expected, name)
+}
+
+async function enterSplitView(electronApp, page, { sidebarMoves = true } = {}) {
+  if (sidebarMoves) await armSidebarTransitionWatch(page)
+  await emitRendererCommand(electronApp, 'toggleSplitView')
+  await page.waitForFunction(() => document.getElementById('scroll-area').classList.contains('split-mode'))
+  if (sidebarMoves) await waitForSidebarTransition(page)
+  await waitFrames(page)
+}
+
+test('entering split view keeps the reading position in the preview pane', async () => {
+  const tempDir = await fs.mkdtemp(path.join(os.tmpdir(), 'mdv-smoke-split-enter-'))
+  const { electronApp, page } = await launchApp()
+  try {
+    await openSectionDoc(electronApp, page, tempDir, 'split-enter')
+    await parkPane(page, 'scroll-area', 6) // Section 6
+    await enterSplitView(electronApp, page)
+
+    const pane = await sectionAtTop(page, 'content')
+    assert.equal(pane.section, '#section-6', JSON.stringify(pane))
+  } finally {
+    await closeApp(electronApp)
+    await fs.rm(tempDir, { recursive: true, force: true })
+  }
+})
+
+// Parked in Section 6 before entering and moved to Section 9 inside split view, so restoring
+// the pre-split scrollTop on exit would fail this: the position to keep is the preview pane's.
+test('leaving split view keeps the preview pane\'s reading position', async () => {
+  const tempDir = await fs.mkdtemp(path.join(os.tmpdir(), 'mdv-smoke-split-exit-'))
+  const { electronApp, page } = await launchApp()
+  try {
+    await openSectionDoc(electronApp, page, tempDir, 'split-exit')
+    await parkPane(page, 'scroll-area', 6) // Section 6
+    await enterSplitView(electronApp, page)
+    await parkPane(page, 'content', 9) // Section 9
+
+    await armSidebarTransitionWatch(page)
+    await emitRendererCommand(electronApp, 'toggleSplitView')
+    await page.waitForFunction(() => !document.getElementById('scroll-area').classList.contains('split-mode'))
+    await waitForSidebarTransition(page)
+    await waitFrames(page)
+
+    const view = await sectionAtTop(page, 'scroll-area')
+    assert.equal(view.section, '#section-9', JSON.stringify(view))
+  } finally {
+    await closeApp(electronApp)
+    await fs.rm(tempDir, { recursive: true, force: true })
+  }
+})
+
+// No sidebar transition on either side here, so the position has to land on the first apply.
+test('leaving split view with the sidebar already closed keeps the preview pane\'s reading position', async () => {
+  const tempDir = await fs.mkdtemp(path.join(os.tmpdir(), 'mdv-smoke-split-exit-closed-'))
+  const { electronApp, page } = await launchApp()
+  try {
+    await openSectionDoc(electronApp, page, tempDir, 'split-exit-closed')
+    await armSidebarTransitionWatch(page)
+    await emitRendererCommand(electronApp, 'toggleSidebar')
+    await page.waitForFunction(() => document.getElementById('sidebar').classList.contains('closed'))
+    await waitForSidebarTransition(page)
+    await parkPane(page, 'scroll-area', 6) // Section 6
+    await enterSplitView(electronApp, page, { sidebarMoves: false })
+    await parkPane(page, 'content', 9) // Section 9
+
+    await emitRendererCommand(electronApp, 'toggleSplitView')
+    await page.waitForFunction(() => !document.getElementById('scroll-area').classList.contains('split-mode'))
+    await waitFrames(page)
+
+    const view = await sectionAtTop(page, 'scroll-area')
+    assert.equal(view.section, '#section-9', JSON.stringify(view))
+  } finally {
+    await closeApp(electronApp)
+    await fs.rm(tempDir, { recursive: true, force: true })
+  }
+})
+
+// Cmd+U from split view goes to pure source mode, where #content is hidden -- the TOC highlight
+// is then the source-line position (rebuildSourceModeToc), so that is what this reads.
+test('leaving split view with Cmd+U keeps the preview pane\'s reading position in source mode', async () => {
+  const tempDir = await fs.mkdtemp(path.join(os.tmpdir(), 'mdv-smoke-split-exit-source-'))
+  const { electronApp, page } = await launchApp()
+  try {
+    await openSectionDoc(electronApp, page, tempDir, 'split-exit-source')
+    await enterSplitView(electronApp, page)
+    await parkPane(page, 'content', 9) // Section 9
+
+    await armSidebarTransitionWatch(page)
+    await emitRendererCommand(electronApp, 'toggleSource')
+    await page.waitForFunction(() => {
+      const scrollArea = document.getElementById('scroll-area')
+      return scrollArea.classList.contains('source-mode') && !scrollArea.classList.contains('split-mode')
+    })
+    await waitForSidebarTransition(page)
+    await waitFrames(page)
+
+    const state = await page.evaluate(() => ({
+      active: document.querySelector('#toc-list a.active')?.getAttribute('href') ?? null,
+      scrollTop: document.getElementById('scroll-area').scrollTop,
+    }))
+    assert.equal(state.active, '#section-9', JSON.stringify(state))
+  } finally {
+    await closeApp(electronApp)
+    await fs.rm(tempDir, { recursive: true, force: true })
   }
 })
