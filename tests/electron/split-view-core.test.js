@@ -456,48 +456,45 @@ test('leaving split view with Cmd+U keeps the preview pane\'s reading position i
 })
 
 // The position re-applied when the sidebar transition settles belongs to the tab and mode that
-// started it. Switching tabs inside that window must not carry tab A's position onto tab B. The
-// transition is stretched to 2s so the switch lands inside it deterministically, not by racing
-// the real 0.25s.
-test('switching tabs while split view\'s sidebar transition runs does not carry the old tab\'s reading position', async () => {
+// started it. The path that can carry it elsewhere is a switch to a tab that is also in split
+// view: setSplitMode(true) is then a no-op, so the settle listener from tab A's entry stays
+// attached and fires on tab B. A switch to a preview tab can't: reopening the sidebar supersedes
+// the closing transition, and its transitioncancel reaches the newly attached listener first,
+// which detaches it (observed on CI 2026-10-13 -- three versions of that variant passed on
+// unguarded code). The transition is stretched to 2s so the switch lands inside it.
+test('switching to another split-view tab while the sidebar transition runs does not carry the old tab\'s reading position', async () => {
   const tempDir = await fs.mkdtemp(path.join(os.tmpdir(), 'mdv-smoke-split-tab-switch-'))
   const { electronApp, page } = await launchApp()
+  const sidebarSettled = () => page.waitForFunction(() => document.getElementById('sidebar').getAnimations().length === 0)
   try {
     const first = await writeTocDoc(tempDir, 'split-tab-a', 'Split Tab A')
     const second = await writeTocDoc(tempDir, 'split-tab-b', 'Split Tab B')
     await page.waitForSelector('#empty')
+
+    // Tab B: in split view, its preview pane at the top.
     await stubOpenDialog(electronApp, [second.docPath])
     await emitRendererCommand(electronApp, 'openFile')
     await page.waitForFunction(() => document.title === 'split-tab-b')
+    await enterSplitView(electronApp, page)
+
+    // Tab A: a new tab opens in preview (the sidebar reopens), parked in Section 9.
     await stubOpenDialog(electronApp, [first.docPath])
     await emitRendererCommand(electronApp, 'openFile')
-    await page.waitForFunction(() => document.title === 'split-tab-a')
-    await parkPane(page, 'scroll-area', 9) // Section 9 in tab A; tab B stays at its top
+    await page.waitForFunction(() => document.title === 'split-tab-a' && !document.getElementById('scroll-area').classList.contains('split-mode'))
+    await sidebarSettled()
+    await parkPane(page, 'scroll-area', 9)
 
     await page.addStyleTag({ content: '#sidebar { transition-duration: 2s !important; }' })
     const openWidth = await page.evaluate(() => document.getElementById('sidebar').getBoundingClientRect().width)
     await emitRendererCommand(electronApp, 'toggleSplitView')
     await page.waitForFunction(() => document.getElementById('scroll-area').classList.contains('split-mode'))
-    // Switch only once the closing sidebar has visibly moved. Switching before its first frame
-    // reverses a transition that never started: there's no distance to cover, so no transition
-    // runs and nothing settles (the first CI run of this test timed out exactly there).
     await page.waitForFunction(open => {
       const width = document.getElementById('sidebar').getBoundingClientRect().width
       return width < open - 20 && width > 20
     }, openWidth)
 
-    // Tab B is in preview mode, so switching back to it reopens the sidebar. Wait until no
-    // animation is left on #sidebar itself: armSidebarTransitionWatch accepts any bubbling
-    // width transitionend, and editor.js's settle handler (the one that re-applies) only the
-    // sidebar's own, so that watch can finish first.
-    await page.evaluate(() => {
-      window.__mdvTabBScrollTops = []
-      document.getElementById('scroll-area').addEventListener('scroll', event => { window.__mdvTabBScrollTops.push(event.target.scrollTop) })
-    })
     // A DOM click, not locator.click(): the tab strip slides with the sidebar, and Playwright
-    // waits for its target to hold still, which here means for the closing transition to end --
-    // by then its settle handler has already consumed the pending position, so tab B would never
-    // see it. No coordinates either, so it can't land on a neighbouring tab's x.
+    // waits for its target to hold still -- for the transition to end, which is too late.
     const widthAtSwitch = await page.evaluate(() => {
       const name = Array.from(document.querySelectorAll('#tab-list .file-tab-name')).find(node => node.textContent.includes('split-tab-b'))
       const width = document.getElementById('sidebar').getBoundingClientRect().width
@@ -505,15 +502,11 @@ test('switching tabs while split view\'s sidebar transition runs does not carry 
       return width
     })
     await page.waitForFunction(() => document.title === 'split-tab-b')
-    await page.waitForFunction(open => {
-      const sidebar = document.getElementById('sidebar')
-      return sidebar.getAnimations().length === 0 && Math.abs(sidebar.getBoundingClientRect().width - open) < 1
-    }, openWidth)
+    await sidebarSettled()
     await waitFrames(page)
 
-    const view = await sectionAtTop(page, 'scroll-area')
-    const scrollTops = await page.evaluate(() => window.__mdvTabBScrollTops)
-    assert.equal(view.section, '#split-tab-b', JSON.stringify({ view, scrollTops, openWidth, widthAtSwitch }))
+    const pane = await sectionAtTop(page, 'content')
+    assert.equal(pane.section, '#split-tab-b', JSON.stringify({ pane, openWidth, widthAtSwitch }))
   } finally {
     await closeApp(electronApp)
     await fs.rm(tempDir, { recursive: true, force: true })
