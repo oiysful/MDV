@@ -616,20 +616,24 @@ test('TOC highlight stays in step after leaving split view once the preview re-r
     await emitRendererCommand(electronApp, 'openFile')
     await page.waitForFunction(() => document.title === 'toc-split-exit')
     await page.waitForFunction(() => document.querySelectorAll('#toc-list a').length === 13)
-    // Parked in Section 6 so the highlight from before split view differs from the one wanted
-    // after it: leaving split view lands #scroll-area at the top (measured 2026-10-13, scrollTop
-    // 0), where the first heading is the one to light.
-    await parkBetweenHeadings(page, 6) // Section 6
+    // Everything stays at the top on purpose. Leaving split view restores the preview pane's
+    // reading position (split-view-core.test.js), so this is the one case where it writes 0 onto
+    // a #scroll-area already at 0 and fires no scroll event -- the condition this test needs.
 
     await armSidebarTransitionWatch(page)
     await emitRendererCommand(electronApp, 'toggleSplitView')
     await page.waitForFunction(() => document.getElementById('scroll-area').classList.contains('split-mode'))
     await waitForSidebarTransition(page)
 
-    // Typing re-renders the split preview (app.js renderSplitPreview -> render -> buildToc) while
-    // the sidebar, and the TOC in it, is force-closed (plan 05).
+    // An edit re-renders the split preview (app.js renderSplitPreview -> render -> buildToc) while
+    // the sidebar, and the TOC in it, is force-closed (plan 05). Set programmatically rather than
+    // typed, so neither pane scrolls toward a caret and the preview pane stays at the top.
     await tagTocLinks(page)
-    await page.locator('#source-editor').fill(`${text}\nTyped in split view.\n`)
+    await page.evaluate(next => {
+      const editor = document.getElementById('source-editor')
+      editor.value = next
+      editor.dispatchEvent(new Event('input'))
+    }, `${text}\nEdited in split view.\n`)
     await waitForTocRebuild(page)
 
     await resetScrollCounts(page)
