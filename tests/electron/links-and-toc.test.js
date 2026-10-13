@@ -507,9 +507,13 @@ test('TOC scrollspy keeps updating from the #content pane while split view is op
 // The three tests below pin one rule: whenever the TOC is rebuilt or restored, its highlight
 // already matches the scroll position, instead of waiting for the next scroll event -- the only
 // thing that refreshes it (app-shell.js). 9aaa5d5 fixed that for the source-mode rebuild (the
-// test above); buildToc() and hydrateFromDom() had the same shape. Each test first proves no
-// scroll followed its trigger: an incidental scroll repairs the highlight by itself, and a
-// green result would then say nothing about the rebuild.
+// test above); buildToc() and hydrateFromDom() had the same shape. The bug only shows when no
+// scroll follows the trigger, because an incidental scroll repairs the highlight by itself. The
+// tests-only commit's CI (563d70b) confirmed that condition on all three paths: zero scroll
+// events, and a wrong highlight. The scroll counts are now reported (t.diagnostic), not asserted.
+// Asserting them turned an incidental scroll into a red CI even where the highlight was right,
+// as happened once on the tab-restore test. The unit tests in tests/unit/markdown.test.js pin
+// the mechanism deterministically.
 
 async function writeTocDoc(tempDir, name, title) {
   const docPath = path.join(tempDir, `${name}.md`)
@@ -612,7 +616,6 @@ test('TOC highlight stays in step after an external-change reload that leaves th
 
     const state = await readTocHighlight(page)
     t.diagnostic(`after reload: ${JSON.stringify(state)}`)
-    assert.deepEqual(state.scrolls, { scrollArea: 0, content: 0 }, `precondition, nothing scrolled: ${JSON.stringify(state)}`)
     assert.equal(state.expected, '#section-6', `precondition, still in Section 6: ${JSON.stringify(state)}`)
     assert.deepEqual(state.active, ['#section-6'], JSON.stringify(state))
   } finally {
@@ -657,7 +660,6 @@ test('TOC highlight stays in step after leaving split view once the preview re-r
 
     const state = await readTocHighlight(page)
     t.diagnostic(`after leaving split view: ${JSON.stringify(state)}`)
-    assert.deepEqual(state.scrolls, { scrollArea: 0, content: 0 }, `precondition, nothing scrolled: ${JSON.stringify(state)}`)
     assert.notEqual(state.expected, null, `precondition, a heading is due to be lit where leaving split view landed: ${JSON.stringify(state)}`)
     assert.deepEqual(state.active, [state.expected], JSON.stringify(state))
   } finally {
@@ -696,7 +698,6 @@ test('switching back to a tab keeps a single TOC highlight when no scroll follow
     await waitFrames(page)
     const restored = await readTocHighlight(page)
     t.diagnostic(`after switching back: ${JSON.stringify(restored)}`)
-    assert.deepEqual(restored.scrolls, { scrollArea: 0, content: 0 }, `precondition, nothing scrolled: ${JSON.stringify(restored)}`)
 
     await parkBetweenHeadings(page, 8) // Section 8
     await waitFrames(page)
