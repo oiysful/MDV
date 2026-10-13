@@ -207,7 +207,29 @@ check which grants MDV holds. `NODE_OPTIONS=--require …` and `--inspect` are t
 is a known pattern for Electron apps, and Electron's own security checklist asks apps to switch
 off fuses they don't use. No earlier audit looked at fuses.
 
-**Fix (proposed, not applied).** In `package.json` `build`, add `electronFuses` with `runAsNode`,
+**Status: fixed by the PR from `security/electron-fuses` (Ian approved 2026-10-13). It takes effect
+for users with the next release.**
+- `build.electronFuses` turns off `runAsNode`, `enableNodeOptionsEnvironmentVariable` and
+  `enableNodeCliInspectArguments`.
+- `resetAdHocDarwinSignature: true` re-signs the bundle ad hoc. The build skips code signing, so
+  without it nothing would re-sign the binary after the flip.
+
+Verified on a local `--dir` build:
+- the three fuses read Disabled;
+- `codesign --verify --deep --strict` passes (identifier `com.ian.mdv`, sealed resources);
+- launched hidden through `open -g -j`, the app came up with main, GPU, network and renderer
+  processes;
+- with `ELECTRON_RUN_AS_NODE=1`, `NODE_OPTIONS=--require <marker>` and `--inspect=39229` all
+  set, no script ran and no inspector port opened.
+
+Ian then installed a build of the same branch with `npm run install:local`
+(2026-10-13 10:51) and used it. The installed app reads the three fuses as Disabled.
+
+`tests/unit/packaging.test.js` pins the config, and it was seen failing without it.
+`RELEASING.md`/`.ko.md` add a post-release fuse check, because the release build is the first
+place CI runs the flip and the re-sign.
+
+**Fix as originally proposed.** In `package.json` `build`, add `electronFuses` with `runAsNode`,
 `enableNodeOptionsEnvironmentVariable` and `enableNodeCliInspectArguments` set to `false`.
 Electron-builder 26 supports this. Leave the rest alone:
 - `grantFileProtocolExtraPrivileges` stays on: the UI loads over `file://`, so turning it off needs
@@ -345,10 +367,8 @@ Security (L3), as anti-tamper and runtime hardening.
 
 1. ~~**L1**~~ closed. Content commands need the per-window trust marker, and author HTML loses
    `style` and `class`.
-2. **L2 (fuses):** add `build.electronFuses` turning off `runAsNode`,
-   `enableNodeOptionsEnvironmentVariable` and `enableNodeCliInspectArguments`. Verify the re-signed
-   binary launches from a clean `brew install`. Accept that packaged-build Playwright probes stop
-   working. Best landed before the next release, since only a release puts it in users' hands.
+2. ~~**L2 (fuses)**~~ fixed (see L2's status). What is left is checking it on the release: after
+   the next `brew upgrade`, read the fuses and launch the app, as RELEASING.md step 7 now says.
 3. Afterwards, as before:
    - code signing and notarization, if distribution widens;
    - Trusted Types, together with dropping `'unsafe-inline'`;
