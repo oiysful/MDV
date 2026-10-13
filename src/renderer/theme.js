@@ -1,4 +1,7 @@
 (function (globalScope) {
+  // Browser: index.html loads i18n.js first, which puts it on globalScope. Node (unit tests via
+  // require()): no script tag ran, so require it -- same fallback shape as markdown.js's js-yaml.
+  const { t } = globalScope.MDVI18n || require('./i18n.js')
   // The order the theme button cycles through, and the only values this controller accepts.
   // A stored value outside the set used to survive construction unvalidated, and then
   // toggleTheme's lookup produced `undefined`, which storage wrote back as the string
@@ -36,7 +39,7 @@
         refs.icAuto.style.display = theme === 'auto' ? '' : 'none'
         refs.icMoon.style.display = theme === 'dark' ? '' : 'none'
         refs.icSun.style.display = theme === 'light' ? '' : 'none'
-        const labels = { auto: '시스템 테마', light: '밝게', dark: '어둡게' }
+        const labels = { auto: t('theme.auto'), light: t('theme.light'), dark: t('theme.dark') }
         refs.btnTheme.title = labels[theme]
         refs.btnTheme.setAttribute('aria-label', labels[theme])
       }

@@ -1,20 +1,28 @@
 (function (globalScope) {
+  // Browser: index.html loads i18n.js first, which puts it on globalScope. Node (unit tests via
+  // require()): no script tag ran, so require it -- same fallback shape as markdown.js's js-yaml.
+  const { t } = globalScope.MDVI18n || require('./i18n.js')
   function getNextUntitledFilename(counter) {
     return counter === 1 ? 'untitled.md' : `untitled-${counter}.md`
   }
 
+  const escapeHtml = value => String(value).replace(/[&<>"]/g, ch => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[ch])
+
+  // empty.sub is fixed markup from i18n.js; the button labels are plain text and land in
+  // attributes too, so they are escaped.
   function createEmptyStateHtml() {
+    const openFile = escapeHtml(t('action.openFile'))
+    const openFolder = escapeHtml(t('action.openFolder'))
     return `<div id="empty">
   <div class="empty-icon">📄</div>
-  <div class="empty-title">열린 파일 없음</div>
+  <div class="empty-title">${t('empty.title')}</div>
   <div class="empty-sub">
-    좌측 상단의 <strong>열기</strong> 버튼을 누르거나<br>
-    아래 버튼 또는 드래그 앤 드롭으로 시작하세요<br><br>
+    ${t('empty.sub')}<br><br>
     <kbd>.md</kbd>&nbsp; <kbd>.markdown</kbd>
   </div>
   <div class="empty-actions">
-    <button class="empty-cta" type="button" data-command="openFile" title="파일 열기" aria-label="파일 열기">파일 열기</button>
-    <button class="empty-cta secondary" type="button" data-command="openFolder" title="폴더 열기" aria-label="폴더 열기">폴더 열기</button>
+    <button class="empty-cta" type="button" data-command="openFile" title="${openFile}" aria-label="${openFile}">${openFile}</button>
+    <button class="empty-cta secondary" type="button" data-command="openFolder" title="${openFolder}" aria-label="${openFolder}">${openFolder}</button>
   </div>
 </div>`
   }
@@ -95,7 +103,7 @@
     async function revealInFinder(targetPath) {
       if (!targetPath) return
       const res = await api.revealInFinder(targetPath)
-      if (res.error) alert(`Finder 표시 실패: ${res.error}`)
+      if (res.error) alert(t('error.revealFailed', res.error))
     }
 
     async function checkMarkdownDefaultAppStatus() {
@@ -280,10 +288,10 @@
       const suggestedName = `${(tab.filename || 'untitled.md').replace(/\.(md|markdown)$/i, '')}.pdf`
       const res = await withPrintPalette(() => api.exportPdf(suggestedName, tab.path))
       if (res.error) {
-        alert(`PDF 내보내기 실패: ${res.error}`)
+        alert(t('error.exportPdfFailed', res.error))
         return
       }
-      if (!res.cancelled) showToast('PDF 저장됨')
+      if (!res.cancelled) showToast(t('toast.pdfSaved'))
     }
 
     async function toggleSource() {
@@ -359,12 +367,12 @@
       try {
         await navigator.clipboard.writeText(markdown)
       } catch (err) {
-        showToast('복사 실패')
+        showToast(t('toast.copyFailed'))
         return
       }
       const button = documentRef.getElementById('btn-copy-all')
       button.classList.add('copied')
-      showToast('복사됨')
+      showToast(t('toast.copied'))
       setTimeout(() => button.classList.remove('copied'), 1500)
     }
 
@@ -410,12 +418,12 @@
       try {
         await navigator.clipboard.writeText(code?.innerText || '')
       } catch (err) {
-        showToast('코드 복사 실패')
+        showToast(t('toast.codeCopyFailed'))
         return
       }
       button.innerHTML = CHECK_ICON
       button.classList.add('copied')
-      showToast('코드 복사됨')
+      showToast(t('toast.codeCopied'))
       setTimeout(() => {
         button.innerHTML = COPY_ICON
         button.classList.remove('copied')

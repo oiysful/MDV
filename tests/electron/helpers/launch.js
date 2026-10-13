@@ -117,6 +117,9 @@ async function launchApp(options = {}) {
     env: {
       ...process.env,
       MDV_USER_DATA_DIR: userDataDir,
+      // The suite asserts Korean UI strings; left to app.getLocale(), a non-Korean CI runner would
+      // get English and fail only there (plan 31). options.locale: 'en' opts a test into English.
+      MDV_LOCALE: options.locale || 'ko',
       ...(options.realDefaultAppStatus ? {} : { MDV_TEST_SKIP_DEFAULT_APP_CHECK: '1' }),
       ...(options.realUpdateCheck ? {} : { MDV_TEST_SKIP_UPDATE_CHECK: '1' }),
     },

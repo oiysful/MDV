@@ -1198,7 +1198,7 @@ kbd {
 [data-theme="dark"] .copy-btn.copied { color: #98c379; border-color: #98c37940; }
 
 .copy-btn::after {
-  content: '복사';
+  content: attr(data-tooltip);
   position: absolute; top: calc(100% + 6px); right: 0; z-index: 2;
   padding: 4px 8px; border-radius: 6px;
   background: #1f2328; color: #fff;
@@ -1385,44 +1385,44 @@ kbd {
 
   <!-- Open (+) with context menu -->
   <div style="position:relative">
-    <button type="button" class="btn btn-primary-add" id="btn-add" data-command="toggleAddMenu" data-command-uses-event="true" title="열기" aria-label="열기">
-      <span class="btn-add-label">열기</span>
+    <button type="button" class="btn btn-primary-add" id="btn-add" data-command="toggleAddMenu" data-command-uses-event="true" title="열기" aria-label="열기" data-i18n-label="open.button">
+      <span class="btn-add-label" data-i18n="open.button">열기</span>
       <svg aria-hidden="true" width="13" height="13" viewBox="0 0 13 13" fill="none">
         <line x1="6.5" y1="1.5" x2="6.5" y2="11.5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
         <line x1="1.5" y1="6.5" x2="11.5" y2="6.5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
       </svg>
     </button>
     <div id="open-entry-hint">
-      <strong>파일/폴더 열기</strong>
-      <span>여기서 바로 시작</span>
+      <strong data-i18n="open.hintTitle">파일/폴더 열기</strong>
+      <span data-i18n="open.hintSub">여기서 바로 시작</span>
     </div>
     <div id="add-menu" class="ctx-menu toolbar-add-menu" style="display:none">
-      <button type="button" class="ctx-item" data-command="newFile" data-hide-add-menu="true" title="새 파일 (⌘T)" aria-label="새 파일 (⌘T)">
+      <button type="button" class="ctx-item" data-command="newFile" data-hide-add-menu="true" title="새 파일 (⌘T)" aria-label="새 파일 (⌘T)" data-i18n-label="add.newFile">
         <svg aria-hidden="true" width="13" height="13" viewBox="0 0 13 13" fill="none" style="flex-shrink:0">
           <path d="M2.5 1.5h5l3 3V11a.5.5 0 01-.5.5H3a.5.5 0 01-.5-.5V2A.5.5 0 012.5 1.5z" stroke="currentColor" stroke-width="1.3" stroke-linejoin="round"/>
           <path d="M7.5 1.5V4.5h3" stroke="currentColor" stroke-width="1.3" stroke-linejoin="round"/>
           <path d="M6.5 6.1v3.2M4.9 7.7h3.2" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"/>
         </svg>
-        새 파일 (⌘T)
+        <span data-i18n="add.newFile">새 파일 (⌘T)</span>
       </button>
-      <button type="button" class="ctx-item" data-command="openFolder" data-hide-add-menu="true" title="폴더 열기 (⌘⇧O)" aria-label="폴더 열기 (⌘⇧O)">
+      <button type="button" class="ctx-item" data-command="openFolder" data-hide-add-menu="true" title="폴더 열기 (⌘⇧O)" aria-label="폴더 열기 (⌘⇧O)" data-i18n-label="add.openFolder">
         <svg aria-hidden="true" width="13" height="13" viewBox="0 0 13 13" fill="none" style="flex-shrink:0">
           <path d="M1.5 4.5v5a1 1 0 001 1h8a1 1 0 001-1v-4a1 1 0 00-1-1H6L4.5 3H2.5a1 1 0 00-1 1.5z" stroke="currentColor" stroke-width="1.3" stroke-linejoin="round"/>
         </svg>
-        폴더 열기 (⌘⇧O)
+        <span data-i18n="add.openFolder">폴더 열기 (⌘⇧O)</span>
       </button>
-      <button type="button" class="ctx-item" data-command="openFile" data-hide-add-menu="true" title="파일 열기 (⌘O)" aria-label="파일 열기 (⌘O)">
+      <button type="button" class="ctx-item" data-command="openFile" data-hide-add-menu="true" title="파일 열기 (⌘O)" aria-label="파일 열기 (⌘O)" data-i18n-label="add.openFile">
         <svg aria-hidden="true" width="13" height="13" viewBox="0 0 13 13" fill="none" style="flex-shrink:0">
           <path d="M2.5 1.5h5l3 3V11a.5.5 0 01-.5.5H3a.5.5 0 01-.5-.5V2A.5.5 0 012.5 1.5z" stroke="currentColor" stroke-width="1.3" stroke-linejoin="round"/>
           <path d="M7.5 1.5V4.5h3" stroke="currentColor" stroke-width="1.3" stroke-linejoin="round"/>
         </svg>
-        파일 열기 (⌘O)
+        <span data-i18n="add.openFile">파일 열기 (⌘O)</span>
       </button>
     </div>
   </div>
 
   <!-- Sidebar toggle -->
-  <button type="button" class="btn btn-icon" id="btn-sidebar" data-command="toggleSidebar" data-shortcut="⌘B" title="좌측 패널 (⌘B)" aria-label="좌측 패널 (⌘B)">
+  <button type="button" class="btn btn-icon" id="btn-sidebar" data-command="toggleSidebar" data-shortcut="⌘B" title="좌측 패널 (⌘B)" aria-label="좌측 패널 (⌘B)" data-i18n-label="toolbar.sidebar">
     <svg aria-hidden="true" width="15" height="15" viewBox="0 0 15 15" fill="none">
       <line x1="2" y1="4" x2="13" y2="4" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/>
       <line x1="2" y1="7.5" x2="13" y2="7.5" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/>
@@ -1439,22 +1439,22 @@ kbd {
   <div class="spacer"></div>
 
   <!-- Source / Preview toggle pill -->
-  <button type="button" id="btn-mode" class="btn btn-mode" data-command="toggleSource" data-shortcut="⌘U" title="소스/미리보기 (⌘U)" aria-label="소스/미리보기 (⌘U)" style="display:none">
+  <button type="button" id="btn-mode" class="btn btn-mode" data-command="toggleSource" data-shortcut="⌘U" title="소스/미리보기 (⌘U)" aria-label="소스/미리보기 (⌘U)" data-i18n-label="toolbar.mode" style="display:none">
     <svg aria-hidden="true" width="13" height="13" viewBox="0 0 13 13" fill="none">
       <circle cx="6.5" cy="6.5" r="2" stroke="currentColor" stroke-width="1.3"/>
       <path d="M1 6.5C2.5 3.5 4.3 2 6.5 2s4 1.5 5.5 4.5C10.5 9.5 8.7 11 6.5 11S2.5 9.5 1 6.5z" stroke="currentColor" stroke-width="1.3"/>
     </svg>
-    <span id="mode-label">미리보기</span>
+    <span id="mode-label" data-i18n="toolbar.modeLabel">미리보기</span>
   </button>
 
-  <button type="button" id="btn-split" class="btn btn-icon" data-command="toggleSplitView" data-shortcut="⌘\" title="분할뷰" aria-label="분할뷰" style="display:none" disabled>
+  <button type="button" id="btn-split" class="btn btn-icon" data-command="toggleSplitView" data-shortcut="⌘\" title="분할뷰" aria-label="분할뷰" data-i18n-label="toolbar.split" style="display:none" disabled>
     <svg aria-hidden="true" width="13" height="13" viewBox="0 0 13 13" fill="none">
       <rect x="1.5" y="2" width="10" height="9" rx="1" stroke="currentColor" stroke-width="1.3"/>
       <line x1="6.5" y1="2" x2="6.5" y2="11" stroke="currentColor" stroke-width="1.3"/>
     </svg>
   </button>
 
-  <button type="button" id="btn-wrap" class="btn btn-icon" data-command="toggleWrap" title="줄바꿈" aria-label="줄바꿈" style="display:none" disabled>
+  <button type="button" id="btn-wrap" class="btn btn-icon" data-command="toggleWrap" title="줄바꿈" aria-label="줄바꿈" data-i18n-label="toolbar.wrap" style="display:none" disabled>
     <svg aria-hidden="true" width="13" height="13" viewBox="0 0 13 13" fill="none">
       <line x1="1.5" y1="3" x2="11.5" y2="3" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/>
       <line x1="1.5" y1="6.5" x2="11.5" y2="6.5" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/>
@@ -1464,7 +1464,7 @@ kbd {
   </button>
 
   <!-- Search -->
-  <button type="button" class="btn btn-icon" id="btn-search" data-command="toggleSearch" data-shortcut="⌘F" title="검색 (⌘F)" aria-label="검색 (⌘F)">
+  <button type="button" class="btn btn-icon" id="btn-search" data-command="toggleSearch" data-shortcut="⌘F" title="검색 (⌘F)" aria-label="검색 (⌘F)" data-i18n-label="toolbar.search">
     <svg aria-hidden="true" width="15" height="15" viewBox="0 0 15 15" fill="none">
       <circle cx="6.5" cy="6.5" r="4" stroke="currentColor" stroke-width="1.3"/>
       <line x1="9.7" y1="9.7" x2="13" y2="13" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/>
@@ -1472,14 +1472,14 @@ kbd {
   </button>
 
   <!-- Copy all -->
-  <button type="button" class="btn btn-icon" id="btn-copy-all" data-command="copyAll" title="전체 복사" aria-label="전체 복사">
+  <button type="button" class="btn btn-icon" id="btn-copy-all" data-command="copyAll" title="전체 복사" aria-label="전체 복사" data-i18n-label="toolbar.copyAll">
     <svg aria-hidden="true" width="15" height="15" viewBox="0 0 15 15" fill="none">
       <rect x="4.5" y="4.5" width="8" height="9" rx="1" stroke="currentColor" stroke-width="1.3"/>
       <path d="M2.5 10.5V2.5h8" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"/>
     </svg>
   </button>
 
-  <button type="button" class="btn btn-icon" id="btn-save" data-command="saveFile" data-shortcut="⌘S" title="저장 (⌘S)" aria-label="저장 (⌘S)" disabled>
+  <button type="button" class="btn btn-icon" id="btn-save" data-command="saveFile" data-shortcut="⌘S" title="저장 (⌘S)" aria-label="저장 (⌘S)" data-i18n-label="toolbar.save" disabled>
     <svg aria-hidden="true" width="15" height="15" viewBox="0 0 15 15" fill="none">
       <path d="M3 2.5h7l2 2V12a.5.5 0 0 1-.5.5h-8A.5.5 0 0 1 3 12V2.5Z" stroke="currentColor" stroke-width="1.3" stroke-linejoin="round"/>
       <path d="M5 2.5v3h4v-3" stroke="currentColor" stroke-width="1.3" stroke-linejoin="round"/>
@@ -1487,7 +1487,7 @@ kbd {
     </svg>
   </button>
 
-  <button type="button" class="btn btn-icon" id="btn-print" data-command="printDoc" data-shortcut="⌘P" title="인쇄 (⌘P)" aria-label="인쇄 (⌘P)" disabled>
+  <button type="button" class="btn btn-icon" id="btn-print" data-command="printDoc" data-shortcut="⌘P" title="인쇄 (⌘P)" aria-label="인쇄 (⌘P)" data-i18n-label="toolbar.print" disabled>
     <svg aria-hidden="true" width="15" height="15" viewBox="0 0 15 15" fill="none">
       <path d="M4 5V2.5h7V5" stroke="currentColor" stroke-width="1.3" stroke-linejoin="round"/>
       <rect x="2.5" y="5" width="10" height="4" rx="1" stroke="currentColor" stroke-width="1.3"/>
@@ -1496,7 +1496,7 @@ kbd {
     </svg>
   </button>
 
-  <button type="button" class="btn btn-icon" id="btn-export-pdf" data-command="exportPdf" title="PDF 내보내기" aria-label="PDF 내보내기" disabled>
+  <button type="button" class="btn btn-icon" id="btn-export-pdf" data-command="exportPdf" title="PDF 내보내기" aria-label="PDF 내보내기" data-i18n-label="toolbar.exportPdf" disabled>
     <svg aria-hidden="true" width="15" height="15" viewBox="0 0 15 15" fill="none">
       <path d="M4 2.5h5.2L12 5.3V12a.5.5 0 0 1-.5.5h-7A.5.5 0 0 1 4 12V2.5Z" stroke="currentColor" stroke-width="1.3" stroke-linejoin="round"/>
       <path d="M9 2.8V5.5h2.7" stroke="currentColor" stroke-width="1.3" stroke-linejoin="round"/>
@@ -1506,7 +1506,7 @@ kbd {
   </button>
 
   <!-- Theme -->
-  <button type="button" id="btn-theme" class="btn btn-icon" data-command="toggleTheme" title="시스템 테마" aria-label="시스템 테마">
+  <button type="button" id="btn-theme" class="btn btn-icon" data-command="toggleTheme" title="시스템 테마" aria-label="시스템 테마" data-i18n-label="theme.auto">
     <svg aria-hidden="true" id="ic-auto" width="15" height="15" viewBox="0 0 15 15" fill="none">
       <rect x="1.5" y="2" width="12" height="8" rx="1" stroke="currentColor" stroke-width="1.3"/>
       <line x1="5.5" y1="10" x2="5" y2="13" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/>
@@ -1535,83 +1535,83 @@ kbd {
 <div id="update-banner" role="status" aria-live="polite">
   <div class="guide-title">
     <strong id="update-banner-text"></strong>
-    <button type="button" class="guide-close" data-command="dismissUpdateBanner" title="안내 닫기" aria-label="안내 닫기">×</button>
+    <button type="button" class="guide-close" data-command="dismissUpdateBanner" title="안내 닫기" aria-label="안내 닫기" data-i18n-label="action.closeGuide">×</button>
   </div>
   <div class="guide-actions">
-    <button type="button" class="guide-btn" data-command="openUpdateReleaseNotes">릴리스 노트</button>
-    <button type="button" class="guide-btn secondary" data-command="copyUpdateCommand">brew upgrade 명령어 복사</button>
+    <button type="button" class="guide-btn" data-command="openUpdateReleaseNotes" data-i18n="update.releaseNotes">릴리스 노트</button>
+    <button type="button" class="guide-btn secondary" data-command="copyUpdateCommand" data-i18n="update.copyCommand">brew upgrade 명령어 복사</button>
   </div>
 </div>
 <div id="welcome-guide" role="dialog" aria-labelledby="welcome-guide-title">
   <div class="guide-title">
-    <strong id="welcome-guide-title">처음 시작하기</strong>
-    <button type="button" class="guide-close" data-command="dismissWelcomeGuide" title="안내 닫기" aria-label="안내 닫기">×</button>
+    <strong id="welcome-guide-title" data-i18n="welcome.title">처음 시작하기</strong>
+    <button type="button" class="guide-close" data-command="dismissWelcomeGuide" title="안내 닫기" aria-label="안내 닫기" data-i18n-label="action.closeGuide">×</button>
   </div>
   <div class="guide-body">
-    좌측 상단의 <strong>열기</strong> 버튼으로 파일이나 폴더를 바로 불러올 수 있어요.
+    <span data-i18n-html="welcome.body">좌측 상단의 <strong>열기</strong> 버튼으로 파일이나 폴더를 바로 불러올 수 있어요.</span>
     <ul class="guide-list">
-      <li><strong>파일 열기</strong>: 단일 Markdown 문서 열기</li>
-      <li><strong>폴더 열기</strong>: 문서 묶음을 탐색기 탭에서 보기</li>
-      <li><strong>드래그 앤 드롭</strong>: `.md`, `.markdown` 파일을 바로 놓기</li>
+      <li data-i18n-html="welcome.itemFile"><strong>파일 열기</strong>: 단일 Markdown 문서 열기</li>
+      <li data-i18n-html="welcome.itemFolder"><strong>폴더 열기</strong>: 문서 묶음을 탐색기 탭에서 보기</li>
+      <li data-i18n-html="welcome.itemDrop"><strong>드래그 앤 드롭</strong>: <code>.md</code>, <code>.markdown</code> 파일을 바로 놓기</li>
     </ul>
-    <div class="guide-callout">
+    <div class="guide-callout" data-i18n-html="welcome.callout">
       기본 앱으로 쓰고 싶다면 Finder에서 Markdown 파일 선택 → <strong>정보 가져오기</strong> → <strong>Open with</strong> → <strong>MDV</strong> → <strong>Change All</strong> 순서로 지정하세요.
     </div>
   </div>
   <div class="guide-actions">
-    <button type="button" class="guide-btn" data-command="openFromGuide" data-command-arg="file" title="파일 열기" aria-label="파일 열기">파일 열기</button>
-    <button type="button" class="guide-btn secondary" data-command="openFromGuide" data-command-arg="folder" title="폴더 열기" aria-label="폴더 열기">폴더 열기</button>
-    <button type="button" class="guide-btn secondary" data-command="dismissWelcomeGuide" title="나중에" aria-label="나중에">나중에</button>
+    <button type="button" class="guide-btn" data-command="openFromGuide" data-command-arg="file" title="파일 열기" aria-label="파일 열기" data-i18n-label="action.openFile" data-i18n="action.openFile">파일 열기</button>
+    <button type="button" class="guide-btn secondary" data-command="openFromGuide" data-command-arg="folder" title="폴더 열기" aria-label="폴더 열기" data-i18n-label="action.openFolder" data-i18n="action.openFolder">폴더 열기</button>
+    <button type="button" class="guide-btn secondary" data-command="dismissWelcomeGuide" title="나중에" aria-label="나중에" data-i18n-label="action.later" data-i18n="action.later">나중에</button>
   </div>
 </div>
 
 <div id="default-app-guide" role="dialog" aria-modal="true" aria-labelledby="default-app-guide-title">
   <div class="guide-title">
-    <strong id="default-app-guide-title">Markdown 기본 앱 등록</strong>
+    <strong id="default-app-guide-title" data-i18n="defaultApp.title">Markdown 기본 앱 등록</strong>
   </div>
   <div class="guide-body">
-    <p>마크다운 문서(<code>.md</code>, <code>.markdown</code> 확장자)를 편리하게 보기 위해서 아래의 단계를 진행해주세요.</p>
+    <p data-i18n-html="defaultApp.intro">마크다운 문서(<code>.md</code>, <code>.markdown</code> 확장자)를 편리하게 보기 위해서 아래의 단계를 진행해주세요.</p>
     <ol>
-      <li>Finder에서 마크다운 문서(<code>.md</code>, <code>.markdown</code>) 우클릭</li>
-      <li>정보 가져오기</li>
-      <li>다음으로 열기 드롭다운 &gt; MDV 선택</li>
-      <li><code>모두 변경...</code> 버튼 클릭</li>
+      <li data-i18n-html="defaultApp.step1">Finder에서 마크다운 문서(<code>.md</code>, <code>.markdown</code>) 우클릭</li>
+      <li data-i18n-html="defaultApp.step2">정보 가져오기</li>
+      <li data-i18n-html="defaultApp.step3">다음으로 열기 드롭다운 &gt; MDV 선택</li>
+      <li data-i18n-html="defaultApp.step4"><code>모두 변경...</code> 버튼 클릭</li>
     </ol>
     <label class="guide-check">
       <input type="checkbox" id="default-app-do-not-show">
-      <span>다시 보지 않기</span>
+      <span data-i18n="defaultApp.doNotShow">다시 보지 않기</span>
     </label>
   </div>
   <div class="guide-actions">
-    <button type="button" class="guide-btn primary" data-command="dismissDefaultAppGuide" title="확인했습니다." aria-label="확인했습니다.">확인했습니다.</button>
+    <button type="button" class="guide-btn primary" data-command="dismissDefaultAppGuide" title="확인했습니다." aria-label="확인했습니다." data-i18n-label="defaultApp.ok" data-i18n="defaultApp.ok">확인했습니다.</button>
   </div>
 </div>
 
 <div id="shortcuts-guide">
   <div class="guide-title">
-    <strong>단축키</strong>
-    <button type="button" class="guide-close" data-command="hideShortcuts" title="닫기" aria-label="닫기">×</button>
+    <strong data-i18n="shortcuts.title">단축키</strong>
+    <button type="button" class="guide-close" data-command="hideShortcuts" title="닫기" aria-label="닫기" data-i18n-label="action.close">×</button>
   </div>
   <div class="guide-body">
     <ul class="shortcuts-list">
-      <li><span>파일 열기</span><kbd>⌘O</kbd></li>
-      <li><span>폴더 열기</span><kbd>⌘⇧O</kbd></li>
-      <li><span>새 파일</span><kbd>⌘T</kbd></li>
-      <li><span>새 창</span><kbd>⌘N</kbd></li>
-      <li><span>탭 닫기</span><kbd>⌘W</kbd></li>
-      <li><span>저장</span><kbd>⌘S</kbd></li>
-      <li><span>다른 이름으로 저장</span><kbd>⌘⇧S</kbd></li>
-      <li><span>소스 보기</span><kbd>⌘U</kbd></li>
-      <li><span>분할뷰</span><kbd>⌘\</kbd></li>
-      <li><span>좌측 패널 표시/숨기기</span><kbd>⌘B</kbd></li>
-      <li><span>찾기</span><kbd>⌘F</kbd></li>
-      <li><span>인쇄</span><kbd>⌘P</kbd></li>
-      <li><span>다음 탭</span><kbd>⌘⇧]</kbd></li>
-      <li><span>이전 탭</span><kbd>⌘⇧[</kbd></li>
+      <li><span data-i18n="action.openFile">파일 열기</span><kbd>⌘O</kbd></li>
+      <li><span data-i18n="action.openFolder">폴더 열기</span><kbd>⌘⇧O</kbd></li>
+      <li><span data-i18n="action.newFile">새 파일</span><kbd>⌘T</kbd></li>
+      <li><span data-i18n="action.newWindow">새 창</span><kbd>⌘N</kbd></li>
+      <li><span data-i18n="action.closeTab">탭 닫기</span><kbd>⌘W</kbd></li>
+      <li><span data-i18n="action.save">저장</span><kbd>⌘S</kbd></li>
+      <li><span data-i18n="action.saveAs">다른 이름으로 저장</span><kbd>⌘⇧S</kbd></li>
+      <li><span data-i18n="action.toggleSource">소스 보기</span><kbd>⌘U</kbd></li>
+      <li><span data-i18n="action.splitView">분할뷰</span><kbd>⌘\</kbd></li>
+      <li><span data-i18n="action.toggleSidebar">좌측 패널 표시/숨기기</span><kbd>⌘B</kbd></li>
+      <li><span data-i18n="action.find">찾기</span><kbd>⌘F</kbd></li>
+      <li><span data-i18n="action.print">인쇄</span><kbd>⌘P</kbd></li>
+      <li><span data-i18n="action.nextTab">다음 탭</span><kbd>⌘⇧]</kbd></li>
+      <li><span data-i18n="action.prevTab">이전 탭</span><kbd>⌘⇧[</kbd></li>
     </ul>
   </div>
   <div class="guide-actions">
-    <button type="button" class="guide-btn primary" data-command="hideShortcuts" title="닫기" aria-label="닫기">닫기</button>
+    <button type="button" class="guide-btn primary" data-command="hideShortcuts" title="닫기" aria-label="닫기" data-i18n-label="action.close" data-i18n="action.close">닫기</button>
   </div>
 </div>
 
@@ -1621,19 +1621,19 @@ kbd {
     <circle cx="6.5" cy="6.5" r="4" stroke="currentColor" stroke-width="1.3"/>
     <line x1="9.7" y1="9.7" x2="13" y2="13" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/>
   </svg>
-  <input id="search-input" type="text" placeholder="검색…" autocomplete="off">
+  <input id="search-input" type="text" placeholder="검색…" data-i18n-placeholder="search.placeholder" autocomplete="off">
   <span id="search-count"></span>
-  <button type="button" class="btn btn-icon" data-command="searchPrev" title="이전 (Shift+Enter)" aria-label="이전 (Shift+Enter)" style="width:22px;height:22px">
+  <button type="button" class="btn btn-icon" data-command="searchPrev" title="이전 (Shift+Enter)" aria-label="이전 (Shift+Enter)" data-i18n-label="search.prev" style="width:22px;height:22px">
     <svg aria-hidden="true" width="11" height="11" viewBox="0 0 11 11" fill="none">
       <path d="M2 7l3.5-4L9 7" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/>
     </svg>
   </button>
-  <button type="button" class="btn btn-icon" data-command="searchNext" title="다음 (Enter)" aria-label="다음 (Enter)" style="width:22px;height:22px">
+  <button type="button" class="btn btn-icon" data-command="searchNext" title="다음 (Enter)" aria-label="다음 (Enter)" data-i18n-label="search.next" style="width:22px;height:22px">
     <svg aria-hidden="true" width="11" height="11" viewBox="0 0 11 11" fill="none">
       <path d="M2 4l3.5 4L9 4" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/>
     </svg>
   </button>
-  <button type="button" class="btn btn-icon" data-command="closeSearch" title="닫기 (Esc)" aria-label="닫기 (Esc)" style="width:22px;height:22px">
+  <button type="button" class="btn btn-icon" data-command="closeSearch" title="닫기 (Esc)" aria-label="닫기 (Esc)" data-i18n-label="search.close" style="width:22px;height:22px">
     <svg aria-hidden="true" width="11" height="11" viewBox="0 0 11 11" fill="none">
       <line x1="2" y1="2" x2="9" y2="9" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/>
       <line x1="9" y1="2" x2="2" y2="9" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/>
@@ -1644,7 +1644,7 @@ kbd {
 <!-- Drop overlay -->
 <div id="drop-overlay">
   <div class="drop-box">📄</div>
-  <div class="drop-text">여기에 놓으세요</div>
+  <div class="drop-text" data-i18n="drop.here">여기에 놓으세요</div>
 </div>
 
 <!-- Layout -->
@@ -1654,24 +1654,24 @@ kbd {
     <div id="sidebar-panel">
       <div id="sidebar-tabs" data-active="toc">
         <div id="sidebar-tab-indicator"></div>
-        <button type="button" class="stab active" data-command="switchTab" data-command-arg="toc" title="목차" aria-label="목차">목차</button>
-        <button type="button" class="stab" data-command="switchTab" data-command-arg="explorer" title="탐색기" aria-label="탐색기">탐색기</button>
+        <button type="button" class="stab active" data-command="switchTab" data-command-arg="toc" title="목차" aria-label="목차" data-i18n-label="sidebar.toc" data-i18n="sidebar.toc">목차</button>
+        <button type="button" class="stab" data-command="switchTab" data-command-arg="explorer" title="탐색기" aria-label="탐색기" data-i18n-label="sidebar.explorer" data-i18n="sidebar.explorer">탐색기</button>
       </div>
       <div id="panel-toc">
-        <div class="toc-label">목차</div>
+        <div class="toc-label" data-i18n="sidebar.toc">목차</div>
         <ul id="toc-list"></ul>
       </div>
       <div id="panel-explorer">
         <div id="explorer-root-label">
-          <span id="explorer-root-path">폴더를 선택하세요</span>
+          <span id="explorer-root-path" data-i18n="explorer.selectFolder">폴더를 선택하세요</span>
           <span class="explorer-root-actions">
-            <button type="button" id="btn-explorer-reveal" class="explorer-root-btn hidden" data-command="toggleExplorerPathInfo" title="경로 보기" aria-label="경로 보기">
+            <button type="button" id="btn-explorer-reveal" class="explorer-root-btn hidden" data-command="toggleExplorerPathInfo" title="경로 보기" aria-label="경로 보기" data-i18n-label="explorer.showPath">
               <svg aria-hidden="true" width="12" height="12" viewBox="0 0 12 12" fill="none">
                 <circle cx="5.25" cy="5.25" r="3.25" stroke="currentColor" stroke-width="1.2"/>
                 <line x1="7.8" y1="7.8" x2="10.4" y2="10.4" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"/>
               </svg>
             </button>
-            <button type="button" id="btn-explorer-close" class="explorer-root-btn hidden" data-command="clearExplorerRoot" title="폴더 닫기" aria-label="폴더 닫기">
+            <button type="button" id="btn-explorer-close" class="explorer-root-btn hidden" data-command="clearExplorerRoot" title="폴더 닫기" aria-label="폴더 닫기" data-i18n-label="action.closeFolder">
               <svg aria-hidden="true" width="12" height="12" viewBox="0 0 12 12" fill="none">
                 <line x1="2.2" y1="2.2" x2="9.8" y2="9.8" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"/>
                 <line x1="9.8" y1="2.2" x2="2.2" y2="9.8" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"/>
@@ -1679,8 +1679,8 @@ kbd {
             </button>
           </span>
         </div>
-        <div id="explorer-tree" role="tree" aria-label="파일 탐색기">
-          <div class="tree-hint">좌측 상단 <strong>+</strong> 버튼으로<br>폴더를 열어 탐색하세요.</div>
+        <div id="explorer-tree" role="tree" aria-label="파일 탐색기" data-i18n-aria-label="explorer.treeLabel">
+          <div class="tree-hint" data-i18n-html="explorer.emptyHint">위의 <strong>열기</strong> 버튼으로<br>폴더를 열어 탐색하세요.</div>
         </div>
       </div>
     </div>
@@ -1688,26 +1688,26 @@ kbd {
 
   <div id="main-pane">
     <div id="tab-strip" class="hidden">
-      <div id="tab-list" role="tablist" aria-label="열린 파일 탭"></div>
+      <div id="tab-list" role="tablist" aria-label="열린 파일 탭" data-i18n-aria-label="tabs.label"></div>
     </div>
 
     <div id="scroll-area">
       <div id="content" class="is-empty">
         <div id="empty">
           <div class="empty-icon">📄</div>
-          <div class="empty-title">열린 파일 없음</div>
+          <div class="empty-title" data-i18n="empty.title">열린 파일 없음</div>
           <div class="empty-sub">
-            좌측 상단의 <strong>열기</strong> 버튼을 누르거나<br>
-            아래 버튼 또는 드래그 앤 드롭으로 시작하세요<br><br>
+            <span data-i18n-html="empty.sub">좌측 상단의 <strong>열기</strong> 버튼을 누르거나<br>
+            아래 버튼 또는 드래그 앤 드롭으로 시작하세요</span><br><br>
             <kbd>.md</kbd>&nbsp; <kbd>.markdown</kbd>
           </div>
           <div class="empty-actions">
-            <button type="button" class="empty-cta" data-command="openFile" title="파일 열기" aria-label="파일 열기">파일 열기</button>
-            <button type="button" class="empty-cta secondary" data-command="openFolder" title="폴더 열기" aria-label="폴더 열기">폴더 열기</button>
+            <button type="button" class="empty-cta" data-command="openFile" title="파일 열기" aria-label="파일 열기" data-i18n-label="action.openFile" data-i18n="action.openFile">파일 열기</button>
+            <button type="button" class="empty-cta secondary" data-command="openFolder" title="폴더 열기" aria-label="폴더 열기" data-i18n-label="action.openFolder" data-i18n="action.openFolder">폴더 열기</button>
           </div>
         </div>
       </div>
-      <div id="split-divider" role="separator" aria-orientation="vertical" aria-label="분할뷰 폭 조절"></div>
+      <div id="split-divider" role="separator" aria-orientation="vertical" aria-label="분할뷰 폭 조절" data-i18n-aria-label="split.divider"></div>
       <div id="source-view">
         <div id="source-lines"></div>
         <div id="line-highlight"></div>
@@ -1717,8 +1717,9 @@ kbd {
   </div>
 </div>
 
-<button type="button" id="go-top" data-command="goTop" title="맨 위로" aria-label="맨 위로">↑</button>
+<button type="button" id="go-top" data-command="goTop" title="맨 위로" aria-label="맨 위로" data-i18n-label="goTop">↑</button>
 
+<script src="./i18n.js"></script>
 <script src="./path-utils.js"></script>
 <script src="./markdown.js"></script>
 <script src="./theme.js"></script>

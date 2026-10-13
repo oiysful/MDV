@@ -1,6 +1,13 @@
 const { contextBridge, ipcRenderer, webUtils } = require('electron')
 
+// The UI language the main process chose (main.js passes --mdv-locale= through
+// additionalArguments). A sandboxed preload can't require the string table, so the check is
+// inlined; anything unexpected is Korean, the same default the renderer's i18n.js falls back to.
+const localeArg = process.argv.find(arg => arg.startsWith('--mdv-locale='))
+const locale = localeArg && localeArg.slice('--mdv-locale='.length) === 'en' ? 'en' : 'ko'
+
 contextBridge.exposeInMainWorld('api', {
+  locale,
   readFile:        (p)    => ipcRenderer.invoke('read-file', p),
   openFileDialog:  ()     => ipcRenderer.invoke('open-file-dialog'),
   openFolderDialog:()     => ipcRenderer.invoke('open-folder-dialog'),

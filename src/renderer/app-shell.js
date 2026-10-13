@@ -1,4 +1,7 @@
 (function (globalScope) {
+  // Browser: index.html loads i18n.js first, which puts it on globalScope. Node (unit tests via
+  // require()): no script tag ran, so require it -- same fallback shape as markdown.js's js-yaml.
+  const { t } = globalScope.MDVI18n || require('./i18n.js')
   // Splits a link href on its first `#` into a file-path part and a fragment part.
   // Used to strip URL fragments (`#heading`) off local link hrefs before they reach
   // resolveLocalPath, which otherwise treats the whole href — fragment included — as
@@ -163,12 +166,12 @@
       const docPath = getActiveTab ? getActiveTab()?.path || null : null
       const resolved = pathUtils.resolveLocalPath(targetPath, docPath)
       if (!resolved) {
-        alert('링크 열기 실패: 문서를 저장한 뒤에 상대 경로 링크를 열 수 있습니다.')
+        alert(t('error.linkNeedsSave'))
         return
       }
       const res = await api.openLocalPath(resolved)
       if (res.error) {
-        alert(`링크 열기 실패: ${res.error}`)
+        alert(t('error.linkFailed', res.error))
         return
       }
       // Markdown targets come back as file content (main can't open a tab itself); the
@@ -206,7 +209,7 @@
         // local file path and takes the new local-open path instead.
         if (pathUtils.isExternalUrl(href)) {
           const res = await api.openExternalUrl(href)
-          if (res.error) alert(`링크 열기 실패: ${res.error}`)
+          if (res.error) alert(t('error.linkFailed', res.error))
           return
         }
         await openLocalLink(href)
@@ -221,8 +224,8 @@
         if (!root) return
         event.preventDefault()
         showAppContextMenu(event.clientX, event.clientY, [
-          { label: 'Finder에 표시', action: () => revealInFinder(root) },
-          { label: '폴더 닫기', action: () => clearExplorerRoot() },
+          { label: t('action.revealInFinder'), action: () => revealInFinder(root) },
+          { label: t('action.closeFolder'), action: () => clearExplorerRoot() },
         ])
       })
 
@@ -233,8 +236,8 @@
         if (row) return
         event.preventDefault()
         showAppContextMenu(event.clientX, event.clientY, [
-          { label: 'Finder에 표시', action: () => revealInFinder(root) },
-          { label: '폴더 닫기', action: () => clearExplorerRoot() },
+          { label: t('action.revealInFinder'), action: () => revealInFinder(root) },
+          { label: t('action.closeFolder'), action: () => clearExplorerRoot() },
         ])
       })
     }

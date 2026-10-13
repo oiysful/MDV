@@ -1,4 +1,7 @@
 (function (globalScope) {
+  // Browser: index.html loads i18n.js first, which puts it on globalScope. Node (unit tests via
+  // require()): no script tag ran, so require it -- same fallback shape as markdown.js's js-yaml.
+  const { t } = globalScope.MDVI18n || require('./i18n.js')
   const BREW_UPGRADE_COMMAND = 'brew upgrade --cask oiysful/tap/mdv'
 
   function createUpdateNoticeController({ getRefs, api, showToast, isBlockedByModal }) {
@@ -13,7 +16,7 @@
       // only) before this ever reaches the renderer, but textContent regardless -- see this
       // repo's own rule against building renderer hints from innerHTML with a dynamic part.
       if (currentInfo && refs.updateBannerText) {
-        refs.updateBannerText.textContent = `MDV ${currentInfo.version} 버전이 있습니다`
+        refs.updateBannerText.textContent = t('update.available', currentInfo.version)
       }
     }
 
@@ -36,9 +39,9 @@
     async function copyUpgradeCommand() {
       try {
         await navigator.clipboard.writeText(BREW_UPGRADE_COMMAND)
-        showToast('명령어가 복사되었습니다')
+        showToast(t('update.commandCopied'))
       } catch {
-        showToast('복사 실패')
+        showToast(t('toast.copyFailed'))
       }
     }
 

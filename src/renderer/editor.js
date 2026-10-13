@@ -1,4 +1,7 @@
 (function (globalScope) {
+  // Browser: index.html loads i18n.js first, which puts it on globalScope. Node (unit tests via
+  // require()): no script tag ran, so require it -- same fallback shape as markdown.js's js-yaml.
+  const { t } = globalScope.MDVI18n || require('./i18n.js')
   function buildLineNumberText(text) {
     const count = String(text ?? '').split('\n').length
     return Array.from({ length: count }, (_, index) => index + 1).join('\n')
@@ -240,14 +243,14 @@
   function getModeButtonState(sourceMode) {
     if (sourceMode) {
       return {
-        title: '미리보기 (⌘U)',
+        title: t('mode.preview'),
         isSourceActive: true,
         svgMarkup: '<circle cx="6.5" cy="6.5" r="2" stroke="currentColor" stroke-width="1.3"/><path d="M1 6.5C2.5 3.5 4.3 2 6.5 2s4 1.5 5.5 4.5C10.5 9.5 8.7 11 6.5 11S2.5 9.5 1 6.5z" stroke="currentColor" stroke-width="1.3"/>',
       }
     }
 
     return {
-      title: '편집 (⌘U)',
+      title: t('mode.edit'),
       isSourceActive: false,
       svgMarkup: '<path d="M3 3.25 1 6.5 3 9.75" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"/><path d="M10 3.25 12 6.5 10 9.75" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"/><path d="M7.75 2.5 6.25 10.5" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/>',
     }
@@ -366,7 +369,7 @@
 
       if (refs.btnSplit) {
         refs.btnSplit.classList.toggle('split-active', splitMode)
-        refs.btnSplit.title = splitMode ? '분할뷰 닫기' : '분할뷰'
+        refs.btnSplit.title = splitMode ? t('toolbar.splitClose') : t('toolbar.split')
         refs.btnSplit.setAttribute('aria-label', refs.btnSplit.title)
       }
     }
@@ -379,7 +382,7 @@
       const refs = getRefs()
       if (!refs?.btnWrap) return
       refs.btnWrap.classList.toggle('active', wrapMode)
-      const title = wrapMode ? '줄바꿈 끄기' : '줄바꿈'
+      const title = wrapMode ? t('toolbar.wrapOff') : t('toolbar.wrap')
       refs.btnWrap.title = title
       refs.btnWrap.setAttribute('aria-label', title)
     }
