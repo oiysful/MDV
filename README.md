@@ -102,6 +102,7 @@ MDV_RELEASE_TAG=v1.0.0 npm run install:release
 - File change watching for opened files
 - Session restore: open tabs and the explorer root reopen automatically on next launch; recently opened/saved files appear in the macOS Dock's Recent Items menu
 - Split view always keeps the sidebar closed while active, restoring it to its prior state on exit
+- Switching between preview, source and split view keeps your place in the document
 - First-launch empty-state guidance and stronger open-entry onboarding, with an explorer root header for path toggle and close
 - Holding ⌘ reveals shortcut badges on buttons that have a real system accelerator
 
