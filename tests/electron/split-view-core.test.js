@@ -475,8 +475,16 @@ test('switching tabs while split view\'s sidebar transition runs does not carry 
     await parkPane(page, 'scroll-area', 9) // Section 9 in tab A; tab B stays at its top
 
     await page.addStyleTag({ content: '#sidebar { transition-duration: 2s !important; }' })
+    const openWidth = await page.evaluate(() => document.getElementById('sidebar').getBoundingClientRect().width)
     await emitRendererCommand(electronApp, 'toggleSplitView')
     await page.waitForFunction(() => document.getElementById('scroll-area').classList.contains('split-mode'))
+    // Switch only once the closing sidebar has visibly moved. Switching before its first frame
+    // reverses a transition that never started: there's no distance to cover, so no transition
+    // runs and nothing settles (the first CI run of this test timed out exactly there).
+    await page.waitForFunction(open => {
+      const width = document.getElementById('sidebar').getBoundingClientRect().width
+      return width < open - 20 && width > 20
+    }, openWidth)
 
     // Tab B is in preview mode, so switching back to it reopens the sidebar: wait out that
     // transition, the one whose settle handler re-applies the pending position.
