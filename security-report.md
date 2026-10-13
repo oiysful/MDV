@@ -90,8 +90,8 @@ prompt). `commands[name]` is an object-literal lookup, so `data-command="constru
 `Object`. That was checked: it is harmless (`Object(x)` or a caught `TypeError`). The fix below
 closes it anyway.
 
-**Status: the forged-button vector is closed by the PR from `security/copy-button-forgery`
-(Ian approved 2026-10-13). A residual remains (below), so L1 stays open at Low.**
+**Status: closed by the PR from `security/copy-button-forgery` (Ian approved 2026-10-13), in two
+parts: forged buttons are dead, and author HTML can no longer style itself (residual, below).**
 - Each window's markdown controller makes a random 128-bit token.
 - The renderer's own copy button carries it as `data-mdv-trust`. So do the empty state's open
   buttons, marked by `markTrustedContentCommands`:
@@ -129,8 +129,38 @@ Tests:
 - `<style>` elements do not survive DOMPurify, so stylesheets are not a route. Inline `style`
   and MDV's own classes are.
 
-Closing this means sanitizing document HTML the way GitHub does: strip inline `style`, and
-restrict `class`. That changes how documents that use them render, so it is Ian's call.
+**Residual closed (Ian chose the strict option, 2026-10-13).** Author-written elements now lose
+`style` and `class` in `renderMarkdown`, through a DOMPurify `uponSanitizeAttribute` hook. This
+is what GitHub's sanitizer does. Markdown syntax never produces either attribute: table alignment
+is `align`, and marked was checked on tables, task lists, quotes, links and images. So only raw
+HTML renders differently, and README/README.ko say so under Known Limitations.
+
+The renderer's own markup keeps both attributes:
+- an element carrying this window's token (an alert's outer box);
+- everything inside a sealed block the renderer fills alone (`.code-wrapper`, `.mdv-latex`,
+  `pre.mermaid`, `.markdown-alert-title`), when the block carries the token.
+
+An alert body, raw HTML inside it included, is still author HTML. The frontmatter card has no
+author markup (values are escaped) and is sanitized separately, so it is untouched.
+
+Tests:
+- Unit tests: a clipping wrapper loses `style`/`class` while the genuine block inside keeps its
+  own; a forged `.mdv-latex` with a guessed token and a forged trust attribute both lose them;
+  KaTeX inline styles, alert classes and the mermaid placeholder survive; author HTML inside an
+  alert body is still stripped.
+- An Electron test: the clipping wrapper renders at least as tall as its code.
+- Breaking the hook failed all three unit tests. Removing the alert title's token failed two.
+- Accepting a sealed block by class alone failed **no** test. DOMPurify sanitizes ancestors
+  before descendants, so a forged block's class is already gone when its contents are checked.
+  The token check on sealed blocks is a second layer that today's ordering makes unobservable.
+
+What is left cannot clip part of a genuine block:
+- `hidden` and a closed `<details>` hide a whole subtree, and `innerText` leaves out text that is
+  not rendered;
+- `align`, `width` and `height` do not clip.
+
+Also left: bidi control characters in a fence's own text can display it in reordered form. The
+characters stay visible, and GitHub warns about this case. Info, not addressed here.
 
 Proposed step 3 (copy the fence source instead of `innerText`) was dropped. It would not stop the
 residual either, because the hidden line is in the fence itself.
@@ -313,9 +343,8 @@ Security (L3), as anti-tamper and runtime hardening.
 
 ## Next Steps
 
-1. **L1:** the forged-button vector is closed, because content commands need the per-window
-   trust marker. The residual, ancestor styling that hides part of a genuine block, waits for a
-   decision on stripping inline `style` and restricting `class` in document HTML.
+1. ~~**L1**~~ closed. Content commands need the per-window trust marker, and author HTML loses
+   `style` and `class`.
 2. **L2 (fuses):** add `build.electronFuses` turning off `runAsNode`,
    `enableNodeOptionsEnvironmentVariable` and `enableNodeCliInspectArguments`. Verify the re-signed
    binary launches from a clean `brew install`. Accept that packaged-build Playwright probes stop

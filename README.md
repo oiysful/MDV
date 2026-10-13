@@ -163,4 +163,5 @@ Current build outputs:
 - The Homebrew cask and all release builds target Apple Silicon (arm64) only; there is no Intel (x64) build.
 - Requires macOS 13 (Ventura) or later.
 - Math renders only inside `math` / `latex` code fences; inline `$…$` and `$$…$$` math in ordinary text is shown as plain text.
+- Raw HTML in a document loses its `style` and `class` attributes, as on GitHub, so inline colors or layout written that way are not shown. Presentational attributes such as `align` and `width` still apply.
 - Session restore persists only the last-focused window's state (file paths + active tab index + explorer root); multi-window session merging is out of scope for v1.
