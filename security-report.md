@@ -130,8 +130,20 @@ Tests:
   and MDV's own classes are.
 
 **Residual closed (Ian chose the strict option, 2026-10-13).** Author-written elements now lose
-`style` and `class` in `renderMarkdown`, through a DOMPurify `uponSanitizeAttribute` hook. This
-is what GitHub's sanitizer does. Markdown syntax never produces either attribute: table alignment
+`style` and `class` in `renderMarkdown`, through a DOMPurify `uponSanitizeAttribute` hook.
+
+**Correction, the same day.** The option was presented as "what GitHub's sanitizer does". That was
+not measured, and it is not what GitHub does. Measured afterwards:
+- GitHub's repository file view kept this repo's README icon at `width: 30%` and dropped
+  `display`, `margin`, `padding` and `border`.
+- GitHub's `/markdown` API (comments and issues) dropped every inline style.
+
+Ian then chose to keep an author image's `width` and `height`. That is the
+`authorImageSizeStyle` exception: only a bare length passes, with no `calc()`, `url()` or
+`!important`, and only on `<img>`. It does not reopen the residual, because an image holds no
+text to hide. Only `width` was observed on GitHub; `height` was not.
+
+Markdown syntax never produces either attribute: table alignment
 is `align`, and marked was checked on tables, task lists, quotes, links and images. So only raw
 HTML renders differently, and README/README.ko say so under Known Limitations.
 

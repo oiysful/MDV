@@ -348,6 +348,19 @@
   const authorStylingHooked = new WeakSet()
   let isRendererMarkupForActiveSanitize = null
 
+  // The one piece of author styling that survives: an image's size. An image holds no text, so its
+  // size cannot hide any. GitHub's repository view keeps an image's `width` as well; measured on
+  // this repo's README, which sizes its icon this way. Only a bare length passes: no calc(), url()
+  // or !important.
+  const AUTHOR_IMAGE_SIZE_RE = /^\s*(width|height)\s*:\s*(\d+(?:\.\d+)?(?:px|%|em|rem|vw|vh)?|auto)\s*$/i
+  function authorImageSizeStyle(style) {
+    return String(style).split(';')
+      .map(declaration => AUTHOR_IMAGE_SIZE_RE.exec(declaration))
+      .filter(Boolean)
+      .map(([, property, value]) => `${property.toLowerCase()}: ${value}`)
+      .join('; ')
+  }
+
   function createMarkdownController({ getRefs, markedLib, hljsLib, pathUtils, api, onShowModeButton, domPurify, mermaidLib, katexLib, onMermaidLoaded }) {
     let cachedHeadings = []
     let cachedTocLinks = []
@@ -371,7 +384,11 @@
       authorStylingHooked.add(purify)
       purify.addHook('uponSanitizeAttribute', (node, data) => {
         if (!isRendererMarkupForActiveSanitize) return
-        if ((data.attrName === 'style' || data.attrName === 'class') && !isRendererMarkupForActiveSanitize(node)) data.keepAttr = false
+        if (data.attrName !== 'style' && data.attrName !== 'class') return
+        if (isRendererMarkupForActiveSanitize(node)) return
+        const imageSize = data.attrName === 'style' && node.nodeName === 'IMG' ? authorImageSizeStyle(data.attrValue) : ''
+        if (imageSize) data.attrValue = imageSize
+        else data.keepAttr = false
       })
     }
     const getMermaidLib = () => mermaidLib || globalScope.mermaid
@@ -461,12 +478,12 @@
       imageDataUrlCache.delete(localPath)
     }
 
-    // Author-written elements lose `style` and `class`, the way GitHub's sanitizer drops them
-    // (security-report.md L1, residual). Otherwise a document could wrap a genuine code block in
-    // its own clipping box: a blank line ends the HTML block, so the fence inside still renders
-    // as a real block, and its copy button copies innerText, clipped lines included. Markdown
-    // syntax itself never produces either attribute (table alignment is `align`), so only raw
-    // HTML changes.
+    // Author-written elements lose `class` and inline `style`, except an image's size
+    // (authorImageSizeStyle; security-report.md L1, residual). Otherwise a document could wrap a
+    // genuine code block in its own clipping box: a blank line ends the HTML block, so the fence
+    // inside still renders as a real block, and its copy button copies innerText, clipped lines
+    // included. Markdown syntax itself never produces either attribute (table alignment is
+    // `align`), so only raw HTML changes.
     function renderMarkdown(text) {
       const html = markedLib.parse(text)
       isRendererMarkupForActiveSanitize = isRendererMarkup
