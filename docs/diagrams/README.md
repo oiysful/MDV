@@ -5,10 +5,10 @@ MDV의 구조를 설명하는 정적 다이어그램 5종. 각 HTML은 자체 �
 
 | 파일 | 타입 | 무엇을 보여주나 |
 |------|------|-----------------|
-| [mdv-architecture.html](./mdv-architecture.html) | architecture | 사용자 → 렌더러 셸 → preload 브리지 → Electron Main → 파일시스템. 렌더러 샌드박스와 메인 프로세스 특권 영역을 경계로 표시 |
-| [mdv-release.html](./mdv-release.html) | workflow | develop의 버전 bump → `develop` → `main` PR(릴리스 결정) → `v*` 태그 → 빌드·Release 게시 → Homebrew 탭 bump. 릴리스 노트 수동 작성과 `HOMEBREW_TAP_TOKEN` 없을 때의 예외 경로 포함 |
+| [mdv-architecture.html](./mdv-architecture.html) | architecture | 사용자 → 렌더러 셸 → preload 브리지 → Electron Main → 파일시스템. 렌더러 샌드박스와 메인 프로세스 특권 영역을 경계로 표시. 카드에 UI 언어 결정 경로(`--mdv-locale=` → `api.locale`)와 배포 앱 fuse |
+| [mdv-release.html](./mdv-release.html) | workflow | develop의 버전 bump → `develop` → `main` PR(릴리스 결정) → `v*` 태그 → 빌드·Release 게시 → Homebrew 탭 bump. 릴리스 노트 수동 작성과 `HOMEBREW_TAP_TOKEN` 없을 때의 예외 경로 포함. 빌드의 fuse 끄기 · ad-hoc 재서명과 설치 뒤 fuse 확인 |
 | [mdv-open-and-watch.html](./mdv-open-and-watch.html) | sequence | 열기 클릭부터 `file-opened`, `watch-file` 구독, 외부 `change` 감지와 `savedContent` 메아리 판별까지 |
-| [mdv-render-pipeline.html](./mdv-render-pipeline.html) | dataflow | 원본 → 전처리(프론트매터 · 로컬 이미지 · 지연 로드) → marked → DOMPurify → `#content` + TOC + 탭 스냅샷 |
+| [mdv-render-pipeline.html](./mdv-render-pipeline.html) | dataflow | 원본 → 전처리(프론트매터 · 로컬 이미지 · 지연 로드) → marked → DOMPurify → `#content` + TOC + 탭 스냅샷. 작성자 HTML의 `class`·`style` 제거, 신뢰 토큰 있는 명령 버튼, 목차 강조 즉시 재계산 |
 | [mdv-tab-lifecycle.html](./mdv-tab-lifecycle.html) | lifecycle | 탭 문서 상태: 열림 → 편집 중 → 저장 완료, 백그라운드 대기와 저장 충돌 복구 루프 |
 
 ## 출처

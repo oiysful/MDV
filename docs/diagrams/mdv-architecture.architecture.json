@@ -48,7 +48,7 @@
         150,
         64
       ],
-      "tag": "data-command 바인딩"
+      "tag": "신뢰 토큰 있는 명령만"
     },
     {
       "id": "markdown",
@@ -91,7 +91,8 @@
       "size": [
         150,
         64
-      ]
+      ],
+      "tag": "ready 때 언어 결정"
     },
     {
       "id": "watcher",
@@ -244,7 +245,8 @@
       "items": [
         "contextIsolation: true, nodeIntegration: false, sandbox: true — 렌더러는 window.api를 통해서만 특권 기능에 닿는다",
         "preload는 ipcMain.handle 채널을 그대로 비추는 얇은 브리지이며 업무 로직을 담지 않는다",
-        "createWindow의 will-navigate / setWindowOpenHandler 가드가 원격 페이지의 브리지 상속을 막는다"
+        "createWindow의 will-navigate / setWindowOpenHandler 가드가 원격 페이지의 브리지 상속을 막는다",
+        "배포 앱은 fuse 세 개(runAsNode · NODE_OPTIONS · --inspect)를 꺼 앱 바이너리를 일반 Node 로 쓸 수 없다"
       ]
     },
     {
@@ -262,7 +264,17 @@
       "items": [
         "파일 감시는 경로별 { watcher, subscribers } 맵 — 마지막 구독자가 떠날 때만 닫힌다",
         "디렉터리 감시는 깊이 1단계·경로 수 상한, /Volumes 아래 경로는 kqueue 대신 poll 백엔드로 감시한다",
-        "session.json은 빈 세션으로 절대 덮어쓰지 않고, update-check.json은 릴리스 확인을 24시간에 한 번으로 묶는다"
+        "session.json은 빈 세션으로 절대 덮어쓰지 않고, update-check.json은 릴리스 확인을 24시간에 한 번으로 묶는다",
+        "userData 는 ~/Library/Application Support/mdv 로 고정 — 앱 이름이 MDV 로 바뀌어도 세션이 이어진다"
+      ]
+    },
+    {
+      "dot": "violet",
+      "title": "UI 언어 (한국어 · 영어)",
+      "items": [
+        "언어는 앱이 ready 될 때 한 번 정하고, 실행 중에는 바꾸지 않는다",
+        "main 이 --mdv-locale= 인자로 넘기고, preload 가 en 만 허용해 api.locale 로 노출한다 — 나머지는 ko",
+        "문구 표는 renderer/i18n.js 하나이고, main 의 메뉴도 같은 파일을 require 한다"
       ]
     }
   ]

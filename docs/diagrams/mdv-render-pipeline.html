@@ -5117,8 +5117,8 @@ OTHER DEALINGS IN THE FONT SOFTWARE.
         <text data-detail="fine" x="530" y="289" class="t-backend" font-size="7" text-anchor="middle">알림 인용 확장</text>
         </g>
 
-        <g id="node-purify" data-node-id="purify" data-node-label="DOMPurify" tabindex="0" role="button" aria-label="Focus DOMPurify, 삽입 직전 정화, 04 / 정화" aria-pressed="false" data-node-kind="security" data-node-sublabel="삽입 직전 정화" data-node-tag="mXSS 방어" data-node-context="04 / 정화">
-          <title>DOMPurify · 삽입 직전 정화 · 04 / 정화 · mXSS 방어</title>
+        <g id="node-purify" data-node-id="purify" data-node-label="DOMPurify" tabindex="0" role="button" aria-label="Focus DOMPurify, 삽입 직전 정화, 04 / 정화" aria-pressed="false" data-node-kind="security" data-node-sublabel="삽입 직전 정화" data-node-tag="작성자 class · style 제거" data-node-context="04 / 정화">
+          <title>DOMPurify · 삽입 직전 정화 · 04 / 정화 · 작성자 class · style 제거</title>
           <rect x="689" y="242" width="112" height="58" rx="6" class="c-mask"/>
           <rect x="689" y="242" width="112" height="58" rx="6" class="c-security" stroke-width="1.5"/>
           <g aria-hidden="true" data-semantic-sigil="security" class="semantic-sigil s-security" transform="translate(695 248) scale(0.6875)">
@@ -5127,21 +5127,22 @@ OTHER DEALINGS IN THE FONT SOFTWARE.
           </g>
           <text data-node-label="" data-detail-anchor="" x="745" y="263" class="t-primary" font-size="10" font-weight="600" text-anchor="middle">DOMPurify</text>
           <text data-detail="context" x="745" y="279" class="t-muted" font-size="7" text-anchor="middle">삽입 직전 정화</text>
-        <text data-detail="fine" x="745" y="289" class="t-security" font-size="7" text-anchor="middle">mXSS 방어</text>
+        <text data-detail="fine" x="745" y="289" class="t-security" font-size="6.9" text-anchor="middle">작성자 class · style 제거</text>
         </g>
 
-        <g id="node-toc" data-node-id="toc" data-node-label="TOC · 문서 통계" tabindex="0" role="button" aria-label="Focus TOC · 문서 통계, 스크롤스파이, 05 / 화면과 캐시" aria-pressed="false" data-node-kind="frontend" data-node-sublabel="스크롤스파이" data-node-context="05 / 화면과 캐시">
-          <title>TOC · 문서 통계 · 스크롤스파이 · 05 / 화면과 캐시</title>
+        <g id="node-toc" data-node-id="toc" data-node-label="TOC · 문서 통계" tabindex="0" role="button" aria-label="Focus TOC · 문서 통계, 스크롤스파이, 05 / 화면과 캐시" aria-pressed="false" data-node-kind="frontend" data-node-sublabel="스크롤스파이" data-node-tag="다시 만들면 즉시 강조" data-node-context="05 / 화면과 캐시">
+          <title>TOC · 문서 통계 · 스크롤스파이 · 05 / 화면과 캐시 · 다시 만들면 즉시 강조</title>
           <rect x="904" y="128" width="112" height="58" rx="6" class="c-mask"/>
           <rect x="904" y="128" width="112" height="58" rx="6" class="c-frontend" stroke-width="1.5"/>
-          <g aria-hidden="true" data-semantic-sigil="frontend" class="semantic-sigil s-frontend" transform="translate(910 134) scale(0.6875)">
+          <g aria-hidden="true" data-semantic-sigil="frontend" class="semantic-sigil s-frontend" transform="translate(910 129) scale(0.375)">
             <rect x="2" y="3" width="12" height="10" rx="2"/>
             <path d="M2 6.5h12"/>
             <circle cx="4.1" cy="4.8" r=".7" class="sigil-fill"/>
             <circle cx="6.3" cy="4.8" r=".7" class="sigil-fill"/>
           </g>
-          <text data-node-label="" data-detail-anchor="" x="960" y="159" class="t-primary" font-size="10" font-weight="600" text-anchor="middle">TOC · 문서 통계</text>
-          <text data-detail="context" x="960" y="172.4" class="t-muted" font-size="7" text-anchor="middle">스크롤스파이</text>
+          <text data-node-label="" data-detail-anchor="" x="960" y="149" class="t-primary" font-size="10" font-weight="600" text-anchor="middle">TOC · 문서 통계</text>
+          <text data-detail="context" x="960" y="165" class="t-muted" font-size="7" text-anchor="middle">스크롤스파이</text>
+        <text data-detail="fine" x="960" y="175" class="t-frontend" font-size="7" text-anchor="middle">다시 만들면 즉시 강조</text>
         </g>
 
         <g id="node-content" data-node-id="content" data-node-label="#content DOM" tabindex="0" role="button" aria-label="Focus #content DOM, 미리보기 본문, 05 / 화면과 캐시" aria-pressed="false" data-node-kind="frontend" data-node-sublabel="미리보기 본문" data-node-context="05 / 화면과 캐시">
@@ -5431,6 +5432,8 @@ OTHER DEALINGS IN THE FONT SOFTWARE.
         </div>
         <ul>
           <li>marked 결과는 DOMPurify 를 지나기 전에는 화면에 닿지 않는다</li>
+          <li>작성자가 쓴 HTML 의 class · style 은 지운다 — img 의 width · height 만 남긴다</li>
+          <li>복사 같은 명령 버튼은 창마다 만든 신뢰 토큰이 붙은 앱 버튼만 동작한다</li>
           <li>DOMPurify 는 값에 &gt; 가 든 속성을 지운다 — mermaid 원본은 base64 로 넣는다</li>
           <li>프론트매터 표도 따로 정화되며, 값 5000개 · 10만 자 · 깊이 100 예산이 별칭 폭증을 막는다</li>
         </ul>
@@ -5444,6 +5447,7 @@ OTHER DEALINGS IN THE FONT SOFTWARE.
         <ul>
           <li>탭 스냅샷은 이미지 base64 를 뺀 HTML 만 담는다 — 원본은 공용 캐시에 한 번만</li>
           <li>TOC 는 미리보기에서 offsetTop, 순수 소스 모드에서는 줄 위치를 쓴다</li>
+          <li>TOC 를 다시 만들거나 스냅샷에서 되살리면 강조를 그 자리에서 다시 정한다 — 스크롤을 기다리지 않는다</li>
           <li>세션 복원 때는 활성 탭만 즉시 그리고 나머지는 전환할 때 그린다</li>
         </ul>
       </div>
