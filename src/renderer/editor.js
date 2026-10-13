@@ -292,7 +292,8 @@
     let cancelPendingSidebarTransitionListener = null
     // The reading position toggleSplitView just applied, kept until #sidebar's width transition
     // settles: #content keeps reflowing for that whole span, so a position applied right after
-    // the mode switch drifts, and the settle handler below applies it once more.
+    // the mode switch drifts, and the settle handler below applies it once more. It records the
+    // tab, mode and scroller it was applied to, so the re-apply can tell nothing moved since.
     let pendingSplitReadingPosition = null
 
     function getSourceMode() {
@@ -350,7 +351,12 @@
           markdownController?.refreshHeadingOffsets()
           const pending = pendingSplitReadingPosition
           pendingSplitReadingPosition = null
-          applyToggleReadingPosition(pending)
+          // Only into the same tab and mode, and only if nothing (a tab switch, Cmd+U, the reader
+          // scrolling) has moved the scroller since: otherwise the old position would land on
+          // another document, or override the reader.
+          if (pending && pending.tab === getActiveTab() && pending.sourceMode === sourceMode && pending.splitMode === splitMode && pending.scroller.scrollTop === pending.scrollTop) {
+            applyToggleReadingPosition(pending.captured)
+          }
         }
         sidebarEl.addEventListener('transitionend', onSidebarTransitionSettled)
         sidebarEl.addEventListener('transitioncancel', onSidebarTransitionSettled)
@@ -655,7 +661,11 @@
     // started one (see pendingSplitReadingPosition).
     function applySplitReadingPosition(captured) {
       applyToggleReadingPosition(captured)
-      pendingSplitReadingPosition = cancelPendingSidebarTransitionListener ? captured : null
+      pendingSplitReadingPosition = null
+      if (!captured || !cancelPendingSidebarTransitionListener) return
+      const refs = getRefs()
+      const scroller = sourceMode ? refs.scrollArea : getPreviewScroller(refs)
+      pendingSplitReadingPosition = { captured, tab: getActiveTab(), sourceMode, splitMode, scroller, scrollTop: scroller.scrollTop }
     }
 
     async function toggleSplitView() {
