@@ -8,8 +8,9 @@ const { launchApp, closeApp, stubCloseDialog, getCloseDialogCalls } = require('.
 const {
   BASIC_MD, ROOT_MD, EXPLORER_DIR,
   stubOpenDialog, stubSaveDialog, createTempMarkdown,
-  emitFileOpened, emitRendererCommand, clickApplicationMenuItem,
+  emitFileOpened, emitFileChanged, emitRendererCommand, clickApplicationMenuItem,
   stubOpenExternal, getOpenExternalCalls,
+  armSidebarTransitionWatch, waitForSidebarTransition,
 } = require('./helpers/smoke-helpers')
 
 test('clicking a local markdown link opens the target as a new tab', async () => {
@@ -497,6 +498,212 @@ test('TOC scrollspy keeps updating from the #content pane while split view is op
       href => document.querySelector('#toc-list a.active')?.getAttribute('href') === href,
       expectedHref,
     )
+  } finally {
+    await closeApp(electronApp)
+    await fs.rm(tempDir, { recursive: true, force: true })
+  }
+})
+
+// The three tests below pin one rule: whenever the TOC is rebuilt or restored, its highlight
+// already matches the scroll position, instead of waiting for the next scroll event -- the only
+// thing that refreshes it (app-shell.js). 9aaa5d5 fixed that for the source-mode rebuild (the
+// test above); buildToc() and hydrateFromDom() had the same shape. The bug only shows when no
+// scroll follows the trigger, because an incidental scroll repairs the highlight by itself. The
+// tests-only commit's CI (563d70b) confirmed that condition on all three paths: zero scroll
+// events, and a wrong highlight. The scroll counts are now reported (t.diagnostic), not asserted.
+// Asserting them turned an incidental scroll into a red CI even where the highlight was right,
+// as happened once on the tab-restore test. The unit tests in tests/unit/markdown.test.js pin
+// the mechanism deterministically.
+
+async function writeTocDoc(tempDir, name, title) {
+  const docPath = path.join(tempDir, `${name}.md`)
+  const sections = Array.from({ length: 12 }, (_, i) => `## Section ${i + 1}\n\n${'Paragraph text for scroll height. '.repeat(40)}`).join('\n\n')
+  const text = `# ${title}\n\n${sections}\n`
+  await fs.writeFile(docPath, text, 'utf-8')
+  return { docPath, text }
+}
+
+// Counts scroll events on both scroll containers (#content scrolls on its own in split view)
+// from this call on. The listeners go in once per page; later calls only zero the counts.
+async function resetScrollCounts(page) {
+  await page.evaluate(() => {
+    if (!window.__mdvScrollCountsInstalled) {
+      window.__mdvScrollCountsInstalled = true
+      document.getElementById('scroll-area').addEventListener('scroll', () => { window.__mdvScrollCounts.scrollArea += 1 })
+      document.getElementById('content').addEventListener('scroll', () => { window.__mdvScrollCounts.content += 1 })
+    }
+    window.__mdvScrollCounts = { scrollArea: 0, content: 0 }
+  })
+}
+
+// A tab restore sets scrollTop in a frame of its own, the scroll event lands a frame later, and
+// app-shell.js refreshes the highlight a frame after that -- let all of it settle before reading.
+async function waitFrames(page, count = 4) {
+  await page.evaluate(n => new Promise(resolve => {
+    const step = left => (left === 0 ? resolve() : requestAnimationFrame(() => step(left - 1)))
+    step(n)
+  }), count)
+}
+
+// What the TOC shows now, next to what refreshTocActive() would pick for the current position
+// from live layout: same rule (heading top - 24 <= scrollTop), same base (#scroll-area's
+// offsetTop), same container outside split view (#scroll-area).
+async function readTocHighlight(page) {
+  return page.evaluate(() => {
+    const scrollArea = document.getElementById('scroll-area')
+    let expected = null
+    for (const heading of document.querySelectorAll('#content h1,#content h2,#content h3')) {
+      if (heading.offsetTop - scrollArea.offsetTop - 24 <= scrollArea.scrollTop) expected = `#${heading.id}`
+    }
+    return {
+      active: Array.from(document.querySelectorAll('#toc-list a.active'), anchor => anchor.getAttribute('href')),
+      expected,
+      scrollTop: scrollArea.scrollTop,
+      scrolls: { ...window.__mdvScrollCounts },
+    }
+  })
+}
+
+// Parks #scroll-area halfway between heading `index` and the next one, far from both boundaries,
+// so cached offsets and live layout can't disagree about which section it is in. The wait checks
+// membership rather than the first lit entry, so it also completes when a stale entry stays lit.
+async function parkBetweenHeadings(page, index) {
+  const href = await page.evaluate(i => {
+    const scrollArea = document.getElementById('scroll-area')
+    const headings = document.querySelectorAll('#content h1,#content h2,#content h3')
+    const top = heading => heading.offsetTop - scrollArea.offsetTop
+    scrollArea.scrollTop = (top(headings[i]) + top(headings[i + 1])) / 2
+    return `#${headings[i].id}`
+  }, index)
+  await page.waitForFunction(
+    expected => Array.from(document.querySelectorAll('#toc-list a.active')).some(anchor => anchor.getAttribute('href') === expected),
+    href,
+  )
+  return href
+}
+
+// buildToc() replaces every link, so a tagged link disappearing means the list was rebuilt.
+async function tagTocLinks(page) {
+  await page.evaluate(() => document.querySelectorAll('#toc-list a').forEach(anchor => { anchor.dataset.mdvStale = '1' }))
+}
+
+async function waitForTocRebuild(page) {
+  await page.waitForFunction(() => document.querySelectorAll('#toc-list a').length > 0 && !document.querySelector('#toc-list a[data-mdv-stale]'))
+}
+
+test('TOC highlight stays in step after an external-change reload that leaves the scroll position alone', async t => {
+  const tempDir = await fs.mkdtemp(path.join(os.tmpdir(), 'mdv-smoke-toc-reload-'))
+  const { docPath, text } = await writeTocDoc(tempDir, 'toc-reload', 'TOC Reload Doc')
+
+  const { electronApp, page } = await launchApp()
+  try {
+    await page.waitForSelector('#empty')
+    await stubOpenDialog(electronApp, [docPath])
+    await emitRendererCommand(electronApp, 'openFile')
+    await page.waitForFunction(() => document.title === 'toc-reload')
+    await page.waitForFunction(() => document.querySelectorAll('#toc-list a').length === 13)
+    await parkBetweenHeadings(page, 6) // Section 6
+
+    await resetScrollCounts(page)
+    await tagTocLinks(page)
+    // Same headings plus one line at the very end: nothing above the parked position moves, so
+    // nothing scrolls. Written to disk as well, so the watcher's own event carries the same text.
+    const changed = `${text}\nAppended by an external editor.\n`
+    await fs.writeFile(docPath, changed, 'utf-8')
+    await emitFileChanged(electronApp, { path: docPath, content: changed, event: 'change' })
+    await waitForTocRebuild(page)
+    await waitFrames(page)
+
+    const state = await readTocHighlight(page)
+    t.diagnostic(`after reload: ${JSON.stringify(state)}`)
+    assert.equal(state.expected, '#section-6', `precondition, still in Section 6: ${JSON.stringify(state)}`)
+    assert.deepEqual(state.active, ['#section-6'], JSON.stringify(state))
+  } finally {
+    await closeApp(electronApp)
+    await fs.rm(tempDir, { recursive: true, force: true })
+  }
+})
+
+test('TOC highlight stays in step after leaving split view once the preview re-rendered in it', async t => {
+  const tempDir = await fs.mkdtemp(path.join(os.tmpdir(), 'mdv-smoke-toc-split-exit-'))
+  const { docPath, text } = await writeTocDoc(tempDir, 'toc-split-exit', 'TOC Split Exit Doc')
+
+  const { electronApp, page } = await launchApp()
+  try {
+    await page.waitForSelector('#empty')
+    await stubOpenDialog(electronApp, [docPath])
+    await emitRendererCommand(electronApp, 'openFile')
+    await page.waitForFunction(() => document.title === 'toc-split-exit')
+    await page.waitForFunction(() => document.querySelectorAll('#toc-list a').length === 13)
+    // Parked in Section 6 so the highlight from before split view differs from the one wanted
+    // after it: leaving split view lands #scroll-area at the top (measured 2026-10-13, scrollTop
+    // 0), where the first heading is the one to light.
+    await parkBetweenHeadings(page, 6) // Section 6
+
+    await armSidebarTransitionWatch(page)
+    await emitRendererCommand(electronApp, 'toggleSplitView')
+    await page.waitForFunction(() => document.getElementById('scroll-area').classList.contains('split-mode'))
+    await waitForSidebarTransition(page)
+
+    // Typing re-renders the split preview (app.js renderSplitPreview -> render -> buildToc) while
+    // the sidebar, and the TOC in it, is force-closed (plan 05).
+    await tagTocLinks(page)
+    await page.locator('#source-editor').fill(`${text}\nTyped in split view.\n`)
+    await waitForTocRebuild(page)
+
+    await resetScrollCounts(page)
+    await armSidebarTransitionWatch(page)
+    await emitRendererCommand(electronApp, 'toggleSplitView')
+    await page.waitForFunction(() => !document.getElementById('scroll-area').classList.contains('split-mode'))
+    await waitForSidebarTransition(page)
+    await waitFrames(page)
+
+    const state = await readTocHighlight(page)
+    t.diagnostic(`after leaving split view: ${JSON.stringify(state)}`)
+    assert.notEqual(state.expected, null, `precondition, a heading is due to be lit where leaving split view landed: ${JSON.stringify(state)}`)
+    assert.deepEqual(state.active, [state.expected], JSON.stringify(state))
+  } finally {
+    await closeApp(electronApp)
+    await fs.rm(tempDir, { recursive: true, force: true })
+  }
+})
+
+test('switching back to a tab keeps a single TOC highlight when no scroll follows the restore', async t => {
+  const tempDir = await fs.mkdtemp(path.join(os.tmpdir(), 'mdv-smoke-toc-tabs-'))
+  const first = await writeTocDoc(tempDir, 'toc-tab-a', 'TOC Tab A')
+  const second = await writeTocDoc(tempDir, 'toc-tab-b', 'TOC Tab B')
+
+  const { electronApp, page } = await launchApp()
+  try {
+    await page.waitForSelector('#empty')
+    await stubOpenDialog(electronApp, [first.docPath])
+    await emitRendererCommand(electronApp, 'openFile')
+    await page.waitForFunction(() => document.title === 'toc-tab-a')
+    await page.waitForFunction(() => document.querySelectorAll('#toc-list a').length === 13)
+    await parkBetweenHeadings(page, 3) // Section 3
+    const parkedTop = await page.evaluate(() => document.getElementById('scroll-area').scrollTop)
+
+    await stubOpenDialog(electronApp, [second.docPath])
+    await emitRendererCommand(electronApp, 'openFile')
+    await page.waitForFunction(() => document.title === 'toc-tab-b')
+    await page.waitForFunction(() => document.querySelector('#toc-list a')?.getAttribute('href') === '#toc-tab-b')
+    // Same layout, same position: switching back finds #scroll-area already where tab A left
+    // it, so the restore's own scrollTop write changes nothing and fires no scroll event.
+    await page.evaluate(top => { document.getElementById('scroll-area').scrollTop = top }, parkedTop)
+    await page.waitForFunction(() => document.querySelector('#toc-list a.active')?.getAttribute('href') === '#section-3')
+
+    await resetScrollCounts(page)
+    await page.locator('#tab-list .file-tab-name', { hasText: 'toc-tab-a' }).click()
+    await page.waitForFunction(() => document.title === 'toc-tab-a')
+    await waitFrames(page)
+    const restored = await readTocHighlight(page)
+    t.diagnostic(`after switching back: ${JSON.stringify(restored)}`)
+
+    await parkBetweenHeadings(page, 8) // Section 8
+    await waitFrames(page)
+    const moved = await readTocHighlight(page)
+    t.diagnostic(`after scrolling to Section 8: ${JSON.stringify(moved)}`)
+    assert.deepEqual(moved.active, ['#section-8'], JSON.stringify({ restored, moved }))
   } finally {
     await closeApp(electronApp)
     await fs.rm(tempDir, { recursive: true, force: true })

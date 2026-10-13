@@ -8,16 +8,9 @@ const { launchApp, closeApp, stubCloseDialog, getCloseDialogCalls } = require('.
 const {
   BASIC_MD, ROOT_MD, EXPLORER_DIR,
   stubOpenDialog, stubSaveDialog, createTempMarkdown,
-  emitFileOpened, emitRendererCommand, clickApplicationMenuItem,
+  emitFileOpened, emitFileChanged, emitRendererCommand, clickApplicationMenuItem,
   stubOpenExternal, getOpenExternalCalls,
 } = require('./helpers/smoke-helpers')
-
-async function emitFileChanged(electronApp, payload) {
-  await electronApp.evaluate(async ({ BrowserWindow }, nextPayload) => {
-    const win = BrowserWindow.getAllWindows()[0]
-    win.webContents.send('file-changed', nextPayload)
-  }, payload)
-}
 
 test('external file changes reload clean tabs and prompt before clobbering dirty edits', async () => {
   const { path: tempMarkdown, cleanup } = await createTempMarkdown(BASIC_MD, 'watched-source.md')
