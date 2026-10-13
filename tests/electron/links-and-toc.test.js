@@ -632,6 +632,9 @@ test('TOC highlight stays in step after leaving split view once the preview re-r
     await emitRendererCommand(electronApp, 'openFile')
     await page.waitForFunction(() => document.title === 'toc-split-exit')
     await page.waitForFunction(() => document.querySelectorAll('#toc-list a').length === 13)
+    // Parked in Section 6 so the highlight from before split view differs from the one wanted
+    // after it: leaving split view lands #scroll-area at the top (measured 2026-10-13, scrollTop
+    // 0), where the first heading is the one to light.
     await parkBetweenHeadings(page, 6) // Section 6
 
     await armSidebarTransitionWatch(page)
@@ -655,7 +658,7 @@ test('TOC highlight stays in step after leaving split view once the preview re-r
     const state = await readTocHighlight(page)
     t.diagnostic(`after leaving split view: ${JSON.stringify(state)}`)
     assert.deepEqual(state.scrolls, { scrollArea: 0, content: 0 }, `precondition, nothing scrolled: ${JSON.stringify(state)}`)
-    assert.notEqual(state.expected, null, `precondition, parked below the first heading: ${JSON.stringify(state)}`)
+    assert.notEqual(state.expected, null, `precondition, a heading is due to be lit where leaving split view landed: ${JSON.stringify(state)}`)
     assert.deepEqual(state.active, [state.expected], JSON.stringify(state))
   } finally {
     await closeApp(electronApp)
