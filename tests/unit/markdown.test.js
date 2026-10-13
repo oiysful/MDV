@@ -789,6 +789,20 @@ test('hydrateFromDom falls back to async IPC on a cold cache and converges', asy
   }
 })
 
+// A render that leaves the scroll position alone fires no scroll event, so the TOC must light its
+// entry itself (the Electron tests in links-and-toc.test.js pin this against real layout).
+test('render lights a TOC entry without waiting for a scroll event', async () => {
+  const h = makeSnapshotHarness()
+  try {
+    await h.controller.render('# Doc\n\n## First\n\n## Second\n', 'doc.md', null)
+    // jsdom has no layout: every cached heading top is 0, so scrollTop 0 picks the last heading.
+    const active = Array.from(h.refs.tocList.querySelectorAll('a.active'), anchor => anchor.getAttribute('href'))
+    assert.deepEqual(active, ['#second'])
+  } finally {
+    h.restore()
+  }
+})
+
 // A tab restore puts the TOC markup back exactly as it was captured, `class="active"` included.
 // The next refresh has to leave one entry lit, not light a second one beside the restored one.
 test('hydrateFromDom leaves a single TOC highlight after the next refresh', async () => {
@@ -796,8 +810,9 @@ test('hydrateFromDom leaves a single TOC highlight after the next refresh', asyn
   try {
     await h.controller.render('# Doc\n\n## First\n\n## Second\n', 'doc.md', null)
     const contentSnapshot = h.controller.captureSnapshotHTML()
-    // Captured while scrolled to the top, with the first entry lit.
-    h.refs.tocList.querySelector('a').classList.add('active')
+    // Captured while scrolled to the top, with the first entry lit and nothing else.
+    const anchors = Array.from(h.refs.tocList.querySelectorAll('a'))
+    anchors.forEach(anchor => anchor.classList.toggle('active', anchor === anchors[0]))
     const tocSnapshot = h.refs.tocList.innerHTML
 
     h.controller.hydrateFromDom(contentSnapshot, tocSnapshot, 'body text')

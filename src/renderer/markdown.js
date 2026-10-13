@@ -835,6 +835,18 @@
       cachedTocLinks = Array.from(list.querySelectorAll('a')).map(anchor => ({ el: anchor, href: anchor.getAttribute('href') }))
       prevTocLink = null
       prevTocHref = ''
+      // Re-derive the highlight now, same as rebuildSourceModeToc() below: a reload or re-render
+      // that leaves the scroll position alone fires no scroll event, and the TOC would show no
+      // active entry until the user scrolled. In pure source mode #content is hidden (every
+      // offsetTop is 0) and applySourceMode() rebuilds the TOC from the source text right after.
+      if (!refs.scrollArea.classList.contains('source-mode')) refreshTocActive(currentTocScrollTop())
+    }
+
+    // The container the TOC highlight tracks: #content scrolls on its own in split view
+    // (app-shell.js listens to both), #scroll-area everywhere else.
+    function currentTocScrollTop() {
+      const refs = getRefs()
+      return refs.scrollArea.classList.contains('split-mode') ? refs.content.scrollTop : refs.scrollArea.scrollTop
     }
 
     // Pure-source-mode counterpart to buildToc(): #content is hidden and stale while typing
@@ -980,8 +992,11 @@
       updateStats(text)
       cachedHeadings = Array.from(refs.content.querySelectorAll('h1,h2,h3')).map(heading => ({ el: heading, id: heading.id, top: heading.offsetTop - refs.scrollArea.offsetTop }))
       cachedTocLinks = Array.from(refs.tocList.querySelectorAll('a')).map(anchor => ({ el: anchor, href: anchor.getAttribute('href') }))
-      prevTocLink = null
-      prevTocHref = ''
+      // The restored markup still carries the highlight it was captured with, for the scroll
+      // position the restore puts back. Adopt it, so the next refresh moves that highlight
+      // instead of lighting a second entry beside one it never knew about.
+      prevTocLink = refs.tocList.querySelector('a.active')
+      prevTocHref = prevTocLink ? prevTocLink.getAttribute('href') : ''
     }
 
     function resetEmptyStats() {
@@ -1029,6 +1044,10 @@
         if (!heading.el) return
         heading.top = heading.el.offsetTop - refs.scrollArea.offsetTop
       })
+      // New offsets can move the highlight without any scroll: leaving split view reflows
+      // #content back to full width (and buildToc() may have rebuilt the list while the TOC was
+      // hidden there), and so does a window resize.
+      refreshTocActive(currentTocScrollTop())
     }
 
     // Reading-position anchors for the Cmd+U toggle (editor.js, plan 28 step 3). Preview tops
