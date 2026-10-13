@@ -80,6 +80,13 @@ async function emitFileOpened(electronApp, payload) {
   }, payload)
 }
 
+async function emitFileChanged(electronApp, payload) {
+  await electronApp.evaluate(async ({ BrowserWindow }, nextPayload) => {
+    const win = BrowserWindow.getAllWindows()[0]
+    win.webContents.send('file-changed', nextPayload)
+  }, payload)
+}
+
 async function emitUpdateAvailable(electronApp, payload) {
   await electronApp.evaluate(async ({ BrowserWindow }, nextPayload) => {
     const win = BrowserWindow.getAllWindows()[0]
@@ -205,6 +212,7 @@ module.exports = {
   getOpenExternalCalls,
   createTempMarkdown,
   emitFileOpened,
+  emitFileChanged,
   emitUpdateAvailable,
   emitFullScreenChanged,
   emitRendererCommand,

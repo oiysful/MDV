@@ -789,6 +789,28 @@ test('hydrateFromDom falls back to async IPC on a cold cache and converges', asy
   }
 })
 
+// A tab restore puts the TOC markup back exactly as it was captured, `class="active"` included.
+// The next refresh has to leave one entry lit, not light a second one beside the restored one.
+test('hydrateFromDom leaves a single TOC highlight after the next refresh', async () => {
+  const h = makeSnapshotHarness()
+  try {
+    await h.controller.render('# Doc\n\n## First\n\n## Second\n', 'doc.md', null)
+    const contentSnapshot = h.controller.captureSnapshotHTML()
+    // Captured while scrolled to the top, with the first entry lit.
+    h.refs.tocList.querySelector('a').classList.add('active')
+    const tocSnapshot = h.refs.tocList.innerHTML
+
+    h.controller.hydrateFromDom(contentSnapshot, tocSnapshot, 'body text')
+    // jsdom has no layout: every cached heading top is 0, so any scrollTop picks the last heading.
+    h.controller.refreshTocActive(0)
+
+    const active = Array.from(h.refs.tocList.querySelectorAll('a.active'), anchor => anchor.getAttribute('href'))
+    assert.deepEqual(active, ['#second'])
+  } finally {
+    h.restore()
+  }
+})
+
 test('render collapses frontmatter into a meta card and keeps it out of the TOC and stats', async () => {
   const h = makeSnapshotHarness()
   try {
