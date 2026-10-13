@@ -22,7 +22,7 @@
    gh release edit vX.Y.Z --notes-file <노트-파일-경로.md>
    ```
 6. 이어서 워크플로는 `scripts/update-homebrew-tap.sh`를 실행해서 [`oiysful/homebrew-tap`](https://github.com/oiysful/homebrew-tap)의 `Casks/mdv.rb`에서 `version`/`sha256`을 올리고 그 변경을 `main`에 푸시합니다. 이렇게 해서 `brew upgrade --cask oiysful/tap/mdv`가 새 릴리스를 받아가게 됩니다. 이 단계에는 `HOMEBREW_TAP_TOKEN` 저장소 시크릿이 필요합니다(아래 [필요한 시크릿](#필요한-시크릿) 참고). 설정되어 있지 않으면 이 단계는 건너뛰어지고 cask는 수동으로 올려야 합니다.
-7. 릴리스를 확인합니다: GitHub Release 페이지에서 `MDV-*.zip`, `SHA256SUMS`, 릴리스 노트를 확인하고, `oiysful/homebrew-tap`의 `Casks/mdv.rb`에 새 버전이 반영되었는지 확인합니다.
+7. 릴리스를 확인합니다: GitHub Release 페이지에서 `MDV-*.zip`, `SHA256SUMS`, 릴리스 노트를 확인하고, `oiysful/homebrew-tap`의 `Casks/mdv.rb`에 새 버전이 반영되었는지 확인합니다. `brew upgrade` 뒤에는 저장소에서 `npx --no-install @electron/fuses read --app /Applications/MDV.app`를 실행해 봅니다. `RunAsNode`, `EnableNodeOptionsEnvironmentVariable`, `EnableNodeCliInspectArguments`가 Disabled로 나오고 앱이 실행되어야 합니다. fuse 변경과 ad-hoc 재서명이 CI에서 처음 실행되는 곳이 릴리스 빌드이기 때문입니다.
 
 ## 필요한 시크릿
 
