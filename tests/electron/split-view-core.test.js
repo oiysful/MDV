@@ -410,12 +410,24 @@ test('leaving split view with the sidebar already closed keeps the preview pane\
 })
 
 // Cmd+U from split view goes to pure source mode, where #content is hidden -- the TOC highlight
-// is then the source-line position (rebuildSourceModeToc), so that is what this reads.
+// is then the source-line position (rebuildSourceModeToc), so that is what this reads. Not
+// writeTocDoc's document: each of its paragraphs is one long source line, so unwrapped source is
+// short and its maximum scroll stops with Section 6 at the top (CI, 2026-10-13, scrollTop 484).
+// Short lines keep the source tall enough to bring Section 9 to the top.
 test('leaving split view with Cmd+U keeps the preview pane\'s reading position in source mode', async () => {
   const tempDir = await fs.mkdtemp(path.join(os.tmpdir(), 'mdv-smoke-split-exit-source-'))
   const { electronApp, page } = await launchApp()
   try {
-    await openSectionDoc(electronApp, page, tempDir, 'split-exit-source')
+    const sections = Array.from({ length: 12 }, (_, i) => {
+      const body = Array.from({ length: 20 }, (_, j) => `Line ${j + 1} of section ${i + 1}.`).join('\n\n')
+      return `## Section ${i + 1}\n\n${body}`
+    }).join('\n\n')
+    const docPath = path.join(tempDir, 'split-exit-source.md')
+    await fs.writeFile(docPath, `# Split Position Doc\n\n${sections}\n`, 'utf-8')
+    await page.waitForSelector('#empty')
+    await stubOpenDialog(electronApp, [docPath])
+    await emitRendererCommand(electronApp, 'openFile')
+    await page.waitForFunction(() => document.title === 'split-exit-source')
     await enterSplitView(electronApp, page)
     await parkPane(page, 'content', 9) // Section 9
 
@@ -428,10 +440,14 @@ test('leaving split view with Cmd+U keeps the preview pane\'s reading position i
     await waitForSidebarTransition(page)
     await waitFrames(page)
 
-    const state = await page.evaluate(() => ({
-      active: document.querySelector('#toc-list a.active')?.getAttribute('href') ?? null,
-      scrollTop: document.getElementById('scroll-area').scrollTop,
-    }))
+    const state = await page.evaluate(() => {
+      const scrollArea = document.getElementById('scroll-area')
+      return {
+        active: document.querySelector('#toc-list a.active')?.getAttribute('href') ?? null,
+        scrollTop: scrollArea.scrollTop,
+        maxScroll: scrollArea.scrollHeight - scrollArea.clientHeight,
+      }
+    })
     assert.equal(state.active, '#section-9', JSON.stringify(state))
   } finally {
     await closeApp(electronApp)
