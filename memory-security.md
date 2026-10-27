@@ -88,6 +88,18 @@ accepted_risks: []
 # dep; the only offered fix is `--force` downgrading mermaid to 10.8.0, so not taken. Revisit with mermaid 12.
 # CORRECTED 2026-10-12: the advisory is LOW, not moderate (gh api), and does not apply -- mermaid.min.js bundles
 # katex 0.16.47 but calls renderToString without `trust`, and the bypass needs prior prototype pollution.
+# 2026-10-27 RESOLVED (fix/npm-audit-2026-10-27): advisories published after develop's last green run (10-13) turned
+# the gate red -- first seen on PR #58 (Node 26), would have hit develop on its next run regardless. Narrow bumps, all
+# past min-release-age=3: dompurify ^3.4.11 -> ^3.4.17 (critical: GHSA-cg2g-xh64-v4q7, GHSA-mrv2-3pqr-j5jr,
+# GHSA-c6gr-qvv4-5v3f), electron ^44.7.0 -> ^44.9.3 (high: GHSA-jr5w-w6x2-84p9, eMudhra intermediates; bundled Node
+# now 24.22.0), and `npm update undici fast-uri` (undici high, fast-uri moderate; build/test trees only). Plain
+# `npm audit fix` not used -- see the 10-12 entry. `npm audit` high/critical: 0; the katex low above remains.
+# Exposure before the bump looked nil: sanitizeHtml() calls sanitize(html) with the default config, and none of the
+# three DOMPurify paths (SAFE_FOR_TEMPLATES, IN_PLACE, PARSER_MEDIA_TYPE=application/xhtml+xml) is set -- an
+# option-name grep, not a reachability proof. Bumped anyway.
+# NOT fixed, invisible to npm audit: mermaid.min.js bundles its own DOMPurify 3.4.12 (inside <=3.4.16). Its call
+# sites pass none of the three options either (each key appears only in DOMPurify's own config parser), and MDV runs
+# mermaid with securityLevel 'strict'. 11.17.2 is the last 11.x, so this rides with mermaid 12, like the katex note.
 
 ## Never Ask Again
 # Rule IDs to skip confirmation for (already reviewed)
