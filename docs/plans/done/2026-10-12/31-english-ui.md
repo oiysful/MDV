@@ -1,7 +1,7 @@
 # 31. 영어 UI 추가(한국어 + 영어) — 계획 12 재검토
 
 ## 상태
-**구현 완료(2026-10-12).** 결과와 계획에서 달라진 점은 §9에 있다. 앱 이름 소문자 수정은 먼저 PR #51로 머지했다. 아래 §1–§8은 조사 당시 기록이다(방향 결정 2026-10-12, Ian: 권장안 — 시스템 언어를 따르고, 한국어·영어 외 시스템 언어는 영어). [계획 12](../../12-i18n-feasibility-assessment.md)(2026-08-12,
+**구현 완료(2026-10-12).** 결과와 계획에서 달라진 점은 §9에 있다. 앱 이름 소문자 수정은 먼저 PR #51로 머지했다. 아래 §1–§8은 조사 당시 기록이다(방향 결정 2026-10-12, Ian: 권장안 — 시스템 언어를 따르고, 한국어·영어 외 시스템 언어는 영어). [계획 12](./12-i18n-feasibility-assessment.md)(2026-08-12,
 전면 i18n 타당성)를 "영어 하나만 추가"로 범위를 좁혀 다시 본 보고서다. 앱 코드는 바꾸지 않았다.
 
 **이 문서에서 "영어만 추가"의 뜻**: 지금의 한국어 UI는 문구 하나 바꾸지 않고 그대로 기본값으로 둔다. 거기에
@@ -240,4 +240,4 @@ develop(`f754d4e`, Electron 44.7.0)에서 `electron-builder --dir --mac`으로 �
 - Electron 문서 — `app.getLocale()`/`app.getPreferredSystemLanguages()`(macOS는 `[NSLocale preferredLanguages]`),
   메뉴 `role` 항목에서 macOS는 `label`·`accelerator`만 반영
 - electron-builder 문서 — `electronLanguages`(유지할 Electron 로캘 목록, `en`은 `en-US`·`en-GB` 등을 모두 유지)
-- [계획 12](../../12-i18n-feasibility-assessment.md)
+- [계획 12](./12-i18n-feasibility-assessment.md)
