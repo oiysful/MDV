@@ -502,6 +502,35 @@ test('a document cannot clip a genuine code block with its own styled wrapper', 
   }
 })
 
+// On screen a long code line scrolls inside its block; on paper there is no scrolling, so the
+// print stylesheet must wrap it. Before 2026-11-10 it kept `white-space: pre` + `overflow-x: auto`
+// and the PDF showed a clipped line with a scrollbar (reported by Ian on the 1.5.0 manual check).
+test('a long code line wraps in print instead of being clipped behind a scrollbar', async () => {
+  const { electronApp, page } = await launchApp()
+
+  try {
+    await emitFileOpened(electronApp, {
+      content: ['```bash', `echo "${'x'.repeat(400)}"`, '```', ''].join('\n'),
+      filename: 'print-long-line.md',
+      path: '/tmp/mdv-print-long-line.md',
+    })
+    await page.waitForSelector('#content .code-wrapper code.hljs')
+    const measure = () => page.evaluate(() => {
+      const code = document.querySelector('#content .code-wrapper code.hljs')
+      const style = getComputedStyle(code)
+      return { scrollWidth: code.scrollWidth, clientWidth: code.clientWidth, whiteSpace: style.whiteSpace, overflowX: style.overflowX }
+    })
+    const screen = await measure()
+    assert.ok(screen.scrollWidth > screen.clientWidth + 1, `the screen should keep the horizontal scroll: ${JSON.stringify(screen)}`)
+    await page.emulateMedia({ media: 'print' })
+    const print = await measure()
+    assert.ok(print.scrollWidth <= print.clientWidth + 1, `print clips the long line: ${JSON.stringify(print)}`)
+    assert.notEqual(print.overflowX, 'auto', `print still scrolls: ${JSON.stringify(print)}`)
+  } finally {
+    await closeApp(electronApp)
+  }
+})
+
 // The empty state's open buttons sit inside #content, so they go through the same trust check
 // as a document's. They come from two places, index.html's static markup at boot and
 // showEmptyState after the last tab closes, and each must be marked as the app's own.

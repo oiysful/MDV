@@ -1334,6 +1334,9 @@ kbd {
     --code-label: #57606a;
   }
   .code-wrapper { box-shadow: none !important; border: 1px solid #d0d7de; }
+  /* Paper cannot scroll: wrap long code lines instead of clipping them behind a scrollbar.
+     Screen keeps `white-space: pre` + horizontal scroll (#content pre code above). */
+  #content pre code { white-space: pre-wrap; overflow-wrap: anywhere; overflow: visible; }
   #content tr:hover td { background: transparent !important; }
   /* Paper width is fixed, so a wide horizontal frontmatter table gets cut off. Re-flow the same
      DOM as a vertical key | value table: thead/tbody/tr vanish into the grid, and column-wise
