@@ -101,6 +101,13 @@ accepted_risks: []
 # NOT fixed, invisible to npm audit: mermaid.min.js bundles its own DOMPurify 3.4.12 (inside <=3.4.16). Its call
 # sites pass none of the three options either (each key appears only in DOMPurify's own config parser), and MDV runs
 # mermaid with securityLevel 'strict'. 11.17.2 is the last 11.x, so this rides with mermaid 12, like the katex note.
+# 2026-11-10 DELIBERATE COOLDOWN BYPASS (plan 24, chore/marked-18.2): marked 18.2.0 was published 2026-11-09T23:05Z
+# and installed ~3 days early with `npm i --min-release-age=0 marked@^18.2.0`, on Ian's explicit instruction to make
+# 18.2.0 the plan 24 baseline. .npmrc was not touched. Not a security fix -- a dependency upgrade (marked 9.1.6 is
+# the 2023 line). Measured: `npm ci` with the committed .npmrc installs the locked 18.2.0 without complaint, so the
+# cooldown guards version *resolution* (`npm install`/`update`/`audit fix`) only, not lockfile installs -- CI is not
+# blocked, and the lockfile is where a too-new version lands unnoticed. Re-check after the cooldown passes
+# (2026-11-12 23:05Z): `npm view marked@18.2.0` still published, same integrity as package-lock.json.
 
 ## Never Ask Again
 # Rule IDs to skip confirmation for (already reviewed)
