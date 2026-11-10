@@ -1,19 +1,18 @@
 # 34. 다음 릴리스(v1.5.0 제안) 전 점검 목록
 
 ## 상태
-**진행 중(2026-11-10).** 버전은 1.5.0으로 정했다. 보안 감사(96/100)와 README 제한사항은 끝났다. 남은 것은 다음 넷이다.
-- PR #63 머지
+**진행 중(2026-11-10).** 버전은 1.5.0으로 정했다. 보안 감사(96/100), README 제한사항, Electron 44.10.2(PR #63)는 끝났다. 남은 것은 다음 셋이다.
 - marked 쿨다운 뒤 확인(11-12 23:05Z 이후)
 - 앱 직접 확인
-- 릴리스 노트
+- 릴리스 노트 검토(초안 있음)
 
 그다음 릴리스 당일 단계로 넘어간다.
-v1.4.0 이후 develop에 커밋 62개(문서 제외 약 25개)가 쌓였다. 영어 UI(feat)가 들어 있어 **1.5.0**을 제안한다.
+v1.4.0 이후 develop에는 영어 UI(feat), 보안 수정, marked 18·mermaid 12·Electron 44.10.2 업그레이드가 쌓였다.
 
 ## 릴리스 전
 - [x] **버전 결정**: 1.5.0 (Ian, 2026-11-10)
 - [ ] **marked 18.2.0 쿨다운 뒤 확인**(2026-11-12 23:05Z 이후): `npm view marked@18.2.0`이 그대로 게시돼 있고 integrity가 `package-lock.json`과 같은지 본다. 쿨다운은 Ian 결정으로 우회했다(`memory-security.md`).
-- [ ] **Electron 44.9.3 → 44.10.2**(2026-11-03 공개, 쿨다운 지남): Chromium 152.0.7977.169와 업스트림 백포트, asar 처리 수정이 들어 있다. Ian 결정으로 올린다. PR #63은 CI(Electron 132/132)와 리뷰 봇을 통과했고 머지를 기다린다.
+- [x] **Electron 44.9.3 → 44.10.2**(2026-11-03 공개, 쿨다운 지남): Chromium 152.0.7977.169와 업스트림 백포트, asar 처리 수정이 들어 있다. Ian 결정으로 올렸다. PR #63은 CI(Electron 132/132)와 리뷰 봇을 통과한 뒤 머지됐다(`66f734e`).
 - [x] **보안 재점검**: 2026-11-10 전체 감사 결과 **96/100**, 결함 0건(`security-report.md`). 감사 대상은 marked 18 렌더 경로(이스케이프가 렌더러로 옮겨감)와 mermaid 12 strict 모드였고, 둘 다 적대적 입력으로 확인했다. R1은 accepted risk로 기록했다.
 - [x] `npm audit`: high·critical 0(2026-11-10 확인). minimatch moderate는 빌드 전용이다.
 - [ ] **앱 직접 확인**(`install:local`, develop을 체크아웃한 상태에서):
@@ -24,7 +23,7 @@ v1.4.0 이후 develop에 커밋 62개(문서 제외 약 25개)가 쌓였다. 영
   - KaTeX 펜스, 분할 보기 들어가기·나오기, ⌘U 위치, 목차 강조
   - 로컬 빌드 fuse: `npx --no-install @electron/fuses read --app /Applications/MDV.app`
 - [x] **README·README.ko 알려진 제한사항**: R1·R4·기호로 끝나는 굵게의 GitHub 차이를 모두 적었다(Ian 결정, `fa8f94d`). 영어 README 스크린샷은 계속 보류한다.
-- [ ] **릴리스 노트 초안**: v1.4.0 형식(한국어, Upgrade·새 기능·개선·버그 수정·보안)을 따른다. 넣을 것은 다음과 같다.
+- [ ] **릴리스 노트 초안**: [34-release-notes-v1.5.0.md](./34-release-notes-v1.5.0.md)에 써 두었다(2026-11-10). Ian이 검토해야 한다. 릴리스 당일 `gh release edit v1.5.0 --notes-file docs/plans/34-release-notes-v1.5.0.md`로 붙인다. 형식은 v1.4.0을 따랐다(한국어, Upgrade·새 기능·개선·버그 수정·보안·알려진 제한사항). 다룬 내용은 다음과 같다.
   - 영어 UI
   - L1(복사 버튼 위조)·L2(fuse)
   - DOMPurify critical·Electron high
