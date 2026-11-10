@@ -536,7 +536,7 @@ test('mermaid fence renders an actual diagram, redraws on a theme toggle, and re
     await clickApplicationMenuItem(electronApp, '파일', '파일 열기…')
     await page.waitForFunction(() => document.title === 'mermaid')
 
-    await page.waitForFunction(() => !!document.querySelector('#content .mermaid svg'), { timeout: 8000 })
+    await page.waitForFunction(() => !!document.querySelector('#content .mermaid[data-mdv-rendered] svg'), { timeout: 8000 })
     const mermaidNode = page.locator('#content .mermaid')
     assert.equal(await mermaidNode.getAttribute('data-processed'), 'true')
     assert.ok(await mermaidNode.getAttribute('data-mermaid-src'), 'raw source is preserved for a future theme re-render')
@@ -549,7 +549,9 @@ test('mermaid fence renders an actual diagram, redraws on a theme toggle, and re
     await page.evaluate(() => document.querySelector('[data-command="toggleTheme"]').click())
     await page.waitForFunction(() => document.documentElement.getAttribute('data-theme') === 'dark')
     await page.waitForFunction(
-      prevId => document.querySelector('#content .mermaid svg')?.id !== prevId,
+      // The drawn mark is cleared while the theme re-run is in flight, so this only passes once
+      // the redrawn (not the half-built) svg is in place (plan 33).
+      prevId => { const svg = document.querySelector('#content .mermaid[data-mdv-rendered] svg'); return !!svg && svg.id !== prevId },
       svgIdInitial,
       { timeout: 5000 }
     )
@@ -590,7 +592,7 @@ test('mermaid diagram keeps its intrinsic size after a source-mode round trip (p
     await stubOpenDialog(electronApp, [MERMAID_MD])
     await clickApplicationMenuItem(electronApp, '파일', '파일 열기…')
     await page.waitForFunction(() => document.title === 'mermaid')
-    await page.waitForFunction(() => !!document.querySelector('#content .mermaid svg'), { timeout: 8000 })
+    await page.waitForFunction(() => !!document.querySelector('#content .mermaid[data-mdv-rendered] svg'), { timeout: 8000 })
 
     const intrinsicWidth = () => page.evaluate(() =>
       parseFloat(document.querySelector('#content .mermaid svg').style.maxWidth))
@@ -617,7 +619,7 @@ test('mermaid diagram keeps its intrinsic size after a source-mode round trip (p
     await page.waitForFunction(() => document.getElementById('scroll-area').classList.contains('source-mode'))
     await emitRendererCommand(electronApp, 'toggleSource')
     await page.waitForFunction(() => !document.getElementById('scroll-area').classList.contains('source-mode'))
-    await page.waitForFunction(() => !!document.querySelector('#content .mermaid svg'), { timeout: 8000 })
+    await page.waitForFunction(() => !!document.querySelector('#content .mermaid[data-mdv-rendered] svg'), { timeout: 8000 })
 
     const after = await intrinsicWidth()
     assert.ok(after > 50, `diagram must not collapse to a near-zero width after the round trip, got ${after}`)
@@ -643,7 +645,7 @@ test('print/PDF export temporarily redraws a dark-mode mermaid diagram and hljs 
     await stubOpenDialog(electronApp, [MERMAID_MD])
     await clickApplicationMenuItem(electronApp, '파일', '파일 열기…')
     await page.waitForFunction(() => document.title === 'mermaid')
-    await page.waitForFunction(() => !!document.querySelector('#content .mermaid svg'), { timeout: 8000 })
+    await page.waitForFunction(() => !!document.querySelector('#content .mermaid[data-mdv-rendered] svg'), { timeout: 8000 })
 
     const styleFingerprint = () => page.evaluate(() => {
       const svg = document.querySelector('#content .mermaid svg')
@@ -656,7 +658,7 @@ test('print/PDF export temporarily redraws a dark-mode mermaid diagram and hljs 
     const setTheme = async target => {
       for (let i = 0; i < 3 && (await page.evaluate(() => document.documentElement.getAttribute('data-theme'))) !== target; i++) {
         await page.evaluate(() => document.querySelector('[data-command="toggleTheme"]').click())
-        await page.waitForFunction(() => !!document.querySelector('#content .mermaid svg'))
+        await page.waitForFunction(() => !!document.querySelector('#content .mermaid[data-mdv-rendered] svg'))
       }
       assert.equal(await page.evaluate(() => document.documentElement.getAttribute('data-theme')), target)
     }

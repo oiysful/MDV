@@ -108,6 +108,11 @@ accepted_risks: []
 # cooldown guards version *resolution* (`npm install`/`update`/`audit fix`) only, not lockfile installs -- CI is not
 # blocked, and the lockfile is where a too-new version lands unnoticed. Re-check after the cooldown passes
 # (2026-11-12 23:05Z): `npm view marked@18.2.0` still published, same integrity as package-lock.json.
+# 2026-11-10 CLOSED by mermaid 12.3.0 (plan 33, PR #61): both mermaid-bundled notes above -- the 10-27 "bundled DOMPurify
+# 3.4.12" note and the 10-12 katex <=0.18.1 low. 12.3.0's mermaid.min.js carries DOMPurify 3.4.17 and KaTeX 0.18.11 (version
+# strings read from the bundle); plain `npm audit` low 0. chevrotain 13 no longer pulls lodash-es 4.17.23, so no override
+# was added; lodash-es 4.18.1 stays in the tree via dagre-d3-es (patched). New in the bundle: ELK -- elkjs 0.12.1
+# (EPL-2.0 OR GPL-3.0-or-later) is a production dependency and ships its LICENSE.md inside the app.
 
 ## Never Ask Again
 # Rule IDs to skip confirmation for (already reviewed)
