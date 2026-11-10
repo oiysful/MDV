@@ -151,7 +151,7 @@ marked 9가 첫 커밋의 CDN 주소(2023년 말 시점 버전)에서 굳어진 
 - playwright 1.61–1.63 릴리스: https://github.com/microsoft/playwright/releases
 - Context7 `/electron/electron` — `docs/breaking-changes.md` "v43: Dialog defaultPath now defaults to Downloads directory"(마지막 경로 기억 패턴 예시 포함), `docs/api/dialog.md`
 - Context7 `/mermaid-js/mermaid` — `docs/syntax/flowchart.md` "Default theme, look and layout (v12.0.0+)", `docs/intro/syntax-reference.md` (`layout: dagre`, `look: classic`)
-- marked: 계획 24 (`docs/plans/24-marked-upgrade.md`)
+- marked: 계획 24 (`docs/plans/done/2026-11-10/24-marked-upgrade.md`)
 
 ## 착수 결과 (2026-10-02)
 

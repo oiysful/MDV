@@ -280,10 +280,14 @@ macOS 가상 GPU(paravirtual)·호스티드 러너의 프레임 멈춤이 고쳐
 
 ---
 
+## 결정 (Ian, 2026-11-10)
+- (a)·(b): **틀린 주석만 고친다**(PR #62, 동작 변경 없음). 리스너·`overflow-anchor` 수정은 하지 않는다.
+- (c): 결정 없음. 실험은 Electron 45 PR에 묶는 제안으로 남는다.
+- (d): 앱은 그대로 둔다. 테스트 쪽 `waitFrames` 보강은 하지 않았다(진단만 보고하는 테스트라 CI에 영향 없음).
+
 ## 후속(이 문서 밖)
-- 메모리 `mdv-split-sidebar-transition-gotchas` 1번(추정 → 확인)과 3번·5번(원인·실측)을 이 문서로 갱신한다.
-- AGENTS.md NOTES의 Electron 44 항목에 (c)의 조사 결과("44.10.x·45.x 노트에 관련 수정 없음, 2026-11-10")와 `[mdv-gpu-status]`
-  baseline 유효성 공백을 한 줄 덧붙인다.
+- (완료, 2026-11-10) 메모리 `mdv-split-sidebar-transition-gotchas` 1번(추정 → 확인)과 3번·5번(원인·실측)을 이 문서로 갱신했다.
+- (완료, 2026-11-10, `edc15d5`) AGENTS.md NOTES의 Electron 44 항목에 (c)의 조사 결과와 `[mdv-gpu-status]` baseline 유효성 공백을 덧붙였다.
 - (a)·(b)를 고치기로 하면 한 PR로 묶는다. 순서는 다음과 같다. 1000px·0.25s·60ms 재토글의 경계 스윕 테스트(지금 코드에서 12/24 실패)와
   비율 단위 위치 단언(지금 코드에서 들어갈 때 65.5px)을 먼저 빨강으로 확인하고, 그다음 수정한다.
 

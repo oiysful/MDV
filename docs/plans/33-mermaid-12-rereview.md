@@ -1,9 +1,8 @@
 # 33. mermaid 11.17.2 → 12.3.0 재검토
 
 ## 상태
-**재검토 완료 (2026-11-10, Ian 지시). 보류 사유는 풀렸다. 외관·레이아웃 결정만 남았다.** 앱 코드는 바꾸지 않았다.
-측정용 **Draft PR #61**(`chore/mermaid-12`)은 MDV 설정을 그대로 두고 12의 기본값으로 렌더한다.
-결정이 나면 그 설정과 아래 "착수 시 할 일"을 같은 PR에 더한다.
+**결정(Ian, 2026-11-10): A안 — 12 기본값(ELK + neo)을 그대로 쓴다.** **PR #61**(`chore/mermaid-12`)이 12.3.0으로 올리고 MDV 설정은 바꾸지 않는다.
+착수하면서 렌더 완료 표시 `data-mdv-rendered`를 더했다(아래 5절). develop(marked 18.2.0)을 병합한 상태에서 unit 303, controller 13이 통과한다. 머지를 기다린다.
 
 계획 25(`done/2026-10-02/25-dependency-upgrade-survey.md` §3)가 mermaid 12.0.0을 보류한 이유는 둘이었다.
 첫째, `chevrotain ~11.1.2`가 취약한 `lodash-es` 4.17.23을 끌어와 override가 필요했다(→ 1절).
@@ -74,7 +73,11 @@ zip은 `ditto -c -k`로 만든 근사값이다.
 - unit 296/296, controller 13/13 (로컬). jsdom이라 mermaid를 실제로 그리지 않는다.
 - CI Electron(PR #61, run 42761944936): **132/132 통과**(207.8초). mermaid 테스트 넷(렌더·테마 재그리기·스냅숏
   재사용, 소스 모드 왕복 후 크기, 인쇄 팔레트, 툴팁 스크롤)이 12 기본값으로 통과했다. CI는 `--disable-gpu`로 돈다.
-- 계획 25 §3의 경고는 이번 통과로 사라지지 않는다. 한 번 통과한 것으로 대기 조건이 충분하다는 증거가 되지는 않는다. `boot-and-render.test.js`의 mermaid 테스트들은 `#content .mermaid svg`가
+- 계획 25 §3의 경고는 이번 통과로 사라지지 않는다. 한 번 통과한 것으로 대기 조건이 충분하다는 증거가 되지는 않는다.
+- **착수 후 실측(2026-11-10)**: 숨긴 창에서 10회씩 쟀다. **11·12 모두** `.mermaid` 안에 빈 SVG(`viewBox` 없음, `.node` 0개)가 3~13ms에 먼저
+  생기고, `run()`이 끝날 때(11은 67ms, 12는 152ms) 완성된다(10/10회). 그래서 "SVG가 있다"는 완료 신호가 아니고, 12에서는 그 틈이 세 배다.
+  `runMermaidBlocks`가 `run()`이 끝난 뒤(오류 포함) 각 노드에 `data-mdv-rendered`를 붙이고, `rerenderMermaidTheme`가 다시 그리기 전에
+  지운다. Electron 대기 6곳을 `.mermaid[data-mdv-rendered] svg`로 바꿨다. 단위 테스트는 수정 전 코드에서 3건 실패하는 것을 확인했다(`3159c5e`). `boot-and-render.test.js`의 mermaid 테스트들은 `#content .mermaid svg`가
   생기기만 기다린 뒤 크기를 잰다(539·593·620·646행). ELK 렌더는 비동기라, SVG가 생긴 시점에 `viewBox`가
   아직 없을 수 있다. 착수할 때 이 대기를 MDV 자신의 완료 신호로 바꾼다.
 
@@ -87,10 +90,10 @@ zip은 `ditto -c -k`로 만든 근사값이다.
    - 비교 페이지를 보고 정한다.
 
 ## 착수 시 할 일
-- 고른 설정을 `MERMAID_BASE_CONFIG`에 넣는다. (C)라면 마인드맵 예외를 어떻게 둘지 정한다.
-- Electron mermaid 테스트의 대기를 렌더 완료 신호로 바꾼다(5절).
-- `memory-security.md`의 mermaid 관련 두 메모를 닫고, ELK 라이선스 고지 필요 여부를 적는다.
-- 릴리스 전 `install:local`로 다이어그램과 인쇄(PDF)를 직접 확인한다.
+- (해당 없음) A안이라 `MERMAID_BASE_CONFIG`는 그대로다.
+- (완료, `3159c5e`) Electron mermaid 테스트의 대기를 렌더 완료 표시로 바꿨다(5절).
+- (완료, `2f9701c`) `memory-security.md`의 mermaid 관련 두 메모를 닫았다. ELK 고지는 따로 할 일이 없다. `elkjs` 0.12.1이 운영 의존성이고 `LICENSE.md`를 함께 배포하므로 앱 안에 들어간다.
+- (남음) 릴리스 전 `install:local`로 다이어그램·다크 테마·인쇄(PDF)를 직접 확인한다. 비교 페이지는 라이트 테마만 쟀다.
 
 ## 재현 방법
 - 프로브: Electron 메인 스크립트 하나가 `show: false` 창 **하나**를 만든다. 각 변형마다 같은 빈 페이지를 다시
