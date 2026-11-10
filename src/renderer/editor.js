@@ -282,18 +282,21 @@
     // closed by us" (either not in split mode, or it was already closed on entry).
     let sidebarOpenBeforeSplit = null
     // Detaches the in-flight sidebar-width transition listener from setSplitMode below, if
-    // one is still pending. Toggling split mode twice within the .25s transition window
-    // (index.html) replaces the running transition with a new one -- the browser fires
-    // transitioncancel for the superseded transition, not transitionend, so a stale listener
-    // from the first toggle would otherwise linger until the *next* completed transition and
-    // fire an extra, redundant refreshHeadingOffsets() alongside the live one. Detaching it
-    // up front keeps each transition to exactly one recompute instead of a growing pile of
-    // harmless-but-wasteful no-ops.
+    // one is still pending (split toggled twice within the .25s transition, index.html).
+    // Measured (plan 32 (a)): this does not leave the *new* listener in charge. The superseded
+    // transition's transitioncancel is delivered a frame later, after the new listener is
+    // attached, so the new listener receives it and detaches itself; the reversed transition's
+    // transitionend then reaches no listener. A rapid double toggle therefore skips the final
+    // refreshHeadingOffsets(). At the default 1280px window that changes nothing; at 1000px
+    // the cached heading offsets stay up to ~289px stale until the next layout change.
     let cancelPendingSidebarTransitionListener = null
     // The reading position toggleSplitView just applied, kept until #sidebar's width transition
-    // settles: #content keeps reflowing for that whole span, so a position applied right after
-    // the mode switch drifts, and the settle handler below applies it once more. It records the
-    // tab, mode and scroller it was applied to, so the re-apply can tell nothing moved since.
+    // settles, so the settle handler below can apply it once more. It records the tab, mode and
+    // scroller it was applied to, so the re-apply can tell nothing moved since. Measured
+    // (plan 32 (b)): when the transition changes #content's line wrapping, scroll anchoring
+    // moves scrollTop during it, so the scrollTop check below fails and the re-apply is skipped;
+    // when it does not, the re-apply runs but moves nothing. Scroll anchoring is what holds the
+    // position in practice (within a few lines; 65.5px on entering split at 1280px).
     let pendingSplitReadingPosition = null
 
     function getSourceMode() {
@@ -345,8 +348,9 @@
           sidebarEl.removeEventListener('transitionend', onSidebarTransitionSettled)
           sidebarEl.removeEventListener('transitioncancel', onSidebarTransitionSettled)
           cancelPendingSidebarTransitionListener = null
-          // transitioncancel means this transition got superseded (toggled again mid-flight)
-          // -- the newer call's own listener will do the recompute once it settles.
+          // A transitioncancel here is normally the *previous* call's superseded transition,
+          // arriving after this listener was attached (plan 32 (a)) -- so returning here skips
+          // the recompute for the rapid-toggle case; see cancelPendingSidebarTransitionListener.
           if (event.type !== 'transitionend') return
           markdownController?.refreshHeadingOffsets()
           const pending = pendingSplitReadingPosition
