@@ -2,7 +2,7 @@
 
 ## 상태
 **결정(Ian, 2026-11-10): A안 — 12 기본값(ELK + neo)을 그대로 쓴다.** **PR #61**(`chore/mermaid-12`)이 12.3.0으로 올리고 MDV 설정은 바꾸지 않는다.
-착수하면서 렌더 완료 표시 `data-mdv-rendered`를 더했다(아래 5절). develop(marked 18.2.0)을 병합한 상태에서 unit 303, controller 13이 통과한다. 머지를 기다린다.
+착수하면서 렌더 완료 표시 `data-mdv-rendered`를 더했다(아래 5절). **2026-11-10 머지(`5540555`).** marked 18.2.0과 합친 상태에서 unit 303, controller 13, Electron 132(CI run 42764898384)가 통과했다. 릴리스 전에 앱을 직접 확인하는 일만 남았다.
 
 계획 25(`done/2026-10-02/25-dependency-upgrade-survey.md` §3)가 mermaid 12.0.0을 보류한 이유는 둘이었다.
 첫째, `chevrotain ~11.1.2`가 취약한 `lodash-es` 4.17.23을 끌어와 override가 필요했다(→ 1절).
@@ -111,4 +111,4 @@ zip은 `ditto -c -k`로 만든 근사값이다.
 
 ## 출처
 - mermaid 릴리스 노트 12.1.0·12.2.0·12.3.0: https://github.com/mermaid-js/mermaid/releases
-- 계획 25 §3: [done/2026-10-02/25-dependency-upgrade-survey.md](./done/2026-10-02/25-dependency-upgrade-survey.md)
+- 계획 25 §3: [done/2026-10-02/25-dependency-upgrade-survey.md](../2026-10-02/25-dependency-upgrade-survey.md)

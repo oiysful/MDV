@@ -1,7 +1,7 @@
 # 32. 알려졌지만 확인도 수정도 안 된 네 가지 — 분할 보기 사이드바 전환 둘, CI 둘
 
 ## 상태
-**조사 완료(2026-11-10). 앱·테스트 코드는 바꾸지 않았다.** 아래 수치는 develop `94b6a3f`(Electron 44.9.3, Node 26.13.0,
+**조사 완료(2026-11-10). 앱·테스트 코드는 바꾸지 않았다.** Ian 결정에 따라 (a)·(b)의 틀린 주석만 PR #62(`b8e8bdd`)로 고쳤다. 아래 "결정"을 보라. (c)의 실험 제안은 Electron 45로 올릴 때 다시 본다. 아래 수치는 develop `94b6a3f`(Electron 44.9.3, Node 26.13.0,
 macOS 로컬, 별도 표시가 없으면 하드웨어 GPU, 기본 창 1280×800)에서 프로브로 잰 것이다. Electron은 Playwright(`tests/electron/helpers/launch.js`)로만
 **20회** 띄웠고(직렬), 키 입력 합성·화면 캡처는 쓰지 않았다. `src/`에 넣은 진단 코드는 프로브가 끝난 뒤 `git checkout -- src/`로 되돌렸다.
 프로브 코드의 핵심은 맨 아래 "재현 방법"에 옮겨 두었다.
@@ -385,4 +385,4 @@ gh run view --job <job-id> --log | grep -m3 -E "Image:|Version:"        # 러너
 - 선례: https://github.com/eduardtomas1/inertia/pull/520
 - 웹 검색(약한 정황): Parallels 포럼의 Apple Paravirtualized Graphics 게스트 멈춤 글 https://forum.parallels.com/posts/905544/
 - 메모리: `mdv-split-sidebar-transition-gotchas`, `mdv-electron44-ci-stall`, `mdv-worktree-electron-test-gotchas`, `mdv-verify-repro-conditions`
-- 이전 계획: [28](./done/2026-10-12/28-pre-release-1.4.0.md)(멈춤 실험 설계·판정 규칙의 원형), 05(분할 보기에서 사이드바 강제 숨김)
+- 이전 계획: [28](../2026-10-12/28-pre-release-1.4.0.md)(멈춤 실험 설계·판정 규칙의 원형), 05(분할 보기에서 사이드바 강제 숨김)
