@@ -21,7 +21,7 @@ v1.4.0 이후 develop에는 영어 UI(feat), 보안 수정, marked 18·mermaid 1
   - 임시 프로필로 숨김 실행: 메인·GPU·유틸리티·렌더러 2개가 떴다
   - 앱 버전 표시는 아직 1.4.0이다(릴리스 1단계에서 올린다)
 
-  **아래 화면 확인은 Ian이 한다.**
+  **아래 화면 확인은 Ian이 한다.** 한 번에 확인하려면 [`docs/release-check/manual-check.md`](../release-check/manual-check.md)를 MDV로 연다. 절마다 기대 결과와 체크박스가 있다.
   - 영어/한국어 UI(macOS 앱별 언어)
   - 긴 문서, 표, Alert, 물결 취소선, 코드 블럭 복사, 들여쓴 코드, 작업 목록, 프론트매터
   - marked 18의 알려진 한계 확인: R4(`- a⏎      c⏎  e`), 기호로 끝나는 굵게 + 조사
