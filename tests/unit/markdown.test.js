@@ -1104,6 +1104,37 @@ test('render runs mermaid.run() on a mermaid fence and waits for it before resol
     assert.equal(node.getAttribute('data-processed'), 'true')
     assert.equal(mermaidLib.calls.length, 1)
     assert.equal(mermaidLib.calls[0].length, 1)
+    assert.ok(node.hasAttribute('data-mdv-rendered'), 'MDV marks the node drawn once mermaid.run() resolved')
+  } finally {
+    h.restore()
+  }
+})
+
+test('data-mdv-rendered appears only after mermaid.run() resolves, not when its svg first shows up', async () => {
+  // Real mermaid (11 and 12) inserts an empty <svg> (no viewBox, no nodes) into the node
+  // within a few ms and only finishes it when run() resolves -- 54ms later on 11, ~150ms on
+  // 12's ELK layout (plan 33). So "an svg exists" is not a completion signal; this attribute is.
+  let release
+  const gate = new Promise(resolve => { release = resolve })
+  let sawAttrWhileRunning = null
+  const mermaidLib = {
+    run: async ({ nodes }) => {
+      nodes.forEach(node => { node.innerHTML = '<svg data-partial="true"></svg>' })
+      await gate
+      sawAttrWhileRunning = nodes.map(node => node.hasAttribute('data-mdv-rendered'))
+      nodes.forEach(node => { node.innerHTML = '<svg data-fake-mermaid-output="true"></svg>'; node.setAttribute('data-processed', 'true') })
+    },
+  }
+  const h = makeSnapshotHarness({ mermaidLib })
+  try {
+    const rendering = h.controller.render('```mermaid\ngraph TD; A-->B\n```\n', 'doc.md', null)
+    await flushMacrotask()
+    const node = h.refs.content.querySelector('.mermaid') || document.querySelector('.mermaid')
+    release()
+    await rendering
+    assert.deepEqual(sawAttrWhileRunning, [false], 'not marked while run() was still in flight')
+    assert.ok(h.refs.content.querySelector('.mermaid[data-mdv-rendered] svg[data-fake-mermaid-output]'), 'marked after run() resolved')
+    void node
   } finally {
     h.restore()
   }
@@ -1192,13 +1223,18 @@ test('rerenderMermaidTheme resets processed nodes back to source and re-runs the
     const node = h.refs.content.querySelector('.mermaid')
     assert.equal(node.getAttribute('data-processed'), 'true')
 
+    let markedDuringRerun = null
+    const baseRun = mermaidLib.run
+    mermaidLib.run = async args => { markedDuringRerun = args.nodes.map(n => n.hasAttribute('data-mdv-rendered')); return baseRun(args) }
     await h.controller.rerenderMermaidTheme(h.refs.content)
+    assert.deepEqual(markedDuringRerun, [false], 'the drawn mark is cleared before the theme re-run starts')
 
     assert.equal(mermaidLib.calls.length, 2, 'theme change re-invokes mermaid.run()')
     // The re-run's node must have been reset to source first, not re-run against the
     // stale <svg> from the first pass (which mermaid.run() would just skip as processed).
     const rerunNode = mermaidLib.calls[1][0]
     assert.equal(rerunNode.getAttribute('data-processed'), 'true', 'stub marks it processed again after the re-run')
+    assert.ok(rerunNode.hasAttribute('data-mdv-rendered'), 'marked drawn again after the re-run')
   } finally {
     h.restore()
   }

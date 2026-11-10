@@ -708,6 +708,12 @@
         // taking the whole render down with it.
       } finally {
         unpark?.()
+        // MDV's own "drawn" mark. mermaid (11 and 12 alike) puts an empty <svg> -- no viewBox,
+        // no nodes -- into the node within a few ms and only finishes it when run() resolves,
+        // ~150ms later with 12's ELK layout (plan 33), so "an svg exists" is not a completion
+        // signal. Anything that must see the finished diagram (the Electron tests) waits on
+        // this attribute instead. Set on error too: the run is over either way.
+        nodes.forEach(node => node.setAttribute('data-mdv-rendered', ''))
       }
     }
 
@@ -720,6 +726,7 @@
       const nodes = Array.from(container.querySelectorAll('.mermaid[data-mermaid-src]'))
       nodes.forEach(node => {
         node.removeAttribute('data-processed')
+        node.removeAttribute('data-mdv-rendered')
         node.textContent = base64ToUtf8(node.dataset.mermaidSrc)
       })
       await runMermaidBlocks(container)
